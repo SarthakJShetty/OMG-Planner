@@ -26,6 +26,10 @@ from transforms3d import quaternions
 import scipy.io as sio
 import pkgutil
 
+import cv2
+import matplotlib.pyplot as plt
+import glm
+import open3d as o3d
 
 class PandaYCBEnv:
     """Class for panda environment with ycb objects.
@@ -85,8 +89,9 @@ class PandaYCBEnv:
         self._env_step = 0
 
         self._cam_dist = 1.3
+        # self._cam_dist = 2
         self._cam_yaw = 180
-        self._cam_pitch = -40
+        self._cam_pitch = -41
         self._safeDistance = safeDistance
         self._root_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
         self._p = p
@@ -98,6 +103,7 @@ class PandaYCBEnv:
         self._cameraRandom = cameraRandom
         self._numObjects = numObjects
         self._shift = [0.5, 0.5, 0.5]  # to work without axis in DIRECT mode
+        # self._shift = [0., 0., 0.]  # to work without axis in DIRECT mode
         self._egl_render = egl_render
 
         self._cache_objects = cache_objects
@@ -111,7 +117,8 @@ class PandaYCBEnv:
             self.cid = p.connect(p.SHARED_MEMORY)
             if self.cid < 0:
                 self.cid = p.connect(p.GUI)
-                p.resetDebugVisualizerCamera(1.3, 180.0, -41.0, [-0.35, -0.58, -0.88])
+                # p.resetDebugVisualizerCamera(self._cam_dist, self.cam_yaw, self.cam_pitch, [-0.35, -0.58, -0.88])
+                p.resetDebugVisualizerCamera(self._cam_dist, self._cam_yaw, self._cam_pitch, [-0.0, -0.58, -0.88])
             if not self._gui_debug:
                 p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
 
@@ -183,9 +190,9 @@ class PandaYCBEnv:
             -0.58,
             -0.88,
         ]   
-        distance = 1.3   
-        pitch = -41.0   
-        yaw = 180  
+        distance = self._cam_dist   
+        pitch = self._cam_pitch
+        yaw = self._cam_yaw  
         roll = 0
         fov = 60.0 + self._cameraRandom * np.random.uniform(-2, 2)
         self._view_matrix = p.computeViewMatrixFromYawPitchRoll(
@@ -194,8 +201,8 @@ class PandaYCBEnv:
 
         aspect = float(self._window_width) / self._window_height
 
-        self.near = 0.1
-        self.far = 10
+        self.near = 0.5
+        self.far = 6
         self._proj_matrix = p.computeProjectionMatrixFOV(
             fov, aspect, self.near, self.far
         )
@@ -480,6 +487,46 @@ class PandaYCBEnv:
         )
         return (obs, joint_pos)
 
+    def get_pc(self, id=5):
+        _, _, rgba, depth, mask = p.getCameraImage(
+                    width=self._window_width,
+                    height=self._window_height,
+                    viewMatrix=self._view_matrix,
+                    projectionMatrix=self._proj_matrix,
+                    physicsClientId=self.cid,
+                )
+        rgba = rgba / 255.0
+
+        imgH, imgW = depth.shape
+        projGLM = np.asarray(self._proj_matrix).reshape([4, 4], order='F')
+        view = np.asarray(self._view_matrix).reshape([4, 4], order='F')
+
+        pc = []
+        # stepX = 1
+        # stepY = 1
+        # for h in range(0, imgH, stepY):
+            # for w in range(0, imgW, stepX):
+        obj_idxs = np.where(mask == id) # sugar box
+        for i in range(len(obj_idxs[0])):
+            h = obj_idxs[0][i]
+            w = obj_idxs[1][i]
+        # for h in obj_idxs[0]:
+            # for w in obj_idxs[1]:
+            win = glm.vec3(w, imgH - h, depth[h][w])
+            position = glm.unProject(win, glm.mat4(view), glm.mat4(projGLM), glm.vec4(0, 0, imgW, imgH))
+            pc.append([position[0], position[1], position[2], rgba[h, w, 0], rgba[h, w, 1], rgba[h, w, 2]])
+        pc = np.array(pc)
+
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(pc[:, :3])
+        pcd.colors = o3d.utility.Vector3dVector(pc[:, 3:])
+        # print("Visualizing point cloud...")
+        # o3d.visualization.draw_geometries([pcd])
+        # downpcd = pcd.voxel_down_sample(voxel_size=0.05)
+        # o3d.visualization.draw_geometries([downpcd])
+        # print("Point cloud visualized.")
+        return pcd
+
     def _get_target_obj_pose(self):
         return p.getBasePositionAndOrientation(self._objectUids[self.target_idx])[0]
 
@@ -619,6 +666,17 @@ if __name__ == "__main__":
         ]
         scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
         scene.reset(lazy=True)
+
+        # Get point cloud of target object
+        pc = env.get_pc(id=5)
+
+        # 6-DOF GraspNet
+
+        # Plan to grasp
+
+        # import IPython; IPython.embed()
+
+
         info = scene.step()
         plan = scene.planner.history_trajectories[-1]
 
