@@ -7,6 +7,7 @@ import os
 from gym import spaces
 import time
 import sys
+import argparse
 from . import _init_paths
 
 from omg.core import *
@@ -26,10 +27,17 @@ from transforms3d import quaternions
 import scipy.io as sio
 import pkgutil
 
+# For backprojection
 import cv2
 import matplotlib.pyplot as plt
 import glm
 import open3d as o3d
+
+# For 6-DOF graspnet
+import torch
+import grasp_estimator
+from utils import utils as gutils
+from utils import visualization_utils
 
 class PandaYCBEnv:
     """Class for panda environment with ycb objects.
@@ -501,6 +509,19 @@ class PandaYCBEnv:
         projGLM = np.asarray(self._proj_matrix).reshape([4, 4], order='F')
         view = np.asarray(self._view_matrix).reshape([4, 4], order='F')
 
+        all_pc = []
+        stepX = 1
+        stepY = 1
+        for h in range(0, imgH, stepY):
+            for w in range(0, imgW, stepX):
+                win = glm.vec3(w, imgH - h, depth[h][w])
+                position = glm.unProject(win, glm.mat4(view), glm.mat4(projGLM), glm.vec4(0, 0, imgW, imgH))
+                all_pc.append([position[0], position[1], position[2], rgba[h, w, 0], rgba[h, w, 1], rgba[h, w, 2]])
+        all_pc = np.array(all_pc)
+        all_pcd = o3d.geometry.PointCloud()
+        all_pcd.points = o3d.utility.Vector3dVector(all_pc[:, :3])
+        all_pcd.colors = o3d.utility.Vector3dVector(all_pc[:, 3:])
+
         pc = []
         # stepX = 1
         # stepY = 1
@@ -525,7 +546,7 @@ class PandaYCBEnv:
         # downpcd = pcd.voxel_down_sample(voxel_size=0.05)
         # o3d.visualization.draw_geometries([downpcd])
         # print("Point cloud visualized.")
-        return pcd
+        return pcd, all_pcd
 
     def _get_target_obj_pose(self):
         return p.getBasePositionAndOrientation(self._objectUids[self.target_idx])[0]
@@ -590,9 +611,65 @@ def bullet_execute_plan(env, plan, write_video, video_writer):
         for obs in ret_obs:  video_writer.write(obs[0][:,:,[2,1,0]].astype(np.uint8))
     return rew
 
-if __name__ == "__main__":
-    import argparse
+def make_parser(parser):
+    # parser = argparse.ArgumentParser(
+        # description='6-DoF GraspNet Demo',
+        # formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--grasp_sampler_folder',
+                        type=str,
+                        default='checkpoints/gan_pretrained/')
+    parser.add_argument('--grasp_evaluator_folder',
+                        type=str,
+                        default='checkpoints/evaluator_pretrained/')
+    parser.add_argument('--refinement_method',
+                        choices={"gradient", "sampling"},
+                        default='sampling')
+    parser.add_argument('--refine_steps', type=int, default=25)
 
+    parser.add_argument('--npy_folder', type=str, default='demo/data/')
+    parser.add_argument(
+        '--threshold',
+        type=float,
+        default=0.8,
+        help=
+        "When choose_fn is something else than all, all grasps with a score given by the evaluator notwork less than the threshold are removed"
+    )
+    parser.add_argument(
+        '--choose_fn',
+        choices={
+            "all", "better_than_threshold", "better_than_threshold_in_sequence"
+        },
+        default='better_than_threshold',
+        help=
+        "If all, no grasps are removed. If better than threshold, only the last refined grasps are considered while better_than_threshold_in_sequence consideres all refined grasps"
+    )
+
+    parser.add_argument('--target_pc_size', type=int, default=1024)
+    parser.add_argument('--num_grasp_samples', type=int, default=200)
+    parser.add_argument(
+        '--generate_dense_grasps',
+        action='store_true',
+        help=
+        "If enabled, it will create a [num_grasp_samples x num_grasp_samples] dense grid of latent space values and generate grasps from these."
+    )
+
+    parser.add_argument(
+        '--batch_size',
+        type=int,
+        default=30,
+        help=
+        "Set the batch size of the number of grasps we want to process and can fit into the GPU memory at each forward pass. The batch_size can be increased for a GPU with more memory."
+    )
+    parser.add_argument('--train_data', action='store_true')
+    # opts, _ = parser.parse_known_args()
+    # if opts.train_data:
+    #     parser.add_argument('--dataset_root_folder',
+    #                         required=True,
+    #                         type=str,
+    #                         help='path to root directory of the dataset.')
+    return parser
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--file", help="filename", type=str, default="scene_1")
     parser.add_argument(
@@ -602,6 +679,9 @@ if __name__ == "__main__":
     parser.add_argument("-w", "--write_video", help="write video", action="store_true")
     parser.add_argument("-exp", "--experiment", help="loop through the 100 scenes", action="store_true")
     parser.add_argument("--egl", help="use egl render", action="store_true")
+
+    # GraspNet args
+    parser = make_parser(parser)
 
     args = parser.parse_args()
 
@@ -667,15 +747,72 @@ if __name__ == "__main__":
         scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
         scene.reset(lazy=True)
 
-        # Get point cloud of target object
-        pc = env.get_pc(id=5)
+        # Get point clouds
+        object_pc, all_pc = env.get_pc(id=5)
 
-        # 6-DOF GraspNet
+        # Predict grasp using 6-DOF GraspNet
+        gpath = os.path.dirname(grasp_estimator.__file__)
+        grasp_sampler_args = gutils.read_checkpoint_args(
+            os.path.join(gpath, args.grasp_sampler_folder))
+        grasp_sampler_args['checkpoints_dir'] = os.path.join(gpath, grasp_sampler_args['checkpoints_dir'])
+        grasp_sampler_args.is_train = False
+        grasp_evaluator_args = gutils.read_checkpoint_args(
+            os.path.join(gpath, args.grasp_evaluator_folder))
+        grasp_evaluator_args['checkpoints_dir'] = os.path.join(gpath, grasp_evaluator_args['checkpoints_dir'])
+        grasp_evaluator_args.continue_train = True # was in demo file, not sure 
+        estimator = grasp_estimator.GraspEstimator(grasp_sampler_args,
+                                                    grasp_evaluator_args, args)
 
-        # Plan to grasp
+        pc = np.asarray(object_pc.points)
+        generated_grasps, generated_scores = estimator.generate_and_refine_grasps(
+            pc)
 
-        # import IPython; IPython.embed()
+        # # Visualize
+        # visualization_utils.draw_scene(
+        #     np.asarray(all_pc.points),
+        #     pc_color=(np.asarray(all_pc.colors) * 255).astype(int),
+        #     grasps=generated_grasps,
+        #     grasp_scores=generated_scores,
+        # )
+        # import IPython; IPython.embed() # Ctrl-D for interactivate visualization 
 
+        # Choose grasp
+        select_criteria = 'distance' # 'distance' to EE vs. prediction 'score'
+        if select_criteria == 'distance':
+            # Get each grasp as a control point
+            control_points = gutils.transform_control_points(
+                torch.Tensor(generated_grasps), 
+                len(generated_grasps), mode='rt')
+            
+            # Get current EE position as a control point
+            pos, orn = p.getLinkState(
+                env._panda.pandaUid, env._panda.pandaEndEffectorIndex
+            )[:2]
+            T_ee = quat2rotmat(orn)
+            T_ee[:3, 3] = pos
+            ee_control_points = gutils.transform_control_points(
+                torch.Tensor([T_ee]),
+                1, mode='rt')
+
+            # Get grasp with lowest L1 control point error
+            error = control_points - ee_control_points # (N, 6, 4)
+            error = torch.sum(torch.abs(error), -1)  # (N, 6)
+            error = torch.mean(error, dim=-1) # (N)
+            g_id = np.argmin(error)
+            grasp = generated_grasps[g_id]
+
+        elif select_criteria =='score':
+            g_id = np.argmax(generated_scores)
+            grasp = generated_grasps[g_id]
+
+        # Visualize
+        visualization_utils.draw_scene(
+            np.asarray(all_pc.points),
+            pc_color=(np.asarray(all_pc.colors) * 255).astype(int),
+            grasps=[grasp, generated_grasps[0]],
+            grasp_scores=[generated_scores[g_id], generated_scores[0]],
+        )
+        import IPython; IPython.embed() # Ctrl-D for interactivate visualization 
 
         info = scene.step()
         plan = scene.planner.history_trajectories[-1]

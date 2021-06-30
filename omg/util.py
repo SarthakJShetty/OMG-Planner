@@ -86,19 +86,13 @@ def pose2np(pose_kdl):
 
 def quat2rotmat(quat):
     quat_mat = np.eye(4)
-    quat_mat[:3, :3] = quaternions.quat2mat(quat)
+    quat_mat[:3, :3] = quat2mat(quat)
     return quat_mat
 
 
 def mat2rotmat(mat):
     quat_mat = np.eye(4)
     quat_mat[:3, :3] = mat
-    return quat_mat
-
-
-def quat2rotmat(quat):
-    quat_mat = np.eye(4)
-    quat_mat[:3, :3] = quaternions.quat2mat(quat)
     return quat_mat
 
 
