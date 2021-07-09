@@ -92,7 +92,7 @@ class Planner(object):
     Tricks such as standoff pregrasp, flip grasps are for real world experiments. 
     """
 
-    def __init__(self, env, traj, lazy=False):
+    def __init__(self, env, traj, lazy=False, grasps=None, grasp_scores=None):
 
         self.cfg = config.cfg  # env.config
         self.env = env
@@ -100,18 +100,27 @@ class Planner(object):
         self.cost = Cost(env)
         self.optim = Optimizer(env, self.cost)
         self.lazy = lazy
- 
-        if self.cfg.goal_set_proj:
-            if self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
-                self.load_grasp_set(env)
-                self.setup_goal_set(env)
-            else:
-                self.load_goal_from_scene()
+        self.use_graspnet = True if grasps is not None else False
+        self.grasps = grasps
+        self.grasp_scores = grasp_scores
 
+        if self.use_graspnet:
+            self.load_grasp_set_gn(env, self.grasps, self.grasp_scores)
+            self.setup_goal_set(env)
             self.grasp_init(env)
-            self.learner = Learner(env, traj, self.cost)
         else:
-            self.traj.interpolate_waypoints()
+            if self.cfg.goal_set_proj:
+                if self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
+                    self.load_grasp_set(env)
+                    self.setup_goal_set(env)
+                else:
+                    self.load_goal_from_scene()
+
+                self.grasp_init(env)
+                self.learner = Learner(env, traj, self.cost)
+            else:
+                self.traj.interpolate_waypoints()
+
         self.history_trajectories = []
         self.info = []
         self.ik_cache = []
@@ -131,17 +140,22 @@ class Planner(object):
         self.optim = Optimizer(env, self.cost)
 
         # load grasps if needed
-        if self.cfg.goal_set_proj:
-            if self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
-                self.load_grasp_set(env)
-                self.setup_goal_set(env)
-            else:
-                self.load_goal_from_scene()
-
+        if self.use_graspnet:
+            self.load_grasp_set_gn(env, self.grasps, self.grasp_scores)
+            self.setup_goal_set(env)
             self.grasp_init(env)
-            self.learner = Learner(env, traj, self.cost)
         else:
-            self.traj.interpolate_waypoints()
+            if self.cfg.goal_set_proj:
+                if self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
+                    self.load_grasp_set(env)
+                    self.setup_goal_set(env)
+                else:
+                    self.load_goal_from_scene()
+
+                self.grasp_init(env)
+                self.learner = Learner(env, traj, self.cost)
+            else:
+                self.traj.interpolate_waypoints()
         self.history_trajectories = []
         self.info = []
         self.ik_cache = []
@@ -169,11 +183,14 @@ class Planner(object):
         """
         Use precomputed grasps to initialize the end point and goal set
         """
-
+        grasp_ees = []
         if self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
             if len(env.objects) > 0:
                 self.traj.goal_set = env.objects[env.target_idx].grasps
                 self.traj.goal_potentials = env.objects[env.target_idx].grasp_potentials
+                if bool(env.objects[env.target_idx].grasps_scores): # not None or empty
+                    self.traj.goal_quality = env.objects[env.target_idx].grasps_scores
+                    grasp_ees = env.objects[env.target_idx].grasp_ees
                 if self.cfg.goal_set_proj and self.cfg.use_standoff:
                     if len(env.objects[env.target_idx].reach_grasps) > 0:
                         self.traj.goal_set = env.objects[env.target_idx].reach_grasps[:, -1]
@@ -184,7 +201,9 @@ class Planner(object):
                 * self.cfg.link_smooth_weight,
                 axis=-1,
             )
-            self.traj.goal_quality = np.ones(len(self.traj.goal_set))
+
+            if self.traj.goal_quality is None or self.traj.goal_quality == []: # is None or empty
+                self.traj.goal_quality = np.ones(len(self.traj.goal_set))
 
             if self.cfg.goal_idx >= 0: # manual specify
                 self.traj.goal_idx = self.cfg.goal_idx
@@ -203,6 +222,9 @@ class Planner(object):
 
             self.traj.end = self.traj.goal_set[self.traj.goal_idx]  #
             self.traj.interpolate_waypoints()
+
+            # Save for debug
+            np.save("output_videos/dbg.npy", [self.traj.start, self.traj.end, self.traj.goal_idx, self.traj.goal_set, self.traj.goal_quality, grasp_ees])
        
 
     def flip_grasp(self, old_grasps):
@@ -219,7 +241,8 @@ class Planner(object):
         return grasps, limits
 
     def solve_goal_set_ik(
-        self, target_obj, env, pose_grasp, one_trial=False, z_upsample=False, y_upsample=False
+        self, target_obj, env, pose_grasp, grasp_scores=[], one_trial=False, z_upsample=False, y_upsample=False,
+        in_global_coords=False
     ):
         """
         Solve the IKs to the goals
@@ -231,6 +254,8 @@ class Planner(object):
         reach_tail_len = self.cfg.reach_tail_length
         reach_goal_set = []
         standoff_goal_set = []
+        score_set = []
+        grasp_set = []
         reach_traj_set = []
         cnt = 0
         anchor_seeds = util_anchor_seeds[: self.cfg.ik_seed_num].copy()
@@ -241,7 +266,10 @@ class Planner(object):
             seeds = np.concatenate([init_seed[None, :], anchor_seeds[:, :7]], axis=0)
 
         """ IK prep """
-        pose_grasp_global = np.matmul(object_pose, pose_grasp)  # gripper -> object
+        if in_global_coords:
+            pose_grasp_global = pose_grasp
+        else:
+            pose_grasp_global = np.matmul(object_pose, pose_grasp)  # gripper -> object
 
         if z_upsample:
             # Added upright/gravity (support from base for placement) upsampling by object global z rotation
@@ -315,6 +343,9 @@ class Planner(object):
                 )
                 reach_goal_set.extend(reach_goal_set_i)
                 standoff_goal_set.extend(standoff_goal_set_i)
+                if grasp_scores != []:
+                    score_set.extend([grasp_scores[grasp_idx] for _ in range(len(standoff_goal_set_i))])
+                    grasp_set.extend([pose_grasp_global[grasp_idx] for _ in range(len(standoff_goal_set_i))])
 
                 if not any_ik:
                     cnt += 1
@@ -335,6 +366,7 @@ class Planner(object):
                 else np.zeros([0, 9])
             )
             standoff_goal_set = np.zeros([0, 9])
+            grasp_set = np.zeros([0, 7])
             any_ik, cnt = [], 0
             p = multiprocessing.Pool(processes=processes)     
              
@@ -378,6 +410,29 @@ class Planner(object):
                         ),
                         axis=0,
                     )
+                    if grasp_scores != []:
+                        # grasp score for every new reach goal set result
+                        new_score_set = np.concatenate(
+                                    [[grasp_scores[i+idx] for _ in range(len(s[1]))]
+                                        for idx, s in enumerate(res) if len(s[1]) > 0], axis=0)
+                        score_set = np.concatenate(
+                            (
+                                score_set,
+                                new_score_set
+                            ),
+                            axis=0,
+                        )
+                        new_grasp_set = np.concatenate(
+                                    [[pack_pose(pose_grasp_global[i+idx]) for _ in range(len(s[1]))]
+                                        for idx, s in enumerate(res) if len(s[1]) > 0], axis=0)
+                        # import IPython; IPython.embed()
+                        grasp_set = np.concatenate(
+                            (
+                                grasp_set,
+                                new_grasp_set
+                            ),
+                            axis=0
+                        )
 
                 if self.cfg.increment_iks:
                     max_index = np.random.choice(
@@ -399,7 +454,29 @@ class Planner(object):
                 pose_grasp_global.shape[0],
             )
         )
-        return list(reach_goal_set), list(standoff_goal_set)
+        return list(reach_goal_set), list(standoff_goal_set), list(score_set), list(grasp_set)
+
+    def load_grasp_set_gn(self, env, grasps, grasp_scores):
+        """
+        Load grasps from graspnet as grasp set.
+        """
+        for i, target_obj in enumerate(env.objects):
+            if target_obj.compute_grasp and (i == env.target_idx or not self.lazy):
+                if not target_obj.attached:
+                    offset_pose = np.array(rotZ(np.pi / 2))  # and
+                    target_obj.grasps_poses = np.matmul(grasps, offset_pose)  # flip x, y
+                    target_obj.grasps_scores = grasp_scores
+                    z_upsample = False
+                else:
+                    print("Target attached")
+                    import IPython; IPython.embed()
+                    z_upsample=True
+
+                target_obj.reach_grasps, target_obj.grasps, target_obj.grasps_scores, target_obj.grasp_ees = self.solve_goal_set_ik(
+                    target_obj, env, target_obj.grasps_poses, grasp_scores=target_obj.grasps_scores, z_upsample=z_upsample, y_upsample=self.cfg.y_upsample,
+                    in_global_coords=True
+                )
+                target_obj.grasp_potentials = []
 
     def load_grasp_set(self, env):
         """
@@ -445,7 +522,7 @@ class Planner(object):
                     ]
                     z_upsample = True
 
-                target_obj.reach_grasps, target_obj.grasps = self.solve_goal_set_ik(
+                target_obj.reach_grasps, target_obj.grasps, _, _ = self.solve_goal_set_ik(
                     target_obj, env, pose_grasp, z_upsample=z_upsample, y_upsample=self.cfg.y_upsample
                 )
                 target_obj.grasp_potentials = []
@@ -541,10 +618,16 @@ class Planner(object):
                         collide <= self.cfg.allow_collision_point
                     ).nonzero()  # == 0
 
-                    new_goal_set = []
+                    # new_goal_set = []
                     ik_goal_num = len(goal_set)
                     goal_set = [goal_set[idx] for idx in collision_free[0]]
                     reach_goal_set = [reach_goal_set[idx] for idx in collision_free[0]]
+                    if target_obj.grasps_scores is not None and target_obj.grasps_scores != []:
+                        try:
+                            grasp_scores = [target_obj.grasps_scores[idx] for idx in collision_free[0]]
+                            grasp_ees = [target_obj.grasp_ees[idx] for idx in collision_free[0]]
+                        except Exception as e:
+                            import IPython; IPython.embed()
                     potentials = potentials[collision_free[0]]
                     vis_points = vis_points[collision_free[0]]
 
@@ -582,6 +665,9 @@ class Planner(object):
                     target_obj.reach_grasps = [
                         reach_goal_set[int(idx)] for idx in sample_goals
                     ]
+                    if target_obj.grasps_scores is not None and target_obj.grasps_scores != []:
+                        target_obj.grasps_scores = [grasp_scores[int(idx)] for idx in sample_goals]
+                        target_obj.grasp_ees = [grasp_ees[int(idx)] for idx in sample_goals]
                     target_obj.seeds += target_obj.grasps
                     # compute 5 step interpolation for final reach
                     target_obj.reach_grasps = np.array(target_obj.reach_grasps)
@@ -603,6 +689,8 @@ class Planner(object):
                 if not sample:
                     target_obj.grasps = []
                     target_obj.reach_grasps = []
+                    target_obj.grasps_scores = []
+                    target_obj.grasp_ees = []
                     target_obj.grasp_potentials = []
                     target_obj.grasp_vis_points = []
             target_obj.compute_grasp = False

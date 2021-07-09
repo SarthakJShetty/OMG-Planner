@@ -509,6 +509,9 @@ class PandaYCBEnv:
         projGLM = np.asarray(self._proj_matrix).reshape([4, 4], order='F')
         view = np.asarray(self._view_matrix).reshape([4, 4], order='F')
 
+        pos, orn = p.getBasePositionAndOrientation(env._panda.pandaUid)
+        # base_pose = list(pos) + [orn[3], orn[0], orn[1], orn[2]]
+
         all_pc = []
         stepX = 1
         stepY = 1
@@ -517,27 +520,25 @@ class PandaYCBEnv:
                 win = glm.vec3(w, imgH - h, depth[h][w])
                 position = glm.unProject(win, glm.mat4(view), glm.mat4(projGLM), glm.vec4(0, 0, imgW, imgH))
                 all_pc.append([position[0], position[1], position[2], rgba[h, w, 0], rgba[h, w, 1], rgba[h, w, 2]])
+
         all_pc = np.array(all_pc)
+        all_pc[:, :3] -= pos
+        
         all_pcd = o3d.geometry.PointCloud()
         all_pcd.points = o3d.utility.Vector3dVector(all_pc[:, :3])
         all_pcd.colors = o3d.utility.Vector3dVector(all_pc[:, 3:])
 
         pc = []
-        # stepX = 1
-        # stepY = 1
-        # for h in range(0, imgH, stepY):
-            # for w in range(0, imgW, stepX):
-        obj_idxs = np.where(mask == id) # sugar box
+        obj_idxs = np.where(mask == id)
         for i in range(len(obj_idxs[0])):
             h = obj_idxs[0][i]
             w = obj_idxs[1][i]
-        # for h in obj_idxs[0]:
-            # for w in obj_idxs[1]:
             win = glm.vec3(w, imgH - h, depth[h][w])
             position = glm.unProject(win, glm.mat4(view), glm.mat4(projGLM), glm.vec4(0, 0, imgW, imgH))
             pc.append([position[0], position[1], position[2], rgba[h, w, 0], rgba[h, w, 1], rgba[h, w, 2]])
         pc = np.array(pc)
-
+        pc[:, :3] -= pos
+        
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(pc[:, :3])
         pcd.colors = o3d.utility.Vector3dVector(pc[:, 3:])
@@ -599,7 +600,6 @@ class PandaYCBEnv:
 
         return obj_dir, poses
 
-
 def bullet_execute_plan(env, plan, write_video, video_writer):
     print('executing...')
     for k in range(plan.shape[0]):
@@ -608,7 +608,9 @@ def bullet_execute_plan(env, plan, write_video, video_writer):
             video_writer.write(obs[0][:, :, [2, 1, 0]].astype(np.uint8))
     (rew, ret_obs) = env.retract(record=True)
     if write_video: 
-        for obs in ret_obs:  video_writer.write(obs[0][:,:,[2,1,0]].astype(np.uint8))
+        for robs in ret_obs:
+            video_writer.write(robs[0][:, :, [2, 1, 0]].astype(np.uint8))
+            video_writer.write(robs[0][:, :, [2, 1, 0]].astype(np.uint8)) # to get enough frames to save
     return rew
 
 def make_parser(parser):
@@ -744,11 +746,12 @@ if __name__ == "__main__":
             for obj_idx, name in enumerate(env.obj_path[:-2])
             if obj_idx not in exists_ids
         ]
-        scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
-        scene.reset(lazy=True)
+        # scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
+        # scene.reset(lazy=True)
 
         # Get point clouds
-        object_pc, all_pc = env.get_pc(id=5)
+        obj_id = 5 # 7
+        object_pc, all_pc = env.get_pc(id=obj_id)
 
         # Predict grasp using 6-DOF GraspNet
         gpath = os.path.dirname(grasp_estimator.__file__)
@@ -766,15 +769,6 @@ if __name__ == "__main__":
         pc = np.asarray(object_pc.points)
         generated_grasps, generated_scores = estimator.generate_and_refine_grasps(
             pc)
-
-        # # Visualize
-        # visualization_utils.draw_scene(
-        #     np.asarray(all_pc.points),
-        #     pc_color=(np.asarray(all_pc.colors) * 255).astype(int),
-        #     grasps=generated_grasps,
-        #     grasp_scores=generated_scores,
-        # )
-        # import IPython; IPython.embed() # Ctrl-D for interactivate visualization 
 
         # Choose grasp
         select_criteria = 'distance' # 'distance' to EE vs. prediction 'score'
@@ -805,14 +799,51 @@ if __name__ == "__main__":
             g_id = np.argmax(generated_scores)
             grasp = generated_grasps[g_id]
 
+        generated_grasps = np.array(generated_grasps)
+        generated_scores = np.array(generated_scores)
+
+        target_id = 2 # 4
+        scene.env.set_target(env.obj_path[target_id].split("/")[-1])
+
+        scene.planner.cfg.ol_alg = 'Proj'
+        # scene.planner.cfg.ol_alg = 'Baseline'
+
+        # size = 30
+        # idxs = np.random.choice(range(len(generated_grasps)), size=size)
+        # sampled_grasps = generated_grasps[idxs]
+        # sampled_scores = generated_scores[idxs]
+
+        scene.reset(lazy=True, grasps=generated_grasps, grasp_scores=generated_scores)
+        # scene.reset(lazy=True, grasps=np.array([grasp]))
+
+        dbg = np.load("output_videos/dbg.npy", encoding='latin1', allow_pickle=True)
+        grasp_start, grasp_end, goal_idx, goal_set, goal_quality, grasp_ees = dbg # in joints, not EE pose
+        goal_ees_T = [unpack_pose(g) for g in grasp_ees]
+        # goal_end_T = scene.planner.env.robot.robot_kinematics.forward_kinematics_parallel(wrap_value(grasp_end)[None, :], base_link=cfg.base_link)[0, -1, :, :]
+        # goal_start_T = scene.planner.env.robot.robot_kinematics.forward_kinematics_parallel(wrap_value(grasp_start)[None, :], base_link=cfg.base_link)[0, -1, :, :]
+
         # Visualize
+        # visualization_utils.draw_scene(
+        #     np.asarray(all_pc.points),
+        #     pc_color=(np.asarray(all_pc.colors) * 255).astype(int),
+        #     # grasps=[grasp, generated_grasps[0]],
+        #     # grasps=sampled_grasps,
+        #     grasps=goal_ees_T,
+        #     # grasp_scores=[generated_scores[g_id], generated_scores[0]],
+        #     grasp_scores=goal_quality,
+        # )
+
         visualization_utils.draw_scene(
             np.asarray(all_pc.points),
             pc_color=(np.asarray(all_pc.colors) * 255).astype(int),
-            grasps=[grasp, generated_grasps[0]],
-            grasp_scores=[generated_scores[g_id], generated_scores[0]],
+            # grasps=[grasp, generated_grasps[0]],
+            # grasps=sampled_grasps,
+            grasps=[goal_ees_T[goal_idx]],
+            # grasps=[goal_end_T, goal_start_T],
+            # grasp_scores=[generated_scores[g_id], generated_scores[0]],
+            grasp_scores=[goal_quality[goal_idx]],
         )
-        import IPython; IPython.embed() # Ctrl-D for interactivate visualization 
+        # import IPython; IPython.embed() # Ctrl-D for interactive visualization 
 
         info = scene.step()
         plan = scene.planner.history_trajectories[-1]
@@ -824,4 +855,11 @@ if __name__ == "__main__":
         rews += rew
         print('rewards: {} counts: {}'.format(rews, cnts))
 
+        import IPython; IPython.embed()
     env.disconnect()
+
+        # from mpl_toolkits import mplot3d
+        # import matplotlib.pyplot as plt
+        # fig = plt.figure()
+        # ax = plt.axes(projection='3d')
+        # ax.scatter(generated_grasps[:, 0, 3], generated_grasps[:, 1, 3], generated_grasps[:, 2, 3])

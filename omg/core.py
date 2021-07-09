@@ -114,6 +114,7 @@ class Model(object):
         self.compute_grasp = compute_grasp
         self.grasps = []
         self.reach_grasps = []
+        self.grasps_scores = []
         self.seeds = []
         self.grasp_potentials = []
         self.grasp_vis_points = []
@@ -431,11 +432,11 @@ class PlanningScene(object):
     def update_planner(self):
         self.planner.update(self.env, self.traj)
 
-    def reset(self, lazy=False):
+    def reset(self, lazy=False, grasps=None, grasp_scores=None):
         """
         Reset the scene for next run
         """
-        self.planner = Planner(self.env, self.traj, lazy)
+        self.planner = Planner(self.env, self.traj, lazy, grasps=grasps, grasp_scores=grasp_scores)
         if config.cfg.vis and not hasattr(self, "renderer"):
             self.setup_renderer()
 
