@@ -779,7 +779,6 @@ if __name__ == "__main__":
             generated_scores = np.array(generated_scores)
 
             scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
-
             scene.reset(lazy=True, grasps=generated_grasps, grasp_scores=generated_scores)
             # scene.planner.cfg.ol_alg = 'Proj'
             # scene.planner.cfg.ol_alg = 'Baseline'
@@ -807,6 +806,7 @@ if __name__ == "__main__":
             mlab.savefig(f"output_videos/{exp_name}/{scene_file}/grasp.png")
             import IPython; IPython.embed() # Ctrl-D for interactive visualization 
         else:
+            scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
             scene.reset(lazy=True)
 
         info = scene.step()
