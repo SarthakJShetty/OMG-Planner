@@ -10,3 +10,4 @@ __pycache__
 data
 output_videos
 .ninja*
+*.ipynb_checkpoints

@@ -55,14 +55,14 @@ cfg.obstacle_size = 1  # obstacle's resize ratio
 cfg.obj_point_num = 800  # object points for KDTree in isf
 cfg.terminate_smooth_ratio = 4  # 35 terminate condition for trajectory
 cfg.terminate_grad_norm = 1.5  # terminate condition for smooth grad norm
-cfg.terminate_smooth_loss = 35  # terminate condition for trajectory
+cfg.terminate_smooth_loss = 30 # 35  # terminate condition for trajectory
 cfg.penalize_constant = 5  # scaling negative sdf values to avoid collision
 cfg.grasp_optimize = False  # the option of optimizing grasp term
 cfg.traj_init = "grasp"  # use ik or precomputed grasp list to initialize the goal
 cfg.traj_interpolate = "cubic"  # interpolate trajectory waypoints between start and end
  
 cfg.goal_set_proj = True  # use the goal set variant of CHOMP
-cfg.goal_set_max_num = 100  # the maximum number of goals in the goal set
+cfg.goal_set_max_num = 30 # 100  # the maximum number of goals in the goal set
 cfg.ol_alg = "MD"  # the online learning algorithm for updating grasp distribution
 cfg.dist_eps = 0.1  # weight coefficients for projected distance
 cfg.goal_idx = -2  # >0: goal index in goal set, -1: closest, -2: minimum cost, -3: random

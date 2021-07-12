@@ -38,6 +38,7 @@ import torch
 import grasp_estimator
 from utils import utils as gutils
 from utils import visualization_utils
+import mayavi.mlab as mlab
 
 class PandaYCBEnv:
     """Class for panda environment with ycb objects.
@@ -305,7 +306,7 @@ class PandaYCBEnv:
             target_idx = [idx for idx, name in enumerate(objects_paths) if 
                                    str(scene['target_name'][0]) in str(name)][0]
         else:
-            target_idx = 0 
+            target_idx = 0
         self.target_idx = self.obj_path.index(objects_paths[target_idx])
         if "states" in scene:
             init_joints = scene["states"][0]
@@ -495,14 +496,15 @@ class PandaYCBEnv:
         )
         return (obs, joint_pos)
 
-    def get_pc(self, id=5):
+    def get_pc(self):
+        target_id = env._objectUids[env.target_idx]
         _, _, rgba, depth, mask = p.getCameraImage(
-                    width=self._window_width,
-                    height=self._window_height,
-                    viewMatrix=self._view_matrix,
-                    projectionMatrix=self._proj_matrix,
-                    physicsClientId=self.cid,
-                )
+            width=self._window_width,
+            height=self._window_height,
+            viewMatrix=self._view_matrix,
+            projectionMatrix=self._proj_matrix,
+            physicsClientId=self.cid,
+        )
         rgba = rgba / 255.0
 
         imgH, imgW = depth.shape
@@ -510,7 +512,6 @@ class PandaYCBEnv:
         view = np.asarray(self._view_matrix).reshape([4, 4], order='F')
 
         pos, orn = p.getBasePositionAndOrientation(env._panda.pandaUid)
-        # base_pose = list(pos) + [orn[3], orn[0], orn[1], orn[2]]
 
         all_pc = []
         stepX = 1
@@ -529,7 +530,7 @@ class PandaYCBEnv:
         all_pcd.colors = o3d.utility.Vector3dVector(all_pc[:, 3:])
 
         pc = []
-        obj_idxs = np.where(mask == id)
+        obj_idxs = np.where(mask == target_id)
         for i in range(len(obj_idxs[0])):
             h = obj_idxs[0][i]
             w = obj_idxs[1][i]
@@ -680,6 +681,7 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--vis", help="renders", action="store_true")
     parser.add_argument("-w", "--write_video", help="write video", action="store_true")
     parser.add_argument("-exp", "--experiment", help="loop through the 100 scenes", action="store_true")
+    parser.add_argument("--use_graspnet", help="Use graspnet", action="store_true")
     parser.add_argument("--egl", help="use egl render", action="store_true")
 
     # GraspNet args
@@ -712,12 +714,17 @@ if __name__ == "__main__":
     scene.env.combine_sdfs()
     if args.experiment:   
         scene_files = ['scene_{}'.format(i) for i in range(100)]
+        exp_name = f"{time.strftime('%Y-%m-%d/%H-%M-%S', time.localtime())}" + \
+                   f"_{'infgrasps' if args.use_graspnet else 'knowngrasps'}"
+        mkdir_if_missing(f'output_videos/{exp_name}')
     else:
         scene_files = [scene_file]
+        exp_name = "dbg"
 
     cnts, rews = 0, 0
     for scene_file in scene_files:
-        config.cfg.output_video_name = "output_videos/bullet_" + scene_file + ".avi"
+        mkdir_if_missing(f'output_videos/{exp_name}/{scene_file}')
+        config.cfg.output_video_name = f"output_videos/{exp_name}/{scene_file}/bullet.avi"
         cfg.scene_file = scene_file
         video_writer = None
         if args.write_video:
@@ -746,104 +753,61 @@ if __name__ == "__main__":
             for obj_idx, name in enumerate(env.obj_path[:-2])
             if obj_idx not in exists_ids
         ]
-        # scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
-        # scene.reset(lazy=True)
 
         # Get point clouds
-        obj_id = 5 # 7
-        object_pc, all_pc = env.get_pc(id=obj_id)
+        if args.use_graspnet:
+            object_pc, all_pc = env.get_pc()
 
-        # Predict grasp using 6-DOF GraspNet
-        gpath = os.path.dirname(grasp_estimator.__file__)
-        grasp_sampler_args = gutils.read_checkpoint_args(
-            os.path.join(gpath, args.grasp_sampler_folder))
-        grasp_sampler_args['checkpoints_dir'] = os.path.join(gpath, grasp_sampler_args['checkpoints_dir'])
-        grasp_sampler_args.is_train = False
-        grasp_evaluator_args = gutils.read_checkpoint_args(
-            os.path.join(gpath, args.grasp_evaluator_folder))
-        grasp_evaluator_args['checkpoints_dir'] = os.path.join(gpath, grasp_evaluator_args['checkpoints_dir'])
-        grasp_evaluator_args.continue_train = True # was in demo file, not sure 
-        estimator = grasp_estimator.GraspEstimator(grasp_sampler_args,
-                                                    grasp_evaluator_args, args)
+            # Predict grasp using 6-DOF GraspNet
+            gpath = os.path.dirname(grasp_estimator.__file__)
+            grasp_sampler_args = gutils.read_checkpoint_args(
+                os.path.join(gpath, args.grasp_sampler_folder))
+            grasp_sampler_args['checkpoints_dir'] = os.path.join(gpath, grasp_sampler_args['checkpoints_dir'])
+            grasp_sampler_args.is_train = False
+            grasp_evaluator_args = gutils.read_checkpoint_args(
+                os.path.join(gpath, args.grasp_evaluator_folder))
+            grasp_evaluator_args['checkpoints_dir'] = os.path.join(gpath, grasp_evaluator_args['checkpoints_dir'])
+            grasp_evaluator_args.continue_train = True # was in demo file, not sure 
+            estimator = grasp_estimator.GraspEstimator(grasp_sampler_args,
+                                                        grasp_evaluator_args, args)
 
-        pc = np.asarray(object_pc.points)
-        generated_grasps, generated_scores = estimator.generate_and_refine_grasps(
-            pc)
+            pc = np.asarray(object_pc.points)
+            generated_grasps, generated_scores = estimator.generate_and_refine_grasps(
+                pc)
 
-        # Choose grasp
-        select_criteria = 'distance' # 'distance' to EE vs. prediction 'score'
-        if select_criteria == 'distance':
-            # Get each grasp as a control point
-            control_points = gutils.transform_control_points(
-                torch.Tensor(generated_grasps), 
-                len(generated_grasps), mode='rt')
+            generated_grasps = np.array(generated_grasps)
+            generated_scores = np.array(generated_scores)
+
+            scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
+
+            scene.reset(lazy=True, grasps=generated_grasps, grasp_scores=generated_scores)
+            # scene.planner.cfg.ol_alg = 'Proj'
+            # scene.planner.cfg.ol_alg = 'Baseline'
             
-            # Get current EE position as a control point
-            pos, orn = p.getLinkState(
-                env._panda.pandaUid, env._panda.pandaEndEffectorIndex
-            )[:2]
-            T_ee = quat2rotmat(orn)
-            T_ee[:3, 3] = pos
-            ee_control_points = gutils.transform_control_points(
-                torch.Tensor([T_ee]),
-                1, mode='rt')
+            dbg = np.load("output_videos/dbg.npy", encoding='latin1', allow_pickle=True)
+            grasp_start, grasp_end, goal_idx, goal_set, goal_quality, grasp_ees = dbg # in joints, not EE pose
+            offset_pose = np.array(rotZ(-np.pi / 2))  # unrotate gripper for visualization (was rotated in Planner class)
+            goal_ees_T = [np.matmul(unpack_pose(g), offset_pose) for g in grasp_ees]
+            # goal_ees_T = [unpack_pose(g) for g in grasp_ees]
 
-            # Get grasp with lowest L1 control point error
-            error = control_points - ee_control_points # (N, 6, 4)
-            error = torch.sum(torch.abs(error), -1)  # (N, 6)
-            error = torch.mean(error, dim=-1) # (N)
-            g_id = np.argmin(error)
-            grasp = generated_grasps[g_id]
+            # Visualize
+            # visualization_utils.draw_scene(
+            #     np.asarray(all_pc.points),
+            #     pc_color=(np.asarray(all_pc.colors) * 255).astype(int),
+            #     grasps=goal_ees_T,
+            #     grasp_scores=goal_quality,
+            # )
 
-        elif select_criteria =='score':
-            g_id = np.argmax(generated_scores)
-            grasp = generated_grasps[g_id]
-
-        generated_grasps = np.array(generated_grasps)
-        generated_scores = np.array(generated_scores)
-
-        target_id = 2 # 4
-        scene.env.set_target(env.obj_path[target_id].split("/")[-1])
-
-        scene.planner.cfg.ol_alg = 'Proj'
-        # scene.planner.cfg.ol_alg = 'Baseline'
-
-        # size = 30
-        # idxs = np.random.choice(range(len(generated_grasps)), size=size)
-        # sampled_grasps = generated_grasps[idxs]
-        # sampled_scores = generated_scores[idxs]
-
-        scene.reset(lazy=True, grasps=generated_grasps, grasp_scores=generated_scores)
-        # scene.reset(lazy=True, grasps=np.array([grasp]))
-
-        dbg = np.load("output_videos/dbg.npy", encoding='latin1', allow_pickle=True)
-        grasp_start, grasp_end, goal_idx, goal_set, goal_quality, grasp_ees = dbg # in joints, not EE pose
-        goal_ees_T = [unpack_pose(g) for g in grasp_ees]
-        # goal_end_T = scene.planner.env.robot.robot_kinematics.forward_kinematics_parallel(wrap_value(grasp_end)[None, :], base_link=cfg.base_link)[0, -1, :, :]
-        # goal_start_T = scene.planner.env.robot.robot_kinematics.forward_kinematics_parallel(wrap_value(grasp_start)[None, :], base_link=cfg.base_link)[0, -1, :, :]
-
-        # Visualize
-        # visualization_utils.draw_scene(
-        #     np.asarray(all_pc.points),
-        #     pc_color=(np.asarray(all_pc.colors) * 255).astype(int),
-        #     # grasps=[grasp, generated_grasps[0]],
-        #     # grasps=sampled_grasps,
-        #     grasps=goal_ees_T,
-        #     # grasp_scores=[generated_scores[g_id], generated_scores[0]],
-        #     grasp_scores=goal_quality,
-        # )
-
-        visualization_utils.draw_scene(
-            np.asarray(all_pc.points),
-            pc_color=(np.asarray(all_pc.colors) * 255).astype(int),
-            # grasps=[grasp, generated_grasps[0]],
-            # grasps=sampled_grasps,
-            grasps=[goal_ees_T[goal_idx]],
-            # grasps=[goal_end_T, goal_start_T],
-            # grasp_scores=[generated_scores[g_id], generated_scores[0]],
-            grasp_scores=[goal_quality[goal_idx]],
-        )
-        # import IPython; IPython.embed() # Ctrl-D for interactive visualization 
+            visualization_utils.draw_scene(
+                np.asarray(object_pc.points),
+                pc_color=(np.asarray(object_pc.colors) * 255).astype(int),
+                grasps=[goal_ees_T[goal_idx]],
+                grasp_scores=[goal_quality[goal_idx]],
+            )
+            mlab.savefig(f"output_videos/{exp_name}/{scene_file}/grasp.png")
+            import IPython; IPython.embed() # Ctrl-D for interactive visualization 
+        else:
+            scene.reset(lazy=True)
 
         info = scene.step()
         plan = scene.planner.history_trajectories[-1]
@@ -855,11 +819,46 @@ if __name__ == "__main__":
         rews += rew
         print('rewards: {} counts: {}'.format(rews, cnts))
 
-        import IPython; IPython.embed()
+        # import IPython; IPython.embed()
+
+        # Save data
+        np.save(f'output_videos/{exp_name}/{scene_file}/data.npy', [rew, info, plan])
+
+        # Convert avi to high quality gif 
+        os.system(f'ffmpeg -y -i output_videos/{exp_name}/{scene_file}/bullet.avi -vf "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 output_videos/{exp_name}/{scene_file}/scene.gif')
     env.disconnect()
 
-        # from mpl_toolkits import mplot3d
-        # import matplotlib.pyplot as plt
-        # fig = plt.figure()
-        # ax = plt.axes(projection='3d')
-        # ax.scatter(generated_grasps[:, 0, 3], generated_grasps[:, 1, 3], generated_grasps[:, 2, 3])
+# from mpl_toolkits import mplot3d
+# import matplotlib.pyplot as plt
+# fig = plt.figure()
+# ax = plt.axes(projection='3d')
+# ax.scatter(generated_grasps[:, 0, 3], generated_grasps[:, 1, 3], generated_grasps[:, 2, 3])
+
+            # # Choose grasp
+            # select_criteria = 'distance' # 'distance' to EE vs. prediction 'score'
+            # if select_criteria == 'distance':
+            #     # Get each grasp as a control point
+            #     control_points = gutils.transform_control_points(
+            #         torch.Tensor(generated_grasps), 
+            #         len(generated_grasps), mode='rt')
+                
+            #     # Get current EE position as a control point
+            #     pos, orn = p.getLinkState(
+            #         env._panda.pandaUid, env._panda.pandaEndEffectorIndex
+            #     )[:2]
+            #     T_ee = quat2rotmat(orn)
+            #     T_ee[:3, 3] = pos
+            #     ee_control_points = gutils.transform_control_points(
+            #         torch.Tensor([T_ee]),
+            #         1, mode='rt')
+
+            #     # Get grasp with lowest L1 control point error
+            #     error = control_points - ee_control_points # (N, 6, 4)
+            #     error = torch.sum(torch.abs(error), -1)  # (N, 6)
+            #     error = torch.mean(error, dim=-1) # (N)
+            #     g_id = np.argmin(error)
+            #     grasp = generated_grasps[g_id]
+
+            # elif select_criteria =='score':
+            #     g_id = np.argmax(generated_scores)
+            #     grasp = generated_grasps[g_id]
