@@ -682,6 +682,7 @@ if __name__ == "__main__":
     parser.add_argument("-w", "--write_video", help="write video", action="store_true")
     parser.add_argument("-exp", "--experiment", help="loop through the 100 scenes", action="store_true")
     parser.add_argument("--use_graspnet", help="Use graspnet", action="store_true")
+    parser.add_argument("-gs", "--grasp_selection", help="Which grasp selection algorithm to use", required=True, choices=['Fixed', 'Proj', 'OMG'])
     parser.add_argument("--egl", help="use egl render", action="store_true")
 
     # GraspNet args
@@ -715,7 +716,8 @@ if __name__ == "__main__":
     if args.experiment:   
         scene_files = ['scene_{}'.format(i) for i in range(100)]
         exp_name = f"{time.strftime('%Y-%m-%d/%H-%M-%S', time.localtime())}" + \
-                   f"_{'infgrasps' if args.use_graspnet else 'knowngrasps'}"
+                   f"_{'infgrasps' if args.use_graspnet else 'knowngrasps'}" + \
+                   f"_{args.grasp_selection}"
         mkdir_if_missing(f'output_videos/{exp_name}')
     else:
         scene_files = [scene_file]
@@ -772,16 +774,25 @@ if __name__ == "__main__":
                                                         grasp_evaluator_args, args)
 
             pc = np.asarray(object_pc.points)
-            generated_grasps, generated_scores = estimator.generate_and_refine_grasps(
-                pc)
+            start_time = time.time()
+            generated_grasps, generated_scores = estimator.generate_and_refine_grasps(pc)
+            graspinf_duration = time.time() - start_time
+            print("Grasp Inference time: {:.3f}".format(graspinf_duration))
 
             generated_grasps = np.array(generated_grasps)
             generated_scores = np.array(generated_scores)
 
+            # Set configs according to args
+            if args.grasp_selection == 'Fixed':
+                scene.planner.cfg.ol_alg = 'Baseline'
+                scene.planner.cfg.goal_idx = -1
+            elif args.grasp_selection == 'Proj':
+                scene.planner.cfg.ol_alg = 'Proj'
+            elif args.grasp_selection == 'OMG':
+                scene.planner.cfg.ol_alg = 'MD'
+
             scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
             scene.reset(lazy=True, grasps=generated_grasps, grasp_scores=generated_scores)
-            # scene.planner.cfg.ol_alg = 'Proj'
-            # scene.planner.cfg.ol_alg = 'Baseline'
             
             dbg = np.load("output_videos/dbg.npy", encoding='latin1', allow_pickle=True)
             grasp_start, grasp_end, goal_idx, goal_set, goal_quality, grasp_ees = dbg # in joints, not EE pose
@@ -804,8 +815,18 @@ if __name__ == "__main__":
                 grasp_scores=[goal_quality[goal_idx]],
             )
             mlab.savefig(f"output_videos/{exp_name}/{scene_file}/grasp.png")
-            import IPython; IPython.embed() # Ctrl-D for interactive visualization 
+            mlab.clf()
+            # import IPython; IPython.embed() # Ctrl-D for interactive visualization 
         else:
+            # Set configs according to args
+            if args.grasp_selection == 'Fixed':
+                scene.planner.cfg.ol_alg = 'Baseline'
+                scene.planner.cfg.goal_idx = -1
+            elif args.grasp_selection == 'Proj':
+                scene.planner.cfg.ol_alg = 'Proj'
+            elif args.grasp_selection == 'OMG':
+                scene.planner.cfg.ol_alg = 'MD'
+
             scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
             scene.reset(lazy=True)
 
@@ -819,9 +840,9 @@ if __name__ == "__main__":
         rews += rew
         print('rewards: {} counts: {}'.format(rews, cnts))
 
-        # import IPython; IPython.embed()
-
         # Save data
+        if args.use_graspnet and 'time' in info[-1].keys():
+            info[-1]['time'] += graspinf_duration
         np.save(f'output_videos/{exp_name}/{scene_file}/data.npy', [rew, info, plan])
 
         # Convert avi to high quality gif 

@@ -108,6 +108,7 @@ class Planner(object):
             self.load_grasp_set_gn(env, self.grasps, self.grasp_scores)
             self.setup_goal_set(env)
             self.grasp_init(env)
+            self.learner = Learner(env, traj, self.cost) # 
         else:
             if self.cfg.goal_set_proj:
                 if self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
@@ -704,7 +705,8 @@ class Planner(object):
         self.info = []
         self.selected_goals = []
         start_time_ = time.time()
-        alg_switch = self.cfg.ol_alg != "Baseline" and self.cfg.ol_alg != "Proj"
+        alg_switch = self.cfg.ol_alg != "Baseline" 
+        # and self.cfg.ol_alg != "Proj"
 
         if (not self.cfg.goal_set_proj) or len(self.traj.goal_set) > 0:
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
