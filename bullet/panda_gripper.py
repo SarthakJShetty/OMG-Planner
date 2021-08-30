@@ -5,6 +5,7 @@
 import pybullet as p
 import os
 import IPython
+import numpy as np
 
 # adapted from https://github.com/bryandlee/franka_pybullet/tree/ac86319a0b2f6c863ba3c7ee3d52f4f51b2be3bd
 class Panda:

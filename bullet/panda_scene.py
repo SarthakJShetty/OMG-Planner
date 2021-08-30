@@ -39,6 +39,7 @@ import grasp_estimator
 from utils import utils as gutils
 from utils import visualization_utils
 import mayavi.mlab as mlab
+mlab.options.offscreen = True
 
 class PandaYCBEnv:
     """Class for panda environment with ycb objects.
@@ -684,6 +685,7 @@ if __name__ == "__main__":
     parser.add_argument("--use_graspnet", help="Use graspnet", action="store_true")
     parser.add_argument("-gs", "--grasp_selection", help="Which grasp selection algorithm to use", required=True, choices=['Fixed', 'Proj', 'OMG'])
     parser.add_argument("--egl", help="use egl render", action="store_true")
+    parser.add_argument("--debug_traj", help="Visualize intermediate trajectories", action="store_true")
 
     # GraspNet args
     parser = make_parser(parser)
@@ -704,7 +706,6 @@ if __name__ == "__main__":
     cfg.timesteps = 50  
     cfg.get_global_param(cfg.timesteps)
     scene = PlanningScene(cfg)
-
     for i, name in enumerate(env.obj_path[:-2]):  # load all objects
         name = name.split("/")[-1]
         trans, orn = env.cache_object_poses[i]
@@ -722,6 +723,14 @@ if __name__ == "__main__":
     else:
         scene_files = [scene_file]
         exp_name = "dbg"
+    
+    if args.debug_traj and not args.use_graspnet: # does not work with use_graspnet due to EGL render issues with mayavi downstream
+        scene.setup_renderer()
+        init_traj = scene.planner.traj.data
+        init_traj_im = scene.fast_debug_vis(traj=init_traj, interact=0, write_video=False,
+                                    nonstop=False, collision_pt=False, goal_set=False, traj_idx=0)
+        init_traj_im = cv2.cvtColor(init_traj_im, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(f"output_videos/{exp_name}/{scene_file}/traj_0.png", init_traj_im)
 
     cnts, rews = 0, 0
     for scene_file in scene_files:
@@ -815,7 +824,8 @@ if __name__ == "__main__":
                 grasp_scores=[goal_quality[goal_idx]],
             )
             mlab.savefig(f"output_videos/{exp_name}/{scene_file}/grasp.png")
-            mlab.clf()
+            # mlab.clf()
+            mlab.close()
             # import IPython; IPython.embed() # Ctrl-D for interactive visualization 
         else:
             # Set configs according to args
@@ -832,6 +842,16 @@ if __name__ == "__main__":
 
         info = scene.step()
         plan = scene.planner.history_trajectories[-1]
+
+        # Visualize intermediate trajectories
+        if args.debug_traj:
+            if args.use_graspnet:
+                scene.setup_renderer()
+            for i, traj in enumerate(scene.planner.history_trajectories):
+                traj_im = scene.fast_debug_vis(traj=traj, interact=0, write_video=False,
+                                               nonstop=False, collision_pt=False, goal_set=True, traj_idx=i)
+                traj_im = cv2.cvtColor(traj_im, cv2.COLOR_RGB2BGR)
+                cv2.imwrite(f"output_videos/{exp_name}/{scene_file}/traj_{i+1}.png", traj_im)
 
         rew = bullet_execute_plan(env, plan, args.write_video, video_writer)
         for i, name in enumerate(object_lists[:-2]):  # reset planner
