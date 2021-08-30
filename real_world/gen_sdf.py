@@ -57,7 +57,8 @@ def do_job_convert_obj_to_sdf(input):
     print("Done job number", x)
 
 
-path_sdfgen = "sdf_gen"
+# path_sdfgen = "sdf_gen"
+path_sdfgen = "SDFGen/build/bin/SDFGen"
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         file_list_all = [sys.argv[1]]

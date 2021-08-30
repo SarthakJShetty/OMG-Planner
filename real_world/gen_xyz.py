@@ -101,6 +101,27 @@ def generate_extents_points(random_paths=None):
             for p in i:
                 p.join()
 
+# def generate_extents_points(random_paths=None):
+#     USE_SUBPROCESS = True
+#     np.random.seed(1)
+#     model_paths = random_paths
+#     numberOfThreads = 32
+#     obj_paths = []
+#     for idx, model_path in enumerate(model_paths):
+#         obj_paths.append(os.path.join(model_path, "model_normalized.obj"))
+
+#     pl = []
+
+#     if USE_SUBPROCESS:
+#         for i, path in tqdm(enumerate(obj_paths)):
+#             p = Process(target=gen_normal_xyz, args=[path])
+#             pl.append(p)
+#         for i in chunks(pl, numberOfThreads):
+#             for p in i:
+#                 p.start()
+#             for p in i:
+#                 p.join()
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

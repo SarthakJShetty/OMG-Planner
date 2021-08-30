@@ -451,11 +451,12 @@ class PlanningScene(object):
         nonstop=True,
         write_video=False,
         goal_set=False,
+        traj_idx=None
     ):
         """
         Debug and trajectory and related information
         """
-        def fast_vis_simple(poses, cls_indexes, interact):
+        def fast_vis_simple(poses, cls_indexes, interact, traj_idx=None):
             return self.renderer.vis(
                             poses,
                             cls_indexes,
@@ -464,6 +465,7 @@ class PlanningScene(object):
                             cam_pos=self.cam_pos,
                             V=self.cam_V,
                             shifted_pose=np.eye(4),
+                            ret_mask=False if traj_idx is None else True
                         )
 
         def fast_vis_end(poses, cls_indexes, nonstop):
@@ -494,10 +496,22 @@ class PlanningScene(object):
                             shifted_pose=np.eye(4),
                         )
 
-        def fast_vis_goalset(poses, cls_indexes, i, traj, interact):
+        def fast_vis_goalset(poses, cls_indexes, i, traj, interact, traj_idx=None):
             optim_i = int(float(i) / traj.shape[0] * config.cfg.optim_steps)
             vis_goal_set = optim_i < len(self.planner.selected_goals)
-            mix_frame_image = self.renderer.vis(
+            if traj_idx is not None:
+                mix_frame_image, robot_mask = self.renderer.vis(
+                                poses,
+                                cls_indexes,
+                                interact=interact if not vis_goal_set else 0,
+                                visualize_context={ "white_bg": True},
+                                cam_pos=self.cam_pos,
+                                V=self.cam_V,
+                                shifted_pose=np.eye(4),
+                                ret_mask=True
+                            )
+            else:
+                mix_frame_image = self.renderer.vis(
                             poses,
                             cls_indexes,
                             interact=interact if not vis_goal_set else 0,
@@ -505,8 +519,8 @@ class PlanningScene(object):
                             cam_pos=self.cam_pos,
                             V=self.cam_V,
                             shifted_pose=np.eye(4),
-                        )
- 
+                        ) 
+
             if vis_goal_set:            
                 goal = self.planner.selected_goals[optim_i]
                 goal_poses, goal_idx = get_sample_goals(self, self.traj.goal_set, goal)
@@ -540,10 +554,14 @@ class PlanningScene(object):
                 if interact >= 1: 
                     cv2.imshow('test', mix_frame_image[:,:,[2,1,0]])
                     cv2.waitKey(1)
-            return mix_frame_image
+            if traj_idx is not None:
+                return mix_frame_image, robot_mask
+            else:
+                return mix_frame_image
 
-        def fast_debug_traj(traj):
+        def fast_debug_traj(traj, traj_idx=None):
             frames = []
+            masks = []
             for i in range(traj.shape[0]):
                 cls_indexes, poses = self.prepare_render_list(traj[i])
                 text = "OMG" if i < config.cfg.timesteps else "standoff"
@@ -551,19 +569,22 @@ class PlanningScene(object):
                     frames.append(
                         fast_vis_collision(poses, cls_indexes, i, collision_pts, interact)
                     )
-
-                elif goal_set and i > 0:                    
-                    frames.append(
-                        fast_vis_goalset(poses, cls_indexes, i, traj, interact)
-                    )                    
+                elif goal_set and i > 0:
+                    frame, mask = fast_vis_goalset(poses, cls_indexes, i, traj, interact, traj_idx=traj_idx)                    
+                    frames.append(frame)                  
+                    masks.append(mask)  
                 else:
-                    frames.append(
-                        fast_vis_simple(poses, cls_indexes, interact)
-                    )
+                    frame, mask = fast_vis_simple(poses, cls_indexes, interact, traj_idx=traj_idx)
+                    frames.append(frame)
+                    masks.append(mask)
 
             if interact > 0:
                 fast_vis_end(poses, cls_indexes, nonstop)
-            return frames
+            
+            if traj_idx is not None:
+                return frames, masks
+            else:
+                return frames
 
         if traj is None and len(self.planner.history_trajectories) > 0:
             traj = self.planner.history_trajectories[-1]
@@ -576,7 +597,22 @@ class PlanningScene(object):
         elif traj_type == 2:
             traj = np.concatenate([self.traj.start[None, :], traj], axis=0)
 
-        frames = fast_debug_traj(traj)
+        if traj_idx is not None:
+            frames, masks = fast_debug_traj(traj, traj_idx)
+        else:
+            frames = fast_debug_traj(traj, traj_idx)
+
+        if True: # Create trajectory image
+            img = None
+            prev_frame = None
+            for frame, mask in zip(frames[::2], masks[::2]):
+                if prev_frame is None:
+                    img = frame
+                else:
+                    # img = cv2.addWeighted(img, 0.75, prev_frame, 0.25, 0)
+                    img[mask] = frame[mask]
+                prev_frame = frame
+
         if write_video:
             if not hasattr(self, "video_writer"):
                 self.video_writer = config.make_video_writer(
@@ -585,6 +621,8 @@ class PlanningScene(object):
             print("video would be save to:", config.cfg.output_video_name)
             for frame in frames:
                 self.video_writer.write(frame[..., [2, 1, 0]])
+
+        return img
 
     def insert_object(self, name, trans, quat, model_name=None):
         """

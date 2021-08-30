@@ -105,10 +105,10 @@ class Planner(object):
         self.grasp_scores = grasp_scores
 
         if self.use_graspnet:
-            self.load_grasp_set_gn(env, self.grasps, self.grasp_scores)
-            self.setup_goal_set(env)
-            self.grasp_init(env)
-            self.learner = Learner(env, traj, self.cost) # 
+            self.load_grasp_set_gn(self.env, self.grasps, self.grasp_scores)
+            self.setup_goal_set(self.env)
+            self.grasp_init(self.env)
+            self.learner = Learner(self.env, traj, self.cost) # 
         else:
             if self.cfg.goal_set_proj:
                 if self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
@@ -212,7 +212,7 @@ class Planner(object):
             elif self.cfg.goal_idx == -1:  # initial
                 costs = (
                     self.traj.goal_potentials + self.cfg.dist_eps * proj_dist
-                )    
+                )
                 self.traj.goal_idx = np.argmin(costs)
  
             else:
@@ -596,7 +596,6 @@ class Planner(object):
         Remove the goals that are in collision
         """
         """ collision """
-
         for i, target_obj in enumerate(env.objects):
             goal_set = target_obj.grasps
             reach_goal_set = target_obj.reach_grasps

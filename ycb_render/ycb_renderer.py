@@ -1644,6 +1644,7 @@ class YCBRenderer:
         interact=0,
         visualize_context={},
         window_name="test",
+        ret_mask = False
     ):
         """
         a complicated visualization function
@@ -1923,6 +1924,12 @@ class YCBRenderer:
             )
             frame = [frames[img_toggle]]
 
+            if ret_mask:
+                robot_mask = np.zeros((frames[1].shape[0], frames[1].shape[1]))
+                for color in self.colors[:10]:
+                    robot_mask += np.linalg.norm(frames[1][:, :, :3][:, :, [2, 1, 0]] - color, axis=2) < 0.1
+                robot_mask = robot_mask.astype(np.bool)
+
             if point_info is not None:
                 point_info[-1] = False
             if point_capture_toggle and (point_info is None):
@@ -1965,7 +1972,10 @@ class YCBRenderer:
                     np.clip(255 * img, 0, 255).astype(np.uint8)[..., [2, 1, 0]]
                 )
 
-        return np.clip(255 * img, 0, 255).astype(np.uint8)
+        if ret_mask:
+            return np.clip(255 * img, 0, 255).astype(np.uint8), robot_mask
+        else:
+            return np.clip(255 * img, 0, 255).astype(np.uint8)
 
 def get_collision_points():
     """
