@@ -204,18 +204,24 @@ class PandaYCBEnv:
         pitch = self._cam_pitch
         yaw = self._cam_yaw  
         roll = 0
-        fov = 60.0 + self._cameraRandom * np.random.uniform(-2, 2)
+        self._fov = 60.0 + self._cameraRandom * np.random.uniform(-2, 2)
         self._view_matrix = p.computeViewMatrixFromYawPitchRoll(
             look, distance, yaw, pitch, roll, 2
         )
 
-        aspect = float(self._window_width) / self._window_height
+        self._aspect = float(self._window_width) / self._window_height
 
         self.near = 0.5
         self.far = 6
         self._proj_matrix = p.computeProjectionMatrixFOV(
-            fov, aspect, self.near, self.far
+            self._fov, self._aspect, self.near, self.far
         )
+
+        self._intr_matrix = np.eye(3)
+        self._intr_matrix[0, 2] = self._window_width / 2
+        self._intr_matrix[1, 2] = self._window_height / 2
+        self._intr_matrix[0, 0] = self._window_height / (2 * np.tan(np.deg2rad(self._fov / 2)))
+        self._intr_matrix[1, 1] = self._window_height / (2 * np.tan(np.deg2rad(self._fov / 2))) * self._aspect
 
         # Set table and plane
         p.resetSimulation()
@@ -482,7 +488,7 @@ class PandaYCBEnv:
         return observation, reward, done, None
 
     def _get_observation(self):
-        _, _, rgba, depth, mask = p.getCameraImage(
+        _, _, rgba, depth_ndc, mask = p.getCameraImage(
             width=self._window_width,
             height=self._window_height,
             viewMatrix=self._view_matrix,
@@ -490,29 +496,37 @@ class PandaYCBEnv:
             physicsClientId=self.cid,
         )
 
-        depth = self.far * self.near / (self.far - (self.far - self.near) * depth)
+        # The depth provided by getCameraImage() is in normalized device coordinates from 0 to 1.
+        # To get the metric depth, scale to [-1, 1] and then apply inverse of projection matrix.
+        # https://stackoverflow.com/questions/51315865/glreadpixels-how-to-get-actual-depth-instead-of-normalized-values
+        depth_norm = 2 * depth_ndc - 1
+        depth = self.far * self.near / (self.far - (self.far - self.near) * depth_norm)
+        rgb = rgba[..., :3]
+
         joint_pos, joint_vel = self._panda.getJointStates()
-        obs = np.concatenate(
-            [rgba[..., :3], depth[..., None], mask[..., None]], axis=-1
-        )
-        return (obs, joint_pos)
+        # obs = np.concatenate(
+        #     [rgba[..., :3], depth_normed[..., None], mask[..., None]], axis=-1
+        # )
 
-    def get_pc(self):
-        target_id = env._objectUids[env.target_idx]
-        _, _, rgba, depth, mask = p.getCameraImage(
-            width=self._window_width,
-            height=self._window_height,
-            viewMatrix=self._view_matrix,
-            projectionMatrix=self._proj_matrix,
-            physicsClientId=self.cid,
-        )
+        pc = self.get_pc(rgba, depth_norm, mask) # N x 7 (XYZ, RGB, Mask ID)
+
+        obs = {
+            'rgb': rgb, 
+            'depth': depth[..., None], 
+            'mask': mask[..., None],
+            'points': pc,
+            'joint_pos': joint_pos,
+            'joint_vel': joint_vel
+        }
+        # return (obs, joint_pos)
+        return obs
+
+    def get_pc(self, rgba, depth, mask):
         rgba = rgba / 255.0
 
         imgH, imgW = depth.shape
         projGLM = np.asarray(self._proj_matrix).reshape([4, 4], order='F')
         view = np.asarray(self._view_matrix).reshape([4, 4], order='F')
-
-        pos, orn = p.getBasePositionAndOrientation(env._panda.pandaUid)
 
         all_pc = []
         stepX = 1
@@ -520,36 +534,42 @@ class PandaYCBEnv:
         for h in range(0, imgH, stepY):
             for w in range(0, imgW, stepX):
                 win = glm.vec3(w, imgH - h, depth[h][w])
+                # unProject takes normalized device coordinates [-1, 1]
+                # https://github.com/Zuzu-Typ/PyGLM/blob/master/wiki/function-reference/stable_extensions/matrix_projection.md#unProject-function
                 position = glm.unProject(win, glm.mat4(view), glm.mat4(projGLM), glm.vec4(0, 0, imgW, imgH))
-                all_pc.append([position[0], position[1], position[2], rgba[h, w, 0], rgba[h, w, 1], rgba[h, w, 2]])
+                all_pc.append([position[0], position[1], position[2], rgba[h, w, 0], rgba[h, w, 1], rgba[h, w, 2], mask[h, w]])
 
         all_pc = np.array(all_pc)
-        all_pc[:, :3] -= pos
+        pos, orn = p.getBasePositionAndOrientation(env._panda.pandaUid)
+        all_pc[:, :3] -= pos # Transform to robot frame 
         
-        all_pcd = o3d.geometry.PointCloud()
-        all_pcd.points = o3d.utility.Vector3dVector(all_pc[:, :3])
-        all_pcd.colors = o3d.utility.Vector3dVector(all_pc[:, 3:])
+        # all_pcd = o3d.geometry.PointCloud()
+        # all_pcd.points = o3d.utility.Vector3dVector(all_pc[:, :3])
+        # all_pcd.colors = o3d.utility.Vector3dVector(all_pc[:, 3:6])
 
-        pc = []
-        obj_idxs = np.where(mask == target_id)
-        for i in range(len(obj_idxs[0])):
-            h = obj_idxs[0][i]
-            w = obj_idxs[1][i]
-            win = glm.vec3(w, imgH - h, depth[h][w])
-            position = glm.unProject(win, glm.mat4(view), glm.mat4(projGLM), glm.vec4(0, 0, imgW, imgH))
-            pc.append([position[0], position[1], position[2], rgba[h, w, 0], rgba[h, w, 1], rgba[h, w, 2]])
-        pc = np.array(pc)
-        pc[:, :3] -= pos
+        # object_pc = []
+        # target_id = env._objectUids[env.target_idx]
+        # obj_idxs = np.where(mask == target_id)
+        # for i in range(len(obj_idxs[0])):
+        #     h = obj_idxs[0][i]
+        #     w = obj_idxs[1][i]
+        #     win = glm.vec3(w, imgH - h, depth[h][w])
+        #     position = glm.unProject(win, glm.mat4(view), glm.mat4(projGLM), glm.vec4(0, 0, imgW, imgH))
+        #     pc.append([position[0], position[1], position[2], rgba[h, w, 0], rgba[h, w, 1], rgba[h, w, 2]])
+        # object_pc = np.array(object_pc)
+        # object_pc[:, :3] -= pos
         
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(pc[:, :3])
-        pcd.colors = o3d.utility.Vector3dVector(pc[:, 3:])
+        # pcd = o3d.geometry.PointCloud()
+        # pcd.points = o3d.utility.Vector3dVector(object_pc[:, :3])
+        # pcd.colors = o3d.utility.Vector3dVector(object_pc[:, 3:])
+
         # print("Visualizing point cloud...")
         # o3d.visualization.draw_geometries([pcd])
         # downpcd = pcd.voxel_down_sample(voxel_size=0.05)
         # o3d.visualization.draw_geometries([downpcd])
         # print("Point cloud visualized.")
-        return pcd, all_pcd
+        # return pcd, all_pcd
+        return all_pc
 
     def _get_target_obj_pose(self):
         return p.getBasePositionAndOrientation(self._objectUids[self.target_idx])[0]
@@ -686,22 +706,18 @@ if __name__ == "__main__":
     parser.add_argument("-gs", "--grasp_selection", help="Which grasp selection algorithm to use", required=True, choices=['Fixed', 'Proj', 'OMG'])
     parser.add_argument("--egl", help="use egl render", action="store_true")
     parser.add_argument("--debug_traj", help="Visualize intermediate trajectories", action="store_true")
-
-    # GraspNet args
-    parser = make_parser(parser)
-
+    parser = make_parser(parser) # graspnet params
     args = parser.parse_args()
 
-    # setup bullet env
+    # Setup bullet env
     mkdir_if_missing('output_videos')
     env = PandaYCBEnv(renders=args.vis, egl_render=args.egl)
     scene_file = args.file
     env.reset()
 
-    # setup planner
+    # Setup planner
     cfg.traj_init = "grasp"
     cfg.scene_file = args.file
- 
     cfg.vis = False
     cfg.timesteps = 50  
     cfg.get_global_param(cfg.timesteps)
@@ -711,6 +727,7 @@ if __name__ == "__main__":
         trans, orn = env.cache_object_poses[i]
         scene.env.add_object(name, trans, tf_quat(orn), compute_grasp=True)
 
+    # Set up scene
     scene.env.add_plane(np.array([0.05, 0, -0.17]), np.array([1, 0, 0, 0]))
     scene.env.add_table(np.array([0.55, 0, -0.17]), np.array([0.707, 0.707, 0.0, 0]))
     scene.env.combine_sdfs()
@@ -746,7 +763,7 @@ if __name__ == "__main__":
                 (640, 480),
             )
         full_name = os.path.join('data/scenes', scene_file + ".mat")
-        env.cache_reset(scene_file=full_name)
+        obs = env.cache_reset(scene_file=full_name)
         obj_names, obj_poses = env.get_env_info()
         object_lists = [name.split("/")[-1].strip() for name in obj_names]
         object_poses = [pack_pose(pose) for pose in obj_poses]
@@ -765,8 +782,15 @@ if __name__ == "__main__":
             if obj_idx not in exists_ids
         ]
 
+        # Save for contact-graspnet
+        np.save('/home/exx/projects/manifolds/contact_graspnet/test_data/pybullet.npy', 
+            {'rgb': cv2.cvtColor(obs['rgb'], cv2.COLOR_RGB2BGR), 'depth': obs['depth'], 'K': env._intr_matrix, 'seg': obs['mask']}, 
+            allow_pickle=True)
+
         # Get point clouds
         if args.use_graspnet:
+            # TODO update with new obs model
+            # obs['points']
             object_pc, all_pc = env.get_pc()
 
             # Predict grasp using 6-DOF GraspNet
@@ -861,6 +885,7 @@ if __name__ == "__main__":
         print('rewards: {} counts: {}'.format(rews, cnts))
 
         # Save data
+        # TODO clean up
         if args.use_graspnet and 'time' in info[-1].keys():
             info[-1]['time'] += graspinf_duration
         np.save(f'output_videos/{exp_name}/{scene_file}/data.npy', [rew, info, plan])
