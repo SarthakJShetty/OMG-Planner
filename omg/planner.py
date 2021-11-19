@@ -100,15 +100,14 @@ class Planner(object):
         self.cost = Cost(env)
         self.optim = Optimizer(env, self.cost)
         self.lazy = lazy
-        self.use_graspnet = True if grasps is not None else False
         self.grasps = grasps
         self.grasp_scores = grasp_scores
 
-        if self.use_graspnet:
+        if self.grasps is not None:
             self.load_grasp_set_gn(self.env, self.grasps, self.grasp_scores)
             self.setup_goal_set(self.env)
             self.grasp_init(self.env)
-            self.learner = Learner(self.env, traj, self.cost) # 
+            self.learner = Learner(self.env, self.traj, self.cost) # 
         else:
             if self.cfg.goal_set_proj:
                 if self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
@@ -118,7 +117,7 @@ class Planner(object):
                     self.load_goal_from_scene()
 
                 self.grasp_init(env)
-                self.learner = Learner(env, traj, self.cost)
+                self.learner = Learner(env, self.traj, self.cost)
             else:
                 self.traj.interpolate_waypoints()
 
@@ -141,7 +140,7 @@ class Planner(object):
         self.optim = Optimizer(env, self.cost)
 
         # load grasps if needed
-        if self.use_graspnet:
+        if self.grasps is not None:
             self.load_grasp_set_gn(env, self.grasps, self.grasp_scores)
             self.setup_goal_set(env)
             self.grasp_init(env)
@@ -225,7 +224,7 @@ class Planner(object):
             self.traj.interpolate_waypoints()
 
             # Save for debug
-            np.save("output_videos/dbg.npy", [self.traj.start, self.traj.end, self.traj.goal_idx, self.traj.goal_set, self.traj.goal_quality, grasp_ees])
+            # np.save("output_videos/dbg.npy", [self.traj.start, self.traj.end, self.traj.goal_idx, self.traj.goal_set, self.traj.goal_quality, grasp_ees])
        
 
     def flip_grasp(self, old_grasps):
@@ -465,7 +464,7 @@ class Planner(object):
             if target_obj.compute_grasp and (i == env.target_idx or not self.lazy):
                 if not target_obj.attached:
                     offset_pose = np.array(rotZ(np.pi / 2))  # and
-                    target_obj.grasps_poses = np.matmul(grasps, offset_pose)  # flip x, y
+                    target_obj.grasps_poses = np.matmul(grasps, offset_pose)  # flip x, y # TODO not sure if this is still necessary
                     target_obj.grasps_scores = grasp_scores
                     z_upsample = False
                 else:

@@ -49,6 +49,11 @@ import pytransform3d.transformations as pt
 from acronym_tools import load_grasps, load_mesh, create_gripper_marker
 
 import csv
+from copy import deepcopy
+import shutil
+import h5py
+
+import trimesh
 
 RGBA = namedtuple('RGBA', ['red', 'green', 'blue', 'alpha'])
 BLACK = RGBA(0, 0, 0, 1)
@@ -708,45 +713,73 @@ def rot_shake(env, timeSteps, delta_a, record=False):
             observations.append(observation)
     return observations
 
+def load_eval_grasps(filename):
+    """Load transformations and qualities of grasps from a JSON file from the dataset.
+    Grasps come from predictions of our grasp network. 
+
+    Args:
+        filename (str): HDF5 or JSON file name.
+
+    Returns:
+        np.ndarray: Homogenous matrices describing the grasp poses. 2000 x 4 x 4.
+        np.ndarray: List of binary values indicating grasp success in simulation.
+    """
+    data = h5py.File(filename, "r")
+    pos = np.asarray(data['pred_pos'])
+    neg = np.asarray(data['pred_neg'])
+    free = np.asarray(data['pred_free'])
+    T = np.concatenate([pos, neg, free], axis=0)
+    success = np.concatenate([
+        [1 for i in range(pos.shape[0])],
+        [0 for i in range(neg.shape[0])],
+        [0 for i in range(free.shape[0])]], axis=0)
+    query_type = ["pos" for i in range(pos.shape[0])] + \
+        ["neg" for i in range(neg.shape[0])] + \
+        ["free" for i in range(free.shape[0])]
+    return T, success, query_type
+
 if __name__ == "__main__":
+    # python -m bullet.panda_testgrasp_scene -v -o Book_5e90bf1bb411069c115aef9ae267d6b7 --out_dir /home/exx/projects/manifolds/manifold-grasping-torch/manifold_grasping/outputs/qualitative/bullet --grasp_eval /home/exx/projects/manifolds/manifold-grasping-torch/manifold_grasping/outputs/qualitative/bullet/predicted_grasps_val.hdf5
+
     parser = argparse.ArgumentParser()
-    # parser.add_argument("-f", "--file", help="filename", type=str, default="scene_1")
-    # parser.add_argument("-d", "--dir", help="scenes", type=str, default="data/scenes/") 
     parser.add_argument("-v", "--vis", help="renders", action="store_true")
     parser.add_argument("-w", "--write_video", help="write video", action="store_true")
     # parser.add_argument("-exp", "--experiment", help="loop through the 100 scenes", action="store_true")
     # parser.add_argument("--use_graspnet", help="Use graspnet", action="store_true")
     # parser.add_argument("-gs", "--grasp_selection", help="Which grasp selection algorithm to use", required=True, choices=['Fixed', 'Proj', 'OMG'])
     parser.add_argument("--egl", help="use egl render", action="store_true")
-    parser.add_argument("-mr", "--mesh_root", help="mesh root", type=str, default="/data/manifolds/acronym") 
+    parser.add_argument("-mr", "--mesh_root", help="mesh root", type=str, default="/data/manifolds/acronym")
     parser.add_argument("-gr", "--grasp_root", help="grasp root", type=str, default="/data/manifolds/acronym/grasps") 
-    parser.add_argument("-od", "--out_dir", help="output directory", type=str, default="/data/manifolds/acronym/bullet_grasps") 
-    # parser.add_argument("--debug_traj", help="Visualize intermediate trajectories", action="store_true")
-    parser.add_argument("-o", "--objects", help="objects to load", type=list, default=['Book_5e90bf1bb411069c115aef9ae267d6b7']) 
+    parser.add_argument("-o", "--objects", help="objects to load", nargs='+', default=['Book_5e90bf1bb411069c115aef9ae267d6b7']) 
+
+    parser.add_argument("-ge", "--grasp_eval", help="grasps to evaluate", type=str, default="")
+
+    parser.add_argument("-od", "--out_dir", help="output directory", type=str, default="/data/manifolds/acronym/bullet_grasps")
+    
     parser.add_argument("-ow", "--overwrite", help="overwrite csv", action="store_true")
-    parser.add_argument("-rt", "--realtime", help="realtime sim", dest='realtime', action="store_true")
-    parser.add_argument("-nrt", "--no-realtime", help="non realtime sim", dest='realtime', action="store_false")
 
     args = parser.parse_args()
 
     # Check if csv exists in out dir
     mkdir_if_missing(args.out_dir)
-    mkdir_if_missing(f'{args.out_dir}/output_videos')
     csvfile = f'{args.out_dir}/grasps.csv'
     if os.path.exists(csvfile):
         if args.overwrite:
-            print("WARNING: overwriting grasps.csv")
+            print("WARNING: overwriting bullet_grasps")
             os.remove(csvfile)
+            shutil.rmtree(f'{args.out_dir}/output_videos')
+            mkdir_if_missing(f'{args.out_dir}/output_videos')
             with open(csvfile, 'w') as f:
                 writer = csv.writer(f, delimiter=',')
-                writer.writerow(['grasp_path', 'grasp_i', 'flex_success', 'pybullet_success', 'err_info', 'pq'])
+                writer.writerow(['grasp_path', 'grasp_i', 'success_label', 'pybullet_success', 'err_info', 'pq', 'query_type'])
         else:
             print("ERROR: grasps.csv exists. Use overwrite flag to overwrite.")
             sys.exit(0)
     else:
+        mkdir_if_missing(f'{args.out_dir}/output_videos')
         with open(csvfile, 'w') as f:
             writer = csv.writer(f, delimiter=',')
-            writer.writerow(['grasp_path', 'grasp_i', 'flex_success', 'pybullet_success', 'err_info', 'pq'])
+            writer.writerow(['grasp_path', 'grasp_i', 'success_label', 'pybullet_success', 'err_info', 'pq', 'query_type'])
 
     # gripper faces down
     init_joints = [-0.331397102886776,
@@ -762,16 +795,22 @@ if __name__ == "__main__":
 
     # setup bullet env
     env = PandaYCBEnv(renders=args.vis, egl_render=args.egl, gravity=False)
-    p.setRealTimeSimulation(args.realtime)
+    p.setRealTimeSimulation(0)
 
     # Load acronym object and grasps
-    # Load just first object for now
+    objects = deepcopy(args.objects)
+    grasp_paths = [] # path to grasp file for a given object
+    for fn in os.listdir(args.grasp_root):
+        for objname in objects:
+            if objname in fn:
+                grasp_paths.append((fn, objname))
+                objects.remove(objname) # Only load first scale of object for now
+
+    # Load objects
     object_infos = []
-    grasp_paths = [x for x in os.listdir(args.grasp_root) if args.objects[0] in x] 
-    for grasp_path in grasp_paths:
-        # Load object mesh
+    for grasp_path, objname in grasp_paths:
         obj_mesh, obj_scale = load_mesh(f"{args.grasp_root}/{grasp_path}", mesh_root_dir=args.mesh_root, ret_scale=True)
-        object_infos.append((args.objects[0], obj_scale, obj_mesh))
+        object_infos.append((objname, obj_scale, obj_mesh))
     
     env.reset(init_joints=init_joints, object_infos=object_infos)
     initpos, initorn = p.getLinkState(env._panda.pandaUid, env._panda.pandaEndEffectorIndex)[:2]
@@ -794,33 +833,24 @@ if __name__ == "__main__":
     # Correct for panda gripper rotation about z axis in bullet
     rotgrasp2grasp_T = pt.transform_from(pr.matrix_from_axis_angle([0, 0, 1, -np.pi/2]), [0, 0, 0])
 
-    if args.write_video:
-        video_writer_all = cv2.VideoWriter(
-            f'{args.out_dir}/output_videos/{grasp_path}_all.avi',
-            cv2.VideoWriter_fourcc(*"MJPG"),
-            10.0,
-            (640, 480),
-        )
+    for i, (grasp_path, _) in enumerate(grasp_paths):
+        if args.write_video:
+            video_writer_all = cv2.VideoWriter(
+                f'{args.out_dir}/output_videos/{grasp_path}_all.avi',
+                cv2.VideoWriter_fourcc(*"MJPG"),
+                10.0,
+                (640, 480),
+            )
 
-    for i, grasp_path in enumerate(grasp_paths):
         # load grasps
-        obj2rotgrasp_Ts, successes = load_grasps(f"{args.grasp_root}/{grasp_path}")
+        if args.grasp_eval == '':
+            obj2rotgrasp_Ts, successes = load_grasps(f"{args.grasp_root}/{grasp_path}")
+        else:
+            obj2rotgrasp_Ts, successes, query_types = load_eval_grasps(f"{args.grasp_eval}")
+        
         for idx, (obj2rotgrasp_T, success) in enumerate(zip(obj2rotgrasp_Ts, successes)):
-            if args.write_video:
-                video_writer = cv2.VideoWriter(
-                    f'{args.out_dir}/output_videos/{grasp_path}_{idx}.avi',
-                    cv2.VideoWriter_fourcc(*"MJPG"),
-                    10.0,
-                    (640, 480),
-                )
-
-            if False: # Debugging plot
-                import trimesh
-                pos_grasp = [create_gripper_marker(color=[0, 255, 0]).apply_transform(obj2rotgrasp_T)]
-                trimesh.Scene([obj_mesh] + pos_grasp).show()
-            
             pq = pt.pq_from_transform(obj2rotgrasp_T)
-            print(f"{idx} success flex: {success}\tpose: {pq}")
+            print(f"{idx} success label: {success}\tpose: {pq}")
 
             env._panda.reset(init_joints)
             env.reset_objects()
@@ -834,11 +864,21 @@ if __name__ == "__main__":
             obj2grasp_T = obj2rotgrasp_T @ rotgrasp2grasp_T
             grasp2obj_T = np.linalg.inv(obj2grasp_T)
 
-            world2obj_T = world2ee_T @ grasp2obj_T
-            # draw_pose(world2obj_T)
+            # Move object frame to centroid
+            obj_mesh = object_infos[0][2]
+            obj2ctr_T = np.eye(4)
+            obj2ctr_T[:3, 3] = -obj_mesh.centroid
+
+            if False: # Debugging plot
+                pos_grasp = [create_gripper_marker(color=[0, 255, 0]).apply_transform(obj2rotgrasp_T)]
+                obj_mesh = obj_mesh.apply_transform(obj2ctr_T)
+                trimesh.Scene([obj_mesh] + pos_grasp).show()
+
+            world2ctr_T = world2ee_T @ grasp2obj_T @ obj2ctr_T
+            # draw_pose(world2ctr_T)
 
             # Place single object, YCB for now but ultimately acronym mesh
-            pq = pt.pq_from_transform(world2obj_T)
+            pq = pt.pq_from_transform(world2ctr_T)
             p.resetBasePositionAndOrientation(
                 env._objectUids[i],
                 pq[:3],
@@ -860,11 +900,9 @@ if __name__ == "__main__":
 
             # Linear shaking
             if err_info == '':
-                obs = linear_shake(env, 250, -0.15/250., record=args.write_video)
+                obs = linear_shake(env, 1000, -0.15/1000., record=args.write_video)
                 observations += obs
-                obs = linear_shake(env, 750, 0.3/750., record=args.write_video)
-                observations += obs
-                obs = linear_shake(env, 250, -0.15/250., record=args.write_video)
+                obs = linear_shake(env, 1000, 0.15/1000., record=args.write_video)
                 observations += obs
                 rew = env._reward()
                 if rew == 0:
@@ -872,17 +910,21 @@ if __name__ == "__main__":
 
             # Angular shaking
             if err_info == '':
-                obs = rot_shake(env, 250, (np.pi/32.)*15., record=args.write_video)
+                obs = rot_shake(env, 1000, (np.pi/32.)*15., record=args.write_video)
                 observations += obs
-                obs = rot_shake(env, 750, -2*(np.pi/32.)*15., record=args.write_video)
-                observations += obs
-                obs = rot_shake(env, 250, (np.pi/32.)*15., record=args.write_video)
+                obs = rot_shake(env, 1000, -(np.pi/32.)*15., record=args.write_video)
                 observations += obs
                 rew = env._reward()
                 if rew == 0:
                     err_info = 'shake'
 
             if args.write_video and rew == 0: 
+                video_writer = cv2.VideoWriter(
+                    f'{args.out_dir}/output_videos/{grasp_path}_{idx}.avi',
+                    cv2.VideoWriter_fourcc(*"MJPG"),
+                    1.0, # set low framerate so that videos with low frames will actually save
+                    (640, 480),
+                )
                 for obs in observations:
                     video_writer.write(obs[0][:, :, [2, 1, 0]].astype(np.uint8))
                     video_writer_all.write(obs[0][:, :, [2, 1, 0]].astype(np.uint8))
@@ -892,9 +934,13 @@ if __name__ == "__main__":
 
             # log pybullet success for this object and pose
             print(f"\tsuccess actual: {rew}")
+            if args.grasp_eval != '':
+                query_type = query_types[idx]
+            else:
+                query_type = 'pos' if success else 'neg'
             with open(csvfile, 'a') as f:
                 writer = csv.writer(f, delimiter=',')
-                writer.writerow([grasp_path, idx, success, rew, err_info, pq])
+                writer.writerow([grasp_path, idx, success, rew, err_info, pq, query_type])
 
     # for i in range(10000):
         # p.stepSimulation()
