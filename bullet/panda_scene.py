@@ -20,7 +20,6 @@ import pybullet_data
 from PIL import Image
 import glob
 # import gym
-# import IPython
 # from panda_gripper import Panda
 
 # from transforms3d import quaternions
@@ -31,8 +30,6 @@ from copy import deepcopy
 # For backprojection
 import cv2
 import matplotlib.pyplot as plt
-# import glm
-import open3d as o3d
 
 sys.path.append(os.path.dirname(__file__))
 from panda_ycb_env import PandaYCBEnv
@@ -86,47 +83,45 @@ def bullet_execute_plan(env, plan, write_video, video_writer):
             video_writer.write(robs['rgb'][:, :, [2, 1, 0]].astype(np.uint8)) # to get enough frames to save
     return rew
 
-###
-# import contact_graspnet
-# from contact_graspnet import config_utils
-# # from contact_graspnet.contact_grasp_estimator import GraspEstimator
-# from contact_graspnet.inference import inference as cg_inference
-# from contact_graspnet.inference import init as cg_init
+import contact_graspnet
+from contact_graspnet import config_utils
+from contact_graspnet.inference import inference as cg_inference
+from contact_graspnet.inference import init as cg_init
 
-# class ContactGraspNetInference:
-#     def __init__(self, visualize=False):
-#         self.args = self.get_args()
-#         self.global_config = config_utils.load_config(self.args.ckpt_dir, batch_size=self.args.forward_passes, arg_configs=self.args.arg_configs)
-#         self.visualize = visualize
+class ContactGraspNetInference:
+    def __init__(self, visualize=False):
+        self.args = self.get_args()
+        self.global_config = config_utils.load_config(self.args.ckpt_dir, batch_size=self.args.forward_passes, arg_configs=self.args.arg_configs)
+        self.visualize = visualize
 
-#         # move some of inference to init
-#         sess, grasp_estimator = cg_init(self.global_config, self.args.ckpt_dir)
-#         self.sess = sess
-#         self.grasp_estimator = grasp_estimator
+        # move some of inference to init
+        sess, grasp_estimator = cg_init(self.global_config, self.args.ckpt_dir)
+        self.sess = sess
+        self.grasp_estimator = grasp_estimator
 
-#     def inference(self, x):
-#         pred_grasps_cam, scores, contact_pts = cg_inference(self.sess, self.grasp_estimator, x, z_range=eval(str(self.args.z_range)),
-#                                                             K=self.args.K, local_regions=self.args.local_regions, filter_grasps=self.args.filter_grasps, segmap_id=self.args.segmap_id, 
-#                                                             forward_passes=self.args.forward_passes, skip_border_objects=self.args.skip_border_objects,
-#                                                             visualize=self.visualize)
+    def inference(self, x):
+        pred_grasps_cam, scores, contact_pts = cg_inference(self.sess, self.grasp_estimator, x, z_range=eval(str(self.args.z_range)),
+                                                            K=self.args.K, local_regions=self.args.local_regions, filter_grasps=self.args.filter_grasps, segmap_id=self.args.segmap_id, 
+                                                            forward_passes=self.args.forward_passes, skip_border_objects=self.args.skip_border_objects,
+                                                            visualize=self.visualize)
 
-#         return pred_grasps_cam[1], scores[1], contact_pts[1]
+        return pred_grasps_cam[1], scores[1], contact_pts[1]
 
-#     def get_args(self):
-#         # parser = argparse.ArgumentParser()
-#         parser.add_argument('--ckpt_dir', default=f'{os.path.dirname(contact_graspnet.__file__)}/../checkpoints/scene_test_2048_bs3_hor_sigma_001', help='Log dir [default: checkpoints/scene_test_2048_bs3_hor_sigma_001]')
-#         parser.add_argument('--np_path', default='test_data/7.npy', help='Input data: npz/npy file with keys either "depth" & camera matrix "K" or just point cloud "pc" in meters. Optionally, a 2D "segmap"')
-#         parser.add_argument('--png_path', default='', help='Input data: depth map png in meters')
-#         parser.add_argument('--K', default=None, help='Flat Camera Matrix, pass as "[fx, 0, cx, 0, fy, cy, 0, 0 ,1]"')
-#         parser.add_argument('--z_range', default=[0.2,1.8], help='Z value threshold to crop the input point cloud')
-#         parser.add_argument('--local_regions', action='store_true', default=True, help='Crop 3D local regions around given segments.')
-#         parser.add_argument('--filter_grasps', action='store_true', default=True,  help='Filter grasp contacts according to segmap.')
-#         parser.add_argument('--skip_border_objects', action='store_true', default=False,  help='When extracting local_regions, ignore segments at depth map boundary.')
-#         parser.add_argument('--forward_passes', type=int, default=1,  help='Run multiple parallel forward passes to mesh_utils more potential contact points.')
-#         parser.add_argument('--segmap_id', type=int, default=0,  help='Only return grasps of the given object id')
-#         parser.add_argument('--arg_configs', nargs="*", type=str, default=[], help='overwrite config parameters')
-#         args = parser.parse_args()
-#         return args
+    def get_args(self):
+        # parser = argparse.ArgumentParser()
+        parser.add_argument('--ckpt_dir', default=f'{os.path.dirname(contact_graspnet.__file__)}/../checkpoints/scene_test_2048_bs3_hor_sigma_001', help='Log dir [default: checkpoints/scene_test_2048_bs3_hor_sigma_001]')
+        parser.add_argument('--np_path', default='test_data/7.npy', help='Input data: npz/npy file with keys either "depth" & camera matrix "K" or just point cloud "pc" in meters. Optionally, a 2D "segmap"')
+        parser.add_argument('--png_path', default='', help='Input data: depth map png in meters')
+        parser.add_argument('--K', default=None, help='Flat Camera Matrix, pass as "[fx, 0, cx, 0, fy, cy, 0, 0 ,1]"')
+        parser.add_argument('--z_range', default=[0.2,1.8], help='Z value threshold to crop the input point cloud')
+        parser.add_argument('--local_regions', action='store_true', default=True, help='Crop 3D local regions around given segments.')
+        parser.add_argument('--filter_grasps', action='store_true', default=True,  help='Filter grasp contacts according to segmap.')
+        parser.add_argument('--skip_border_objects', action='store_true', default=False,  help='When extracting local_regions, ignore segments at depth map boundary.')
+        parser.add_argument('--forward_passes', type=int, default=1,  help='Run multiple parallel forward passes to mesh_utils more potential contact points.')
+        parser.add_argument('--segmap_id', type=int, default=0,  help='Only return grasps of the given object id')
+        parser.add_argument('--arg_configs', nargs="*", type=str, default=[], help='overwrite config parameters')
+        args = parser.parse_args()
+        return args
 
 def depth2pc(depth, K, rgb=None):
     """
@@ -216,8 +211,7 @@ if __name__ == "__main__":
 
     # Set up grasp inference method
     if args.grasp_inference == 'contact_graspnet':
-        # grasp_inf_method = ContactGraspNetInference(args.visualize)
-        pass
+        grasp_inf_method = ContactGraspNetInference(args.visualize)
 
     cnts, rews = 0, 0
     for scene_file in scene_files:
@@ -253,7 +247,6 @@ if __name__ == "__main__":
             if obj_idx not in exists_ids
         ]
 
-        
         start_time = time.time()
         if args.grasp_inference == 'acronym':
             grasps, grasp_scores = None, None
@@ -263,13 +256,11 @@ if __name__ == "__main__":
             segmask[segmask != idx] = 0
             segmask[segmask == idx] = 1
             x = {'rgb': obs['rgb'], 'depth': obs['depth'], 'K': env._intr_matrix, 'seg': segmask}
-            # Ts_cam2grasp, grasp_scores, contact_pts = grasp_inf_method.inference(x)
+            Ts_cam2grasp, grasp_scores, contact_pts = grasp_inf_method.inference(x)
         inf_duration = time.time() - start_time
 
         # Get transform from world to camera
         T_world2camgl = np.linalg.inv(np.asarray(env._view_matrix).reshape((4, 4), order='F'))
-        # draw_pose(T_world2camgl)
-
         T_camgl2cam = np.zeros((4, 4))
         T_camgl2cam[:3, :3] = pr.matrix_from_axis_angle([1, 0, 0, np.pi])
         T_camgl2cam[3, 3] = 1
@@ -277,64 +268,53 @@ if __name__ == "__main__":
         draw_pose(T_world2cam)
 
         # grasps = T_world2cam @ Ts_cam2grasp
-        # for grasp in grasps:
-            # draw_pose(grasp)
+        # for grasp in grasps[:30]:
+        #     draw_pose(grasp)
 
-        # pc, rgb = depth2pc(obs['depth'].squeeze() * (obs['mask'] > 0).squeeze(), env._intr_matrix, obs['rgb']/255.0)
-        pc, rgb = depth2pc(obs['depth'].squeeze() * (obs['mask'] == 0).squeeze(), env._intr_matrix, obs['rgb']/255.0)
-        idxs = np.random.choice(len(pc), size=1000)
-        xyz_cam = pc[idxs]
+        # pts = (T_world2cam @ np.hstack([contact_pts, np.ones((len(contact_pts), 1))]).T).T
+        # for pt in pts[:30]:
+        #     T = np.eye(4)
+        #     T[:, 3] = pt
+        #     draw_pose(T)
 
-        xyzh_cam = np.hstack([xyz_cam, np.ones((len(xyz_cam), 1))])
-        for xyzh in xyzh_cam[:300]:
-            xyz_world = (T_world2cam @ xyzh)[:3]
-            # xyz_world = (xyzh)[:3]
-            T_pt = np.eye(4)
-            T_pt[:3, 3] = xyz_world
-            draw_pose(T_pt)
+        # pc, rgb = depth2pc(obs['depth'].squeeze() * (obs['mask'] == 0).squeeze(), env._intr_matrix, obs['rgb']/255.0)
+        # idxs = np.random.choice(len(pc), size=1000)
+        # xyz_cam = pc[idxs]
 
-        import IPython; IPython.embed()
-
-        # xyz_world = (T_world2cam @ np.array([-0.35, -0.58, -0.88, 1.0]))[:3]
-        # # xyz_world = (xyzh)[:3]
-        # T_pt = np.eye(4)
-        # T_pt[:3, 3] = xyz_world
-        # draw_pose(T_pt)
-
-        # ptsh_cam = np.hstack([pts_cam, np.ones((len(pts_cam), 1))])
-        # for pth in ptsh_cam[:3]:
-        #     pt_world = (T_world2cam @ pth)[:3]
+        # xyzh_cam = np.hstack([xyz_cam, np.ones((len(xyz_cam), 1))])
+        # for xyzh in xyzh_cam[:300]:
+        #     xyz_world = (T_world2cam @ xyzh)[:3]
         #     T_pt = np.eye(4)
-        #     T_pt[:3, 3] = pt_world
-        #     draw_pose(T_pt)
+        #     T_pt[:3, 3] = xyz_world
+        #     draw_pose(T_pt) 
 
-        import matplotlib.pyplot as plt
-        from mpl_toolkits.mplot3d import Axes3D
-        pc, rgb = depth2pc(obs['depth'].squeeze(), env._intr_matrix, obs['rgb']/255.0)
-        # obs = env._get_observation(pc=True)
-        idxs = np.random.choice(len(pc), size=10000)
-        xyz_cam = pc[idxs]
-        rgb = rgb[idxs]
-        xyzh_cam = np.hstack([xyz_cam, np.ones((len(xyz_cam), 1))])
-        ptsh_cam = np.hstack([pts_cam, np.ones((len(pts_cam), 1))])
-        # xyz_world = (np.linalg.inv(T_world2cam) @ xyzh_cam.T).T[:, :3]
-        xyz_world = (T_world2cam @ xyzh_cam.T).T[:, :3]
-        # pts_world = (np.linalg.inv(T_world2cam) @ ptsh_cam.T).T[:, :3]
-        pts_world = (T_world2cam @ ptsh_cam.T).T[:, :3]
-        xyz = xyz_world
-        pts = pts_world
+        # import matplotlib.pyplot as plt
+        # from mpl_toolkits.mplot3d import Axes3D
+        # pc, rgb = depth2pc(obs['depth'].squeeze(), env._intr_matrix, obs['rgb']/255.0)
+        # # obs = env._get_observation(pc=True)
+        # idxs = np.random.choice(len(pc), size=10000)
+        # xyz_cam = pc[idxs]
+        # rgb = rgb[idxs]
+        # xyzh_cam = np.hstack([xyz_cam, np.ones((len(xyz_cam), 1))])
+        # ptsh_cam = np.hstack([pts_cam, np.ones((len(pts_cam), 1))])
+        # # xyz_world = (np.linalg.inv(T_world2cam) @ xyzh_cam.T).T[:, :3]
+        # xyz_world = (T_world2cam @ xyzh_cam.T).T[:, :3]
+        # # pts_world = (np.linalg.inv(T_world2cam) @ ptsh_cam.T).T[:, :3]
+        # pts_world = (T_world2cam @ ptsh_cam.T).T[:, :3]
+        # xyz = xyz_world
+        # pts = pts_world
 
-        fig = plt.figure(figsize=(4,4))
-        ax = fig.add_subplot(111, projection='3d')
-        ax.scatter([0], [0], [0], s=100, c='green')
-        ax.scatter(xyz[:, 0], xyz[:, 1], xyz[:, 2], c=rgb)
-        ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], s=10, c='red')
-        # ax.scatter(Ts_cam2grasp[:, 0, 3], Ts_cam2grasp[:, 1, 3], Ts_cam2grasp[:, 2, 3], c='red')
+        # fig = plt.figure(figsize=(4,4))
+        # ax = fig.add_subplot(111, projection='3d')
+        # ax.scatter([0], [0], [0], s=100, c='green')
+        # ax.scatter(xyz[:, 0], xyz[:, 1], xyz[:, 2], c=rgb)
+        # ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], s=10, c='red')
+        # # ax.scatter(Ts_cam2grasp[:, 0, 3], Ts_cam2grasp[:, 1, 3], Ts_cam2grasp[:, 2, 3], c='red')
 
-        ax.axes.set_xlim3d(left=-1.5, right=1.5) 
-        ax.axes.set_ylim3d(bottom=-1.5, top=1.5) 
-        ax.axes.set_zlim3d(bottom=-1.5, top=1.5) 
-        plt.show()
+        # ax.axes.set_xlim3d(left=-1.5, right=1.5) 
+        # ax.axes.set_ylim3d(bottom=-1.5, top=1.5) 
+        # ax.axes.set_zlim3d(bottom=-1.5, top=1.5) 
+        # plt.show()
 
         # Set grasp selection method for planner
         if args.grasp_selection == 'Fixed':
