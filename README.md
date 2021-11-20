@@ -8,6 +8,7 @@
 ```bash
 git clone https://github.com/liruiw/OMG-Planner.git --recursive
 ```
+__GraspManifolds__: also install contactgraspnet repo
 
 0. Setup: Ubuntu 16.04 or above, CUDA 10.0 or above
 
@@ -17,7 +18,9 @@ git clone https://github.com/liruiw/OMG-Planner.git --recursive
     conda create --name omg python=3.6.9/2.7.15
     conda activate omg
     pip install -r requirements.txt
-    ``` 
+    ```  
+    __GraspManifolds__: also install conda env with tensorflow 2.5 (for GTC 30 series). used the name `gm_pipeline`. We are using 3.7.9 due to contact_graspnet. Also had to run `sudo apt install libx11-dev mesa-common-dev`
+
 
 2. Install [ycb_render](ycb_render)  
 
@@ -36,7 +39,7 @@ git clone https://github.com/liruiw/OMG-Planner.git --recursive
     make -j8
     sudo make install
     ```
-
+    __GraspManifolds__: had to install eigen first from the step below. 
 
 4. Install Eigen from the Github source code [here](https://github.com/eigenteam/eigen-git-mirror)
 
@@ -45,6 +48,8 @@ git clone https://github.com/liruiw/OMG-Planner.git --recursive
     cd layers
     python setup.py install
     ```
+
+    __GraspManifolds__: had to install torch first: `conda install pytorch==1.8.0 cudatoolkit=11.1 -c pytorch -c conda-forge`
 6. Install the submodule PyKDL. Check this tutorial [here](https://git.ias.informatik.tu-darmstadt.de/lutter/ias_pykdl/blob/8b864ccf81763439ba5d45a359e1993208c2247c/pykdl.md) if there is any issue with installing PyKDL.
 
     ```bash
@@ -64,6 +69,10 @@ git clone https://github.com/liruiw/OMG-Planner.git --recursive
     cmake ..  -DPYTHON_VERSION=3.6.9 -DPYTHON_EXECUTABLE=~/anaconda2/envs/omg/bin/python3.6
     make -j8;  cp PyKDL.so ~/anaconda2/envs/omg/lib/python3.6/site-packages/
     ```
+
+    __GraspManifolds__: we use miniconda3 and a different env name 
+    `cmake ..  -DPYTHON_VERSION=3.7.9 -DPYTHON_EXECUTABLE=~/miniconda3/envs/gm_pipeline/bin/python3.7`
+    `make -j8;  cp PyKDL.so ~/miniconda3/envs/gm_pipeline/lib/python3.7/site-packages/`
      
 
 ### Common Usage

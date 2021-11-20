@@ -11,6 +11,9 @@ pillow
 IPython
 matplotlib
 easydict
-pyyaml 
+pyyaml
 cmake
 future
+pybullet
+gym
+omegaconf

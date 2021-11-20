@@ -26,7 +26,7 @@ import pkgutil
 # For backprojection
 import cv2
 import matplotlib.pyplot as plt
-import glm
+# import glm
 import open3d as o3d
 
 # # For 6-DOF graspnet
@@ -196,49 +196,42 @@ class PandaYCBEnv:
             -0.58,
             -0.88,
         ]   
-        # distance = self._cam_dist   
-        # # pitch = self._cam_pitch
+        distance = self._cam_dist   
+        pitch = self._cam_pitch
         # pitch = 0
-        # yaw = self._cam_yaw  
-        # roll = 0
+        yaw = self._cam_yaw  
+        roll = 0
         self._fov = 60.0 + self._cameraRandom * np.random.uniform(-2, 2)
-        # # http://www.songho.ca/opengl/gl_transform.html#modelview
-        # self._view_matrix = p.computeViewMatrixFromYawPitchRoll(
-        #     look, distance, yaw, pitch, roll, 2
-        # )
-        lookdir = np.array([0, -1, 0]).reshape(3, 1)
-        updir = np.array([0, 0, 1]).reshape(3, 1)
-        pos = np.array([-.35, .88, -.72]).reshape(3, 1)
-        self._view_matrix = p.computeViewMatrix(pos, pos+lookdir, updir)
+        # http://www.songho.ca/opengl/gl_transform.html#modelview
+        self._view_matrix = p.computeViewMatrixFromYawPitchRoll(
+            look, distance, yaw, pitch, roll, 2
+        )
+        # lookdir = np.array([0, -1, 0]).reshape(3, 1)
+        # updir = np.array([0, 0, 1]).reshape(3, 1)
+        # pos = np.array([-.35, .88, -.72]).reshape(3, 1)
+        # self._view_matrix = p.computeViewMatrix(pos, pos+lookdir, updir)
 
         self._aspect = float(self._window_width) / self._window_height
 
         self.near = 0.5
-        # self.far = 2
         self.far = 6
 
-        # focal length as fovy or fovx?
-        focal_length = 554.2563
+        focal_length = 450
         fovh = (np.arctan((self._window_height /
                            2) / focal_length) * 2 / np.pi) * 180
 
         self._proj_matrix = p.computeProjectionMatrixFOV(
-            # self._fov, self._aspect, self.near, self.far
             fovh, self._aspect, self.near, self.far
         )
 
         # https://www.edmundoptics.com/knowledge-center/application-notes/imaging/understanding-focal-length-and-field-of-view/
         self._intr_matrix = np.eye(3)
         self._intr_matrix[0, 2] = self._window_width / 2
-        # self._intr_matrix[0, 2] = 0
         self._intr_matrix[1, 2] = self._window_height / 2
-        # self._intr_matrix[1, 2] = 0
-        # self._intr_matrix[1, 2] = 200
         # self._intr_matrix[0, 0] = self._window_height / (2 * np.tan(np.deg2rad(self._fov) / 2)) * self._aspect
-        # self._intr_matrix[0, 0] = self._window_height / (2 * np.tan(np.deg2rad(self._fov * self._aspect) / 2))
-        self._intr_matrix[0, 0] = 450
+        self._intr_matrix[0, 0] = focal_length
         # self._intr_matrix[1, 1] = self._window_height / (2 * np.tan(np.deg2rad(self._fov) / 2))
-        self._intr_matrix[1, 1] = 450
+        self._intr_matrix[1, 1] = focal_length
 
         # Set table and plane
         p.resetSimulation()
@@ -527,9 +520,9 @@ class PandaYCBEnv:
 
         joint_pos, joint_vel = self._panda.getJointStates()
 
-        pc = self.get_pc(rgba, depth_zo, mask) if pc else None # N x 7 (XYZ, RGB, Mask ID)
+        # pc = self.get_pc(rgba, depth_zo, mask) if pc else None # N x 7 (XYZ, RGB, Mask ID)
         # pc = self.get_pc(rgba, zbuffer, mask) if pc else None # N x 7 (XYZ, RGB, Mask ID)
-        # pc = None # N x 7 (XYZ, RGB, Mask ID)
+        pc = None # N x 7 (XYZ, RGB, Mask ID)
 
         obs = {
             'rgb': rgb, 
@@ -545,28 +538,28 @@ class PandaYCBEnv:
         # )
         # return (obs, joint_pos)
 
-    def get_pc(self, rgba, depth, mask):
-        rgba = rgba / 255.0
+    # def get_pc(self, rgba, depth, mask):
+    #     rgba = rgba / 255.0
 
-        imgH, imgW = depth.shape
-        projGLM = np.asarray(self._proj_matrix).reshape([4, 4], order='F')
-        view = np.asarray(self._view_matrix).reshape([4, 4], order='F')
+    #     imgH, imgW = depth.shape
+    #     projGLM = np.asarray(self._proj_matrix).reshape([4, 4], order='F')
+    #     view = np.asarray(self._view_matrix).reshape([4, 4], order='F')
 
-        all_pc = []
-        stepX = 1
-        stepY = 1
-        for h in range(0, imgH, stepY):
-            for w in range(0, imgW, stepX):
-                win = glm.vec3(w, imgH - h, depth[h][w])
-                # unProject takes normalized device coordinates [-1, 1] 
-                # https://github.com/Zuzu-Typ/PyGLM/blob/master/wiki/function-reference/stable_extensions/matrix_projection.md#unProject-function
-                position = glm.unProjectNO(win, glm.mat4(view), glm.mat4(projGLM), glm.vec4(0, 0, imgW, imgH))
-                all_pc.append([position[0], position[1], position[2], rgba[h, w, 0], rgba[h, w, 1], rgba[h, w, 2], mask[h, w]])
+    #     all_pc = []
+    #     stepX = 1
+    #     stepY = 1
+    #     for h in range(0, imgH, stepY):
+    #         for w in range(0, imgW, stepX):
+    #             win = glm.vec3(w, imgH - h, depth[h][w])
+    #             # unProject takes normalized device coordinates [-1, 1] 
+    #             # https://github.com/Zuzu-Typ/PyGLM/blob/master/wiki/function-reference/stable_extensions/matrix_projection.md#unProject-function
+    #             position = glm.unProjectNO(win, glm.mat4(view), glm.mat4(projGLM), glm.vec4(0, 0, imgW, imgH))
+    #             all_pc.append([position[0], position[1], position[2], rgba[h, w, 0], rgba[h, w, 1], rgba[h, w, 2], mask[h, w]])
 
-        all_pc = np.array(all_pc)
-        return all_pc
-        # pos, orn = p.getBasePositionAndOrientation(self._panda.pandaUid)
-        # all_pc[:, :3] -= pos # Transform to robot frame 
+    #     all_pc = np.array(all_pc)
+    #     return all_pc
+    #     # pos, orn = p.getBasePositionAndOrientation(self._panda.pandaUid)
+    #     # all_pc[:, :3] -= pos # Transform to robot frame 
 
     def _get_target_obj_pose(self):
         return p.getBasePositionAndOrientation(self._objectUids[self.target_idx])[0]
