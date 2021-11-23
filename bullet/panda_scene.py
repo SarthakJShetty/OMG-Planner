@@ -203,13 +203,13 @@ if __name__ == "__main__":
     
     # if args.debug_traj and not args.use_graspnet: # does not work with use_graspnet due to EGL render issues with mayavi downstream
     # TODO check if this works
-    if args.debug_traj: # does not work with use_graspnet due to EGL render issues with mayavi downstream
-        scene.setup_renderer()
-        init_traj = scene.planner.traj.data
-        init_traj_im = scene.fast_debug_vis(traj=init_traj, interact=0, write_video=False,
-                                    nonstop=False, collision_pt=False, goal_set=False, traj_idx=0)
-        init_traj_im = cv2.cvtColor(init_traj_im, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(f"{args.output_dir}/{exp_name}/{scene_file}/traj_0.png", init_traj_im)
+    # if args.debug_traj: # does not work with use_graspnet due to EGL render issues with mayavi downstream
+    #     scene.setup_renderer()
+    #     init_traj = scene.planner.traj.data
+    #     init_traj_im = scene.fast_debug_vis(traj=init_traj, interact=0, write_video=False,
+    #                                 nonstop=False, collision_pt=False, goal_set=False, traj_idx=0)
+    #     init_traj_im = cv2.cvtColor(init_traj_im, cv2.COLOR_RGB2BGR)
+    #     cv2.imwrite(f"{args.output_dir}/{exp_name}/{scene_file}/traj_0.png", init_traj_im)
 
     # Set up grasp inference method
     if args.grasp_inference == 'contact_graspnet':
@@ -252,6 +252,7 @@ if __name__ == "__main__":
 
         if args.grasp_inference == 'acronym':
             grasps, grasp_scores = None, None
+            inference_duration = 0
         elif args.grasp_inference == 'contact_graspnet':
             start_time = time.time()
             idx = env._objectUids[env.target_idx]
@@ -275,7 +276,7 @@ if __name__ == "__main__":
             T_world2bot = np.eye(4)
             T_world2bot[:3, :3] = mat
             T_world2bot[:3, 3] = pos
-            Ts_bot2grasp = np.linalg.inv(T_world2bot) @ Ts_world2grasp
+            grasps = np.linalg.inv(T_world2bot) @ Ts_world2grasp
             inference_duration = time.time() - start_time
 
         # for grasp in grasps[:30]:
@@ -326,7 +327,7 @@ if __name__ == "__main__":
         # ax.axes.set_zlim3d(bottom=-1.5, top=1.5) 
         # plt.show()
 
-        if len(Ts_bot2grasp) == 0:
+        if grasps != None and len(grasps) == 0:
             print("No valid predicted grasps")
             import IPython; IPython.embed()
 
@@ -339,7 +340,7 @@ if __name__ == "__main__":
         elif args.grasp_selection == 'OMG':
             scene.planner.cfg.ol_alg = 'MD'
         scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
-        scene.reset(lazy=True, grasps=Ts_bot2grasp, grasp_scores=grasp_scores)
+        scene.reset(lazy=True, grasps=grasps, grasp_scores=grasp_scores)
 
         info = scene.step()
         plan = scene.planner.history_trajectories[-1]
@@ -354,7 +355,11 @@ if __name__ == "__main__":
         #         traj_im = cv2.cvtColor(traj_im, cv2.COLOR_RGB2BGR)
         #         cv2.imwrite(f"{args.output_dir}/{exp_name}/{scene_file}/traj_{i+1}.png", traj_im)
 
-        rew = bullet_execute_plan(env, plan, args.write_video, video_writer)
+        if info != []:
+            rew = bullet_execute_plan(env, plan, args.write_video, video_writer)
+        else:
+            rew = 0
+
         for i, name in enumerate(object_lists[:-2]):  # reset planner
             scene.env.update_pose(name, placed_poses[i])
         cnts += 1
@@ -362,12 +367,11 @@ if __name__ == "__main__":
         print('rewards: {} counts: {}'.format(rews, cnts))
 
         # Save data
-        if args.grasp_inference == 'contact_graspnet':
-            info[-1]['inference_time'] = inference_duration
-        np.save(f'{args.output_dir}/{exp_name}/{scene_file}/data.npy', [rew, info, plan])
+        data = [rew, info, plan, inference_duration]
+        np.save(f'{args.output_dir}/{exp_name}/{scene_file}/data.npy', data)
 
         # Convert avi to high quality gif 
-        if args.write_video:
+        if args.write_video and info != []:
             os.system(f'ffmpeg -y -i {args.output_dir}/{exp_name}/{scene_file}/bullet.avi -vf "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 {args.output_dir}/{exp_name}/{scene_file}/scene.gif')
     env.disconnect()
 

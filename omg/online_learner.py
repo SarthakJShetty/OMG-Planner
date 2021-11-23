@@ -92,8 +92,8 @@ class Learner(object):
         self.q = np.ones(self.num_experts) / self.num_experts
 
         if (
-            self.alg_name == "Baseline"
-            or (self.cfg.goal_idx == -2 and self.alg_name != "Proj")
+            (self.alg_name == "Baseline"
+            or (self.cfg.goal_idx == -2 and self.alg_name != "Proj"))
             and len(self.env.objects[self.env.target_idx].reach_grasps) > 0  
         ):
             costs = self.cost_vector()

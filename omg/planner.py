@@ -105,7 +105,6 @@ class Planner(object):
             self.load_grasp_set_gn(self.env, self.grasps, self.grasp_scores)
             self.setup_goal_set(self.env)
             self.grasp_init(self.env)
-            import IPython; IPython.embed()
             self.learner = Learner(self.env, self.traj, self.cost) # 
         else:
             if self.cfg.goal_set_proj:
@@ -304,6 +303,7 @@ class Planner(object):
                 * np.linspace(0, 1, reach_tail_len, endpoint=False)
             )
         standoff_grasp_global = np.matmul(pose_grasp_global, pose_standoff)
+        parallel = self.cfg.ik_parallel
         seeds_ = seeds[:]
 
         if not parallel:
