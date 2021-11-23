@@ -14,6 +14,7 @@ Setup
     * `conda env update --file contact_graspnet_env_tf25.yml --name gm_pipeline`
     * `pip install -e .`
 * Install manifold-grasping-torch
+* Install acronym (helpful for debugging)
 
 ## Grasp Dataset Setup 
 * Download ACRONYM

@@ -182,6 +182,5 @@ If you find OMG-Planner useful in your research, please consider citing:
 }
 ```
 
-
 ## License
 The OMG Planner is licensed under the [MIT License](LICENSE).

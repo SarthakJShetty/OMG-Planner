@@ -114,7 +114,9 @@ class ContactGraspNetInference:
         parser.add_argument('--png_path', default='', help='Input data: depth map png in meters')
         parser.add_argument('--K', default=None, help='Flat Camera Matrix, pass as "[fx, 0, cx, 0, fy, cy, 0, 0 ,1]"')
         parser.add_argument('--z_range', default=[0.2,1.8], help='Z value threshold to crop the input point cloud')
-        parser.add_argument('--local_regions', action='store_true', default=True, help='Crop 3D local regions around given segments.')
+        # parser.add_argument('--local_regions', action='store_true', default=True, help='Crop 3D local regions around given segments.')
+        parser.add_argument('--local_regions', action='store_true', default=False, help='Crop 3D local regions around given segments.')
+        # parser.add_argument('--filter_grasps', action='store_true', default=True,  help='Filter grasp contacts according to segmap.')
         parser.add_argument('--filter_grasps', action='store_true', default=True,  help='Filter grasp contacts according to segmap.')
         parser.add_argument('--skip_border_objects', action='store_true', default=False,  help='When extracting local_regions, ignore segments at depth map boundary.')
         parser.add_argument('--forward_passes', type=int, default=1,  help='Run multiple parallel forward passes to mesh_utils more potential contact points.')
@@ -153,7 +155,7 @@ if __name__ == "__main__":
     parser.add_argument("-gs", "--grasp_selection", help="Which grasp selection algorithm to use", required=True, choices=['Fixed', 'Proj', 'OMG'])
     parser.add_argument("-o", "--output_dir", help="Output directory", type=str, default="./output_videos") 
     parser.add_argument("-d", "--debug_exp", help="Override default experiment name with dbg", action="store_true"),  
-    parser.add_argument("-s", "--scenes", help="scene(s) to run. If empty, loops through all 100 scenes", type=list, default=["scene_1"])
+    parser.add_argument("-s", "--scenes", help="scene(s) to run. If set to '', loops through all 100 scenes", nargs='*', default=["scene_1"])
     parser.add_argument("-r", "--render", help="render", action="store_true")
     parser.add_argument("-v", "--visualize", help="visualize grasps", action="store_true")
     parser.add_argument("--egl", help="use egl render", action="store_true")
@@ -215,6 +217,7 @@ if __name__ == "__main__":
 
     cnts, rews = 0, 0
     for scene_file in scene_files:
+        print(scene_file)
         mkdir_if_missing(f'{args.output_dir}/{exp_name}/{scene_file}')
         config.cfg.output_video_name = f"{args.output_dir}/{exp_name}/{scene_file}/bullet.avi"
         cfg.scene_file = scene_file
@@ -247,27 +250,34 @@ if __name__ == "__main__":
             if obj_idx not in exists_ids
         ]
 
-        start_time = time.time()
         if args.grasp_inference == 'acronym':
             grasps, grasp_scores = None, None
         elif args.grasp_inference == 'contact_graspnet':
+            start_time = time.time()
             idx = env._objectUids[env.target_idx]
             segmask = deepcopy(obs['mask'])
             segmask[segmask != idx] = 0
             segmask[segmask == idx] = 1
             x = {'rgb': obs['rgb'], 'depth': obs['depth'], 'K': env._intr_matrix, 'seg': segmask}
             Ts_cam2grasp, grasp_scores, contact_pts = grasp_inf_method.inference(x)
-        inf_duration = time.time() - start_time
 
-        # Get transform from world to camera
-        T_world2camgl = np.linalg.inv(np.asarray(env._view_matrix).reshape((4, 4), order='F'))
-        T_camgl2cam = np.zeros((4, 4))
-        T_camgl2cam[:3, :3] = pr.matrix_from_axis_angle([1, 0, 0, np.pi])
-        T_camgl2cam[3, 3] = 1
-        T_world2cam = T_world2camgl @ T_camgl2cam
-        draw_pose(T_world2cam)
+            # Get transform from world to camera
+            T_world2camgl = np.linalg.inv(np.asarray(env._view_matrix).reshape((4, 4), order='F'))
+            T_camgl2cam = np.zeros((4, 4))
+            T_camgl2cam[:3, :3] = pr.matrix_from_axis_angle([1, 0, 0, np.pi])
+            T_camgl2cam[3, 3] = 1
+            T_world2cam = T_world2camgl @ T_camgl2cam
+            draw_pose(T_world2cam)
 
-        # grasps = T_world2cam @ Ts_cam2grasp
+            Ts_world2grasp = T_world2cam @ Ts_cam2grasp
+            pos, orn = p.getBasePositionAndOrientation(env._panda.pandaUid)
+            mat = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
+            T_world2bot = np.eye(4)
+            T_world2bot[:3, :3] = mat
+            T_world2bot[:3, 3] = pos
+            Ts_bot2grasp = np.linalg.inv(T_world2bot) @ Ts_world2grasp
+            inference_duration = time.time() - start_time
+
         # for grasp in grasps[:30]:
         #     draw_pose(grasp)
 
@@ -316,6 +326,10 @@ if __name__ == "__main__":
         # ax.axes.set_zlim3d(bottom=-1.5, top=1.5) 
         # plt.show()
 
+        if len(Ts_bot2grasp) == 0:
+            print("No valid predicted grasps")
+            import IPython; IPython.embed()
+
         # Set grasp selection method for planner
         if args.grasp_selection == 'Fixed':
             scene.planner.cfg.ol_alg = 'Baseline'
@@ -325,20 +339,20 @@ if __name__ == "__main__":
         elif args.grasp_selection == 'OMG':
             scene.planner.cfg.ol_alg = 'MD'
         scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
-        scene.reset(lazy=True, grasps=grasps, grasp_scores=grasp_scores)
+        scene.reset(lazy=True, grasps=Ts_bot2grasp, grasp_scores=grasp_scores)
 
         info = scene.step()
         plan = scene.planner.history_trajectories[-1]
 
-        # Visualize intermediate trajectories
-        if args.debug_traj:
-            # if args.use_graspnet:
-                # scene.setup_renderer()
-            for i, traj in enumerate(scene.planner.history_trajectories):
-                traj_im = scene.fast_debug_vis(traj=traj, interact=0, write_video=False,
-                                               nonstop=False, collision_pt=False, goal_set=True, traj_idx=i)
-                traj_im = cv2.cvtColor(traj_im, cv2.COLOR_RGB2BGR)
-                cv2.imwrite(f"{args.output_dir}/{exp_name}/{scene_file}/traj_{i+1}.png", traj_im)
+        # # Visualize intermediate trajectories
+        # if args.debug_traj:
+        #     # if args.use_graspnet:
+        #         # scene.setup_renderer()
+        #     for i, traj in enumerate(scene.planner.history_trajectories):
+        #         traj_im = scene.fast_debug_vis(traj=traj, interact=0, write_video=False,
+        #                                        nonstop=False, collision_pt=False, goal_set=True, traj_idx=i)
+        #         traj_im = cv2.cvtColor(traj_im, cv2.COLOR_RGB2BGR)
+        #         cv2.imwrite(f"{args.output_dir}/{exp_name}/{scene_file}/traj_{i+1}.png", traj_im)
 
         rew = bullet_execute_plan(env, plan, args.write_video, video_writer)
         for i, name in enumerate(object_lists[:-2]):  # reset planner
@@ -348,8 +362,8 @@ if __name__ == "__main__":
         print('rewards: {} counts: {}'.format(rews, cnts))
 
         # Save data
-        # if args.use_graspnet and 'time' in info[-1].keys():
-            # info[-1]['time'] += graspinf_duration
+        if args.grasp_inference == 'contact_graspnet':
+            info[-1]['inference_time'] = inference_duration
         np.save(f'{args.output_dir}/{exp_name}/{scene_file}/data.npy', [rew, info, plan])
 
         # Convert avi to high quality gif 

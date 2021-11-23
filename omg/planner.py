@@ -6,11 +6,9 @@ from .optimizer import Optimizer
 from .cost import Cost
 from .util import *
 from .online_learner import Learner
-import IPython
 
 from . import config
 import time
-import torch
 import multiprocessing
 
 
@@ -107,6 +105,7 @@ class Planner(object):
             self.load_grasp_set_gn(self.env, self.grasps, self.grasp_scores)
             self.setup_goal_set(self.env)
             self.grasp_init(self.env)
+            import IPython; IPython.embed()
             self.learner = Learner(self.env, self.traj, self.cost) # 
         else:
             if self.cfg.goal_set_proj:
@@ -305,7 +304,6 @@ class Planner(object):
                 * np.linspace(0, 1, reach_tail_len, endpoint=False)
             )
         standoff_grasp_global = np.matmul(pose_grasp_global, pose_standoff)
-        parallel = self.cfg.ik_parallel
         seeds_ = seeds[:]
 
         if not parallel:
@@ -472,6 +470,15 @@ class Planner(object):
                     import IPython; IPython.embed()
                     z_upsample=True
 
+                # import trimesh
+                # from acronym_tools import load_mesh, load_grasps, create_gripper_marker
+                # inf_viz = []
+                # for T in target_obj.grasps_poses:
+                #     inf_viz.append(create_gripper_marker(color=[0, 0, 255]).apply_transform(T))
+                # obj_mesh = trimesh.load('data/objects/006_mustard_bottle/model_normalized.obj')
+                # m = obj_mesh.apply_transform(unpack_pose(target_obj.pose))
+                # trimesh.Scene([m] + inf_viz).show()
+
                 target_obj.reach_grasps, target_obj.grasps, target_obj.grasps_scores, target_obj.grasp_ees = self.solve_goal_set_ik(
                     target_obj, env, target_obj.grasps_poses, grasp_scores=target_obj.grasps_scores, z_upsample=z_upsample, y_upsample=self.cfg.y_upsample,
                     in_global_coords=True
@@ -507,7 +514,7 @@ class Planner(object):
                             )
                             pose_grasp = simulator_grasp.item()[b"transforms"]
 
-                        offset_pose = np.array(rotZ(np.pi / 2))  # and
+                        offset_pose = np.array(rotZ(np.pi / 2)) # rotate about z axis 
                         pose_grasp = np.matmul(pose_grasp, offset_pose)  # flip x, y
                         pose_grasp = ycb_special_case(pose_grasp, target_obj.name)
                         target_obj.grasps_poses = pose_grasp
