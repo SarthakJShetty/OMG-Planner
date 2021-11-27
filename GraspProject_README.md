@@ -14,6 +14,10 @@ Setup
     * `conda env update --file contact_graspnet_env_tf25.yml --name gm_pipeline`
     * `pip install -e .`
 * Install manifold-grasping-torch
+    * `pip install -e .`
+    * to add: pytorch_lightning==1.4.1
+* Install [modified pytransform3d](https://github.com/thomasweng15/pytransform3d) to get around approximation error for logmap
+    * `pip install -e .`
 * Install acronym (helpful for debugging)
 
 ## Grasp Dataset Setup 

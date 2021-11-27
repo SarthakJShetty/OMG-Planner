@@ -83,6 +83,22 @@ def bullet_execute_plan(env, plan, write_video, video_writer):
             video_writer.write(robs['rgb'][:, :, [2, 1, 0]].astype(np.uint8)) # to get enough frames to save
     return rew
 
+import torch
+import pytorch_lightning
+from manifold_grasping.networks import Decoder
+
+class ImplicitGraspInference:
+    def __init__(self):
+        # TODO config output pose
+        ckpt = torch.load('/checkpoint/thomasweng/grasp_manifolds/runs/outputs/nopc_book_logmap_10kfree/2021-11-23_232102_dsetacronym_Book_train0.9_val0.1_free10.0k_sym_distlogmap/default_default/0_0/checkpoints/last.ckpt')
+        self.model = Decoder(**ckpt['hyper_parameters'])
+        self.model.load_state_dict(ckpt['state_dict'])
+        import IPython; IPython.embed()
+
+    def inference(self, x):
+        # TODO hardcode book position and transforms
+        return None
+
 import contact_graspnet
 from contact_graspnet import config_utils
 from contact_graspnet.inference import inference as cg_inference
@@ -151,7 +167,7 @@ def depth2pc(depth, K, rgb=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-gi", "--grasp_inference", help="which grasp inference method to use", required=True, choices=['acronym', 'contact_graspnet'])
+    parser.add_argument("-gi", "--grasp_inference", help="which grasp inference method to use", required=True, choices=['acronym', 'contact_graspnet', 'ours_outputpose'])
     parser.add_argument("-gs", "--grasp_selection", help="Which grasp selection algorithm to use", required=True, choices=['Fixed', 'Proj', 'OMG'])
     parser.add_argument("-o", "--output_dir", help="Output directory", type=str, default="./output_videos") 
     parser.add_argument("-d", "--debug_exp", help="Override default experiment name with dbg", action="store_true"),  
@@ -214,6 +230,8 @@ if __name__ == "__main__":
     # Set up grasp inference method
     if args.grasp_inference == 'contact_graspnet':
         grasp_inf_method = ContactGraspNetInference(args.visualize)
+    if args.grasp_inference == 'ours_outputpose':
+        grasp_inf_method = ImplicitGrasp()
 
     cnts, rews = 0, 0
     for scene_file in scene_files:
@@ -253,6 +271,15 @@ if __name__ == "__main__":
         if args.grasp_inference == 'acronym':
             grasps, grasp_scores = None, None
             inference_duration = 0
+        elif args.grasp_inference == 'ours_outputpose':
+            start_time = time.time()
+
+            import IPython; IPython.embed()
+            # TODO assume fixed for now.
+            # Proj does not apply. 
+            # Then integrate into planner. 
+
+            inference_duration = time.time() - start_time
         elif args.grasp_inference == 'contact_graspnet':
             start_time = time.time()
             idx = env._objectUids[env.target_idx]
@@ -278,6 +305,54 @@ if __name__ == "__main__":
             T_world2bot[:3, 3] = pos
             grasps = np.linalg.inv(T_world2bot) @ Ts_world2grasp
             inference_duration = time.time() - start_time
+
+        # if grasps is not None and len(grasps) == 0:
+            # print("No valid predicted grasps")
+            # import IPython; IPython.embed()
+
+        # Set grasp selection method for planner
+        if args.grasp_selection == 'Fixed':
+            scene.planner.cfg.ol_alg = 'Baseline'
+            scene.planner.cfg.goal_idx = -1
+        elif args.grasp_selection == 'Proj':
+            scene.planner.cfg.ol_alg = 'Proj'
+        elif args.grasp_selection == 'OMG':
+            scene.planner.cfg.ol_alg = 'MD'
+        scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
+        scene.reset(lazy=True, grasps=grasps, grasp_scores=grasp_scores)
+
+        info = scene.step()
+        plan = scene.planner.history_trajectories[-1]
+
+        # # Visualize intermediate trajectories
+        # if args.debug_traj:
+        #     # if args.use_graspnet:
+        #         # scene.setup_renderer()
+        #     for i, traj in enumerate(scene.planner.history_trajectories):
+        #         traj_im = scene.fast_debug_vis(traj=traj, interact=0, write_video=False,
+        #                                        nonstop=False, collision_pt=False, goal_set=True, traj_idx=i)
+        #         traj_im = cv2.cvtColor(traj_im, cv2.COLOR_RGB2BGR)
+        #         cv2.imwrite(f"{args.output_dir}/{exp_name}/{scene_file}/traj_{i+1}.png", traj_im)
+
+        if info != []:
+            rew = bullet_execute_plan(env, plan, args.write_video, video_writer)
+        else:
+            rew = 0
+
+        for i, name in enumerate(object_lists[:-2]):  # reset planner
+            scene.env.update_pose(name, placed_poses[i])
+        cnts += 1
+        rews += rew
+        print('rewards: {} counts: {}'.format(rews, cnts))
+
+        # Save data
+        data = [rew, info, plan, inference_duration]
+        np.save(f'{args.output_dir}/{exp_name}/{scene_file}/data.npy', data)
+
+        # Convert avi to high quality gif 
+        if args.write_video and info != []:
+            os.system(f'ffmpeg -y -i {args.output_dir}/{exp_name}/{scene_file}/bullet.avi -vf "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 {args.output_dir}/{exp_name}/{scene_file}/scene.gif')
+    env.disconnect()
 
         # for grasp in grasps[:30]:
         #     draw_pose(grasp)
@@ -326,54 +401,6 @@ if __name__ == "__main__":
         # ax.axes.set_ylim3d(bottom=-1.5, top=1.5) 
         # ax.axes.set_zlim3d(bottom=-1.5, top=1.5) 
         # plt.show()
-
-        if grasps != None and len(grasps) == 0:
-            print("No valid predicted grasps")
-            import IPython; IPython.embed()
-
-        # Set grasp selection method for planner
-        if args.grasp_selection == 'Fixed':
-            scene.planner.cfg.ol_alg = 'Baseline'
-            scene.planner.cfg.goal_idx = -1
-        elif args.grasp_selection == 'Proj':
-            scene.planner.cfg.ol_alg = 'Proj'
-        elif args.grasp_selection == 'OMG':
-            scene.planner.cfg.ol_alg = 'MD'
-        scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
-        scene.reset(lazy=True, grasps=grasps, grasp_scores=grasp_scores)
-
-        info = scene.step()
-        plan = scene.planner.history_trajectories[-1]
-
-        # # Visualize intermediate trajectories
-        # if args.debug_traj:
-        #     # if args.use_graspnet:
-        #         # scene.setup_renderer()
-        #     for i, traj in enumerate(scene.planner.history_trajectories):
-        #         traj_im = scene.fast_debug_vis(traj=traj, interact=0, write_video=False,
-        #                                        nonstop=False, collision_pt=False, goal_set=True, traj_idx=i)
-        #         traj_im = cv2.cvtColor(traj_im, cv2.COLOR_RGB2BGR)
-        #         cv2.imwrite(f"{args.output_dir}/{exp_name}/{scene_file}/traj_{i+1}.png", traj_im)
-
-        if info != []:
-            rew = bullet_execute_plan(env, plan, args.write_video, video_writer)
-        else:
-            rew = 0
-
-        for i, name in enumerate(object_lists[:-2]):  # reset planner
-            scene.env.update_pose(name, placed_poses[i])
-        cnts += 1
-        rews += rew
-        print('rewards: {} counts: {}'.format(rews, cnts))
-
-        # Save data
-        data = [rew, info, plan, inference_duration]
-        np.save(f'{args.output_dir}/{exp_name}/{scene_file}/data.npy', data)
-
-        # Convert avi to high quality gif 
-        if args.write_video and info != []:
-            os.system(f'ffmpeg -y -i {args.output_dir}/{exp_name}/{scene_file}/bullet.avi -vf "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 {args.output_dir}/{exp_name}/{scene_file}/scene.gif')
-    env.disconnect()
 
         # # Save for contact-graspnet
         # np.save('/home/exx/projects/manifolds/contact_graspnet/test_data/pybullet.npy', 
