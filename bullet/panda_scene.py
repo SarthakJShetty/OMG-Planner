@@ -22,9 +22,8 @@ import glob
 # import gym
 # from panda_gripper import Panda
 
-# from transforms3d import quaternions
-import scipy.io as sio
-import pkgutil
+# import scipy.io as sio
+# import pkgutil
 from copy import deepcopy
 
 # For backprojection
@@ -42,33 +41,9 @@ from panda_ycb_env import PandaYCBEnv
 # import mayavi.mlab as mlab
 # mlab.options.offscreen = True
 
-import pybullet as p
-import pytransform3d.rotations as pr
-from collections import namedtuple
-RGBA = namedtuple('RGBA', ['red', 'green', 'blue', 'alpha'])
-BLACK = RGBA(0, 0, 0, 1)
-CLIENT = 0
-NULL_ID = -1
-BASE_LINK = -1
+from contact_graspnet_infer import *
+from utils import *
 
-# https://github.com/caelan/pybullet-planning/blob/master/pybullet_tools/utils.py
-def add_line(start, end, color=BLACK, width=1, lifetime=0, parent=NULL_ID, parent_link=BASE_LINK):
-    assert (len(start) == 3) and (len(end) == 3)
-    return p.addUserDebugLine(start, end, lineColorRGB=color[:3], lineWidth=width,
-                            lifeTime=lifetime, parentObjectUniqueId=parent, parentLinkIndex=parent_link,
-                            physicsClientId=CLIENT)
-
-def draw_pose(T, length=0.1, d=3, **kwargs):
-    origin_world = T @ np.array((0., 0., 0., 1.))
-    for k in range(d):
-        axis = np.array((0., 0., 0., 1.))
-        axis[k] = 1*length
-        axis_world = T @ axis
-        origin_pt = origin_world[:3] 
-        axis_pt = axis_world[:3] 
-        color = np.zeros(3)
-        color[k] = 1
-        add_line(origin_pt, axis_pt, color=color, **kwargs)
 
 def bullet_execute_plan(env, plan, write_video, video_writer):
     print('executing...')
@@ -93,77 +68,17 @@ class ImplicitGraspInference:
         ckpt = torch.load('/checkpoint/thomasweng/grasp_manifolds/runs/outputs/nopc_book_logmap_10kfree/2021-11-23_232102_dsetacronym_Book_train0.9_val0.1_free10.0k_sym_distlogmap/default_default/0_0/checkpoints/last.ckpt')
         self.model = Decoder(**ckpt['hyper_parameters'])
         self.model.load_state_dict(ckpt['state_dict'])
-        import IPython; IPython.embed()
+        self.model.eval()
 
     def inference(self, x):
-        # TODO hardcode book position and transforms
-        return None
+        """
+        x: xyz, xyzw
+        """
+        with torch.no_grad():
+            outpose = self.model(x)
+        outpose = outpose.squeeze(0).cpu().numpy()
+        return outpose
 
-import contact_graspnet
-from contact_graspnet import config_utils
-from contact_graspnet.inference import inference as cg_inference
-from contact_graspnet.inference import init as cg_init
-
-class ContactGraspNetInference:
-    def __init__(self, visualize=False):
-        self.args = self.get_args()
-        self.global_config = config_utils.load_config(self.args.ckpt_dir, batch_size=self.args.forward_passes, arg_configs=self.args.arg_configs)
-        self.visualize = visualize
-
-        # move some of inference to init
-        sess, grasp_estimator = cg_init(self.global_config, self.args.ckpt_dir)
-        self.sess = sess
-        self.grasp_estimator = grasp_estimator
-
-    def inference(self, x):
-        pred_grasps_cam, scores, contact_pts = cg_inference(self.sess, self.grasp_estimator, x, z_range=eval(str(self.args.z_range)),
-                                                            K=self.args.K, local_regions=self.args.local_regions, filter_grasps=self.args.filter_grasps, segmap_id=self.args.segmap_id, 
-                                                            forward_passes=self.args.forward_passes, skip_border_objects=self.args.skip_border_objects,
-                                                            visualize=self.visualize)
-
-        return pred_grasps_cam[1], scores[1], contact_pts[1]
-
-    def get_args(self):
-        # parser = argparse.ArgumentParser()
-        parser.add_argument('--ckpt_dir', default=f'{os.path.dirname(contact_graspnet.__file__)}/../checkpoints/scene_test_2048_bs3_hor_sigma_001', help='Log dir [default: checkpoints/scene_test_2048_bs3_hor_sigma_001]')
-        parser.add_argument('--np_path', default='test_data/7.npy', help='Input data: npz/npy file with keys either "depth" & camera matrix "K" or just point cloud "pc" in meters. Optionally, a 2D "segmap"')
-        parser.add_argument('--png_path', default='', help='Input data: depth map png in meters')
-        parser.add_argument('--K', default=None, help='Flat Camera Matrix, pass as "[fx, 0, cx, 0, fy, cy, 0, 0 ,1]"')
-        parser.add_argument('--z_range', default=[0.2,1.8], help='Z value threshold to crop the input point cloud')
-        # parser.add_argument('--local_regions', action='store_true', default=True, help='Crop 3D local regions around given segments.')
-        parser.add_argument('--local_regions', action='store_true', default=False, help='Crop 3D local regions around given segments.')
-        # parser.add_argument('--filter_grasps', action='store_true', default=True,  help='Filter grasp contacts according to segmap.')
-        parser.add_argument('--filter_grasps', action='store_true', default=True,  help='Filter grasp contacts according to segmap.')
-        parser.add_argument('--skip_border_objects', action='store_true', default=False,  help='When extracting local_regions, ignore segments at depth map boundary.')
-        parser.add_argument('--forward_passes', type=int, default=1,  help='Run multiple parallel forward passes to mesh_utils more potential contact points.')
-        parser.add_argument('--segmap_id', type=int, default=0,  help='Only return grasps of the given object id')
-        parser.add_argument('--arg_configs', nargs="*", type=str, default=[], help='overwrite config parameters')
-        args = parser.parse_args()
-        return args
-
-def depth2pc(depth, K, rgb=None):
-    """
-    Convert depth and intrinsics to point cloud and optionally point cloud color
-    :param depth: hxw depth map in m
-    :param K: 3x3 Camera Matrix with intrinsics
-    :returns: (Nx3 point cloud, point cloud color)
-    """
-
-    mask = np.where(depth > 0)
-    x,y = mask[1], mask[0]
-    
-    normalized_x = (x.astype(np.float32) - K[0,2])
-    normalized_y = (y.astype(np.float32) - K[1,2])
-
-    world_x = normalized_x * depth[y, x] / K[0,0]
-    world_y = normalized_y * depth[y, x] / K[1,1]
-    world_z = depth[y, x]
-
-    if rgb is not None:
-        rgb = rgb[y,x,:]
-        
-    pc = np.vstack((world_x, world_y, world_z)).T
-    return (pc, rgb)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -186,10 +101,10 @@ if __name__ == "__main__":
 
     # Set up planning scene
     cfg.traj_init = "grasp"
-    cfg.scene_files = args.scenes
     cfg.vis = False
     cfg.timesteps = 50
     cfg.get_global_param(cfg.timesteps)
+    cfg.scene_file = ''
     scene = PlanningScene(cfg)
     for i, name in enumerate(env.obj_path[:-2]):  # load all objects
         name = name.split("/")[-1]
@@ -200,6 +115,8 @@ if __name__ == "__main__":
     scene.env.add_plane(np.array([0.05, 0, -0.17]), np.array([1, 0, 0, 0]))
     scene.env.add_table(np.array([0.55, 0, -0.17]), np.array([0.707, 0.707, 0.0, 0]))
     scene.env.combine_sdfs()
+
+    cfg.scene_files = args.scenes
     if cfg.scene_files == []:
         scene_files = ['scene_{}'.format(i) for i in range(100)] # TODO change to listdir
     else:
@@ -231,7 +148,7 @@ if __name__ == "__main__":
     if args.grasp_inference == 'contact_graspnet':
         grasp_inf_method = ContactGraspNetInference(args.visualize)
     if args.grasp_inference == 'ours_outputpose':
-        grasp_inf_method = ImplicitGrasp()
+        grasp_inf_method = ImplicitGraspInference()
 
     cnts, rews = 0, 0
     for scene_file in scene_files:
@@ -274,10 +191,10 @@ if __name__ == "__main__":
         elif args.grasp_inference == 'ours_outputpose':
             start_time = time.time()
 
-            import IPython; IPython.embed()
-            # TODO assume fixed for now.
-            # Proj does not apply. 
-            # Then integrate into planner. 
+            # TODO hardcode book position and transforms into and out of world / book frame
+            ee_pose = torch.tensor([0, 0, 0, 0, 0, 0, 1], dtype=torch.float32).unsqueeze(0)
+            grasp_inf_method.inference(ee_pose)
+            # TODO integrate into planner. 
 
             inference_duration = time.time() - start_time
         elif args.grasp_inference == 'contact_graspnet':
