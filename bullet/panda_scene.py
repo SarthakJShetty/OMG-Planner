@@ -44,6 +44,10 @@ from panda_ycb_env import PandaYCBEnv
 from contact_graspnet_infer import *
 from utils import *
 
+from acronym_tools import load_mesh
+import pytransform3d.rotations as pr
+import pytransform3d.transformations as pt
+
 
 def bullet_execute_plan(env, plan, write_video, video_writer):
     print('executing...')
@@ -97,7 +101,45 @@ if __name__ == "__main__":
     # Set up bullet env
     mkdir_if_missing(args.output_dir)
     env = PandaYCBEnv(renders=args.render, egl_render=args.egl)
-    env.reset()
+
+    if args.scenes == ['acronym_book']:
+        grasp_root = "/data/manifolds/acronym/grasps"
+        # objects = ['Book_5e90bf1bb411069c115aef9ae267d6b7']
+        objects = ['Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836']
+        grasp_paths = [] # path to grasp file for a given object
+        for fn in os.listdir(grasp_root):
+            for objname in objects:
+                if objname in fn:
+                    grasp_paths.append((fn, objname))
+                    objects.remove(objname) # Only load first scale of object for now
+
+        # Load acronym objects
+        object_infos = []
+        mesh_root = "/data/manifolds/acronym"
+        for grasp_path, objname in grasp_paths:
+            obj_mesh, obj_scale = load_mesh(f"{grasp_root}/{grasp_path}", mesh_root_dir=mesh_root, ret_scale=True)
+            object_infos.append((objname, obj_scale, obj_mesh))
+        env.reset(object_infos=object_infos)
+
+        # Move object frame to centroid
+        obj_mesh = object_infos[0][2]
+        obj2ctr_T = np.eye(4)
+        # obj2ctr_T[:3, 3] = -obj_mesh.centroid
+        obj2ctr_T[:3, 3] = obj_mesh.centroid
+
+        # world2ctr_T = world2ee_T @ grasp2obj_T @ obj2ctr_T
+        # draw_pose(world2ctr_T)
+        
+        # pos = 
+        # scene.env.add_object(objname, trans, tf_quat(orn), compute_grasp=True)
+
+        # p.resetBasePositionAndOrientation(
+            # ,
+            # (0.022132369226459503, -0.6095468652023857, -0.98919737609899),
+            # (2.7206599969089353e-05, 0.0001293650993602709, -0.008241469707066306, 0.9999660297737816)
+        # )
+    else:
+        env.reset()
 
     # Set up planning scene
     cfg.traj_init = "grasp"
@@ -170,6 +212,22 @@ if __name__ == "__main__":
         object_lists = [name.split("/")[-1].strip() for name in obj_names]
         object_poses = [pack_pose(pose) for pose in obj_poses]
 
+        if args.scenes == ['acronym_book']:
+            # Hotfix: Manually set book object
+            # TODO create scene file
+            # pos = (0.07345162518699465, -0.4098033797439253, -1.1014019481737773)
+            pos = (0.07345162518699465, -0.4098033797439253, -1.10)
+            p.resetBasePositionAndOrientation(
+                env._objectUids[env.target_idx],
+                pos, 
+                [0, 0, 0, 1] 
+            )
+            p.resetBaseVelocity(
+                env._objectUids[env.target_idx], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)
+            )
+            # for _ in range(1000):
+                # p.stepSimulation()
+
         # Update planning scene
         exists_ids, placed_poses = [], []
         for i, name in enumerate(object_lists[:-2]):  
@@ -192,6 +250,36 @@ if __name__ == "__main__":
             start_time = time.time()
 
             # TODO hardcode book position and transforms into and out of world / book frame
+            pos, orn = p.getBasePositionAndOrientation(env._objectUids[env.target_idx])
+            world2obj_T = np.eye(4)
+            world2obj_T[:3, 3] = pos
+            world2obj_T[:3, :3] = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
+            world2ctr_T = world2obj_T @ obj2ctr_T
+            draw_pose(world2ctr_T)
+
+            # initpos, initorn = p.getLinkState(env._panda.pandaUid, env._panda.pandaEndEffectorIndex)[:2]
+            # initpos = list(initpos)
+            # Correct for panda gripper rotation about z axis in bullet
+            rotgrasp2grasp_T = pt.transform_from(pr.matrix_from_axis_angle([0, 0, 1, -np.pi/2]), [0, 0, 0])
+
+            # Get end effector pose frame
+            pos, orn = p.getLinkState(env._panda.pandaUid, env._panda.pandaEndEffectorIndex)[:2]
+            world2ee_T = pt.transform_from_pq(np.concatenate([pos, pr.quaternion_wxyz_from_xyzw(orn)]))
+            draw_pose(world2ee_T)
+
+            # Correct for panda gripper rotation about z axis in bullet
+            obj2grasp_T = obj2rotgrasp_T @ rotgrasp2grasp_T
+            grasp2obj_T = np.linalg.inv(obj2grasp_T)
+
+            # Place single object, YCB for now but ultimately acronym mesh
+            pq = pt.pq_from_transform(world2ctr_T)
+            p.resetBasePositionAndOrientation(
+                env._objectUids[i],
+                pq[:3],
+                pr.quaternion_xyzw_from_wxyz(pq[3:])
+            )  # xyzw
+            p.resetBaseVelocity(env._objectUids[i], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+
             ee_pose = torch.tensor([0, 0, 0, 0, 0, 0, 1], dtype=torch.float32).unsqueeze(0)
             grasp_inf_method.inference(ee_pose)
             # TODO integrate into planner. 

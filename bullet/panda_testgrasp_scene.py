@@ -193,7 +193,7 @@ class PandaYCBEnv:
         obj_path = self._root_dir + "/data/objects/"
         if object_infos == []:
             objects = sorted([m for m in os.listdir(obj_path) if m.startswith("0")])
-            paths = ["data/objects/" + ycb_objects[i] for i in self._all_objs]
+            paths = ["data/objects/" + objects[i] for i in self._all_objs]
             scales = [1 for i in range(len(paths))]
         else:
             objects = []

@@ -1,4 +1,5 @@
 
+import numpy as np
 import pybullet as p
 # import pytransform3d.rotations as pr
 from collections import namedtuple

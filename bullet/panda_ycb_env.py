@@ -141,28 +141,44 @@ class PandaYCBEnv:
         p.disconnect()
         self.connected = False
 
-    def cache_objects(self):
+    def cache_objects(self, object_infos=[]):
         """
         Load all YCB objects and set up (only work for single apperance)
         """
         obj_path = self._root_dir + "/data/objects/"
-        ycb_objects = sorted([m for m in os.listdir(obj_path) if m.startswith("0")])
-        ycb_path = ["data/objects/" + ycb_objects[i] for i in self._all_objs]
+        if object_infos == []:
+            objects = sorted([m for m in os.listdir(obj_path) if m.startswith("0")])
+            paths = ["data/objects/" + objects[i] for i in self._all_objs]
+            scales = [1 for i in range(len(paths))]
+        else:
+            # Object mesh needs to be under data/objects 
+            objects = []
+            paths = []
+            scales = []
+            fnames = os.listdir(obj_path)
+            for name, scale, _ in object_infos:
+                obj = next(filter(lambda x: x in name, fnames), None)
+                if obj != None:
+                    objects.append(obj)
+                    paths.append('data/objects/' + obj)
+                    scales.append(scale)
+            self._all_objs = [0]
+            self._target_objs = [0]
 
-        pose = np.zeros([len(ycb_path), 3])
-        pose[:, 0] = -2.0 - np.linspace(0, 4, len(ycb_path))  # place in the back
+        pose = np.zeros([len(paths), 3])
+        pose[:, 0] = -2.0 - np.linspace(0, 4, len(paths))  # place in the back
         pos, orn = p.getBasePositionAndOrientation(self._panda.pandaUid)
-        objects_paths = [p_.strip() for p_ in ycb_path]
+        paths = [p_.strip() for p_ in paths]
         objectUids = []
-        self.obj_path = objects_paths  
+        self.obj_path = paths  
         self.cache_object_poses = []
         self.cache_object_extents = []
 
-        for i, name in enumerate(objects_paths):
+        for i, name in enumerate(paths):
             trans = pose[i] + np.array(pos)  # fixed position
             self.cache_object_poses.append((trans.copy(), np.array(orn).copy()))
             uid = self._add_mesh(
-                os.path.join(self._root_dir, name, "model_normalized.urdf"), trans, orn
+                os.path.join(self._root_dir, name, "model_normalized.urdf"), trans, orn, scale=scales[i]
             )  # xyzw
             objectUids.append(uid)
             self.cache_object_extents.append(
@@ -184,10 +200,14 @@ class PandaYCBEnv:
             )
 
         self._object_cached = True
-        self.cached_objects = [False] * len(self.obj_path)
+        # In this code we don't use cached_objects for the location in a scene,
+        # We use it as the reset position. So any objects added are always True cache
+        # self.cached_objects = [False] * len(self.obj_path)
+        self.cached_objects = [True] * len(self.obj_path)
+
         return objectUids
 
-    def reset(self, init_joints=None, scene_file=None):
+    def reset(self, init_joints=None, scene_file=None, object_infos=[]):
         """Environment reset"""
 
         # Set the camera settings.
@@ -238,9 +258,9 @@ class PandaYCBEnv:
         p.setTimeStep(self._timeStep)
 
         # Intialize robot and objects
-        p.setGravity(0, 0, -9.81)
+        # p.setGravity(0, 0, -9.81)
         p.stepSimulation()
-        if init_joints is None:
+        if init_joints == None:
             self._panda = Panda(stepsize=self._timeStep, base_shift=self._shift)
         else:
             for _ in range(1000):
@@ -267,11 +287,11 @@ class PandaYCBEnv:
         )
 
         if not self._object_cached:
-            self._objectUids = self.cache_objects()
+            self._objectUids = self.cache_objects(object_infos=object_infos)
 
-        self.obj_path += [plane_file, table_file]
+            self.obj_path += [plane_file, table_file]
 
-        self._objectUids += [self.plane_id, self.table_id]
+            self._objectUids += [self.plane_id, self.table_id]
         
         self._env_step = 0
         return self._get_observation(pc=True)
@@ -292,6 +312,19 @@ class PandaYCBEnv:
         self.reset_objects()
 
         if scene_file is None or not os.path.exists(scene_file):
+            # if 'acronym_book' in scene_file:
+            #     pos = (0.07345162518699465, -0.4098033797439253, 0.7014019481737773)
+            #     p.resetBasePositionAndOrientation(
+            #         self._objectUids[self.target_idx],
+            #         pos, 
+            #         [0, 0, 0, 1] 
+            #     )
+            #     # p.resetBaseVelocity(
+            #     #     self._objectUids[self.target_idx], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)
+            #     # )
+            #     # for _ in range(1000):
+            #         # p.stepSimulation()
+            # else:
             self._randomly_place_objects(self._get_random_object(self._numObjects))
         else:
             self.place_objects_from_scene(scene_file)
