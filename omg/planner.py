@@ -303,7 +303,8 @@ class Planner(object):
                 * np.linspace(0, 1, reach_tail_len, endpoint=False)
             )
         standoff_grasp_global = np.matmul(pose_grasp_global, pose_standoff)
-        parallel = self.cfg.ik_parallel
+        # parallel = self.cfg.ik_parallel
+        parallel = False
         seeds_ = seeds[:]
 
         if not parallel:
@@ -473,9 +474,14 @@ class Planner(object):
                 # import trimesh
                 # from acronym_tools import load_mesh, load_grasps, create_gripper_marker
                 # inf_viz = []
-                # for T in target_obj.grasps_poses:
+                # # for T in target_obj.grasps_poses:
+                #     # inf_viz.append(create_gripper_marker(color=[0, 0, 255]).apply_transform(T))
+                # for T in grasps: # visualize unrotated
                 #     inf_viz.append(create_gripper_marker(color=[0, 0, 255]).apply_transform(T))
-                # obj_mesh = trimesh.load('data/objects/006_mustard_bottle/model_normalized.obj')
+                # mesh_root = "/data/manifolds/acronym"
+                # grasp_root = "/data/manifolds/acronym/grasps"
+                # grasp_path = 'Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836.h5'
+                # obj_mesh, obj_scale = load_mesh(f"{grasp_root}/{grasp_path}", mesh_root_dir=mesh_root, ret_scale=True)
                 # m = obj_mesh.apply_transform(unpack_pose(target_obj.pose))
                 # trimesh.Scene([m] + inf_viz).show()
 

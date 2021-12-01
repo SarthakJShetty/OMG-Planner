@@ -126,18 +126,6 @@ if __name__ == "__main__":
         obj2ctr_T = np.eye(4)
         # obj2ctr_T[:3, 3] = -obj_mesh.centroid
         obj2ctr_T[:3, 3] = obj_mesh.centroid
-
-        # world2ctr_T = world2ee_T @ grasp2obj_T @ obj2ctr_T
-        # draw_pose(world2ctr_T)
-        
-        # pos = 
-        # scene.env.add_object(objname, trans, tf_quat(orn), compute_grasp=True)
-
-        # p.resetBasePositionAndOrientation(
-            # ,
-            # (0.022132369226459503, -0.6095468652023857, -0.98919737609899),
-            # (2.7206599969089353e-05, 0.0001293650993602709, -0.008241469707066306, 0.9999660297737816)
-        # )
     else:
         env.reset()
 
@@ -152,6 +140,7 @@ if __name__ == "__main__":
         name = name.split("/")[-1]
         trans, orn = env.cache_object_poses[i]
         scene.env.add_object(name, trans, tf_quat(orn), compute_grasp=True)
+    scene.reset()
 
     # Set up scene
     scene.env.add_plane(np.array([0.05, 0, -0.17]), np.array([1, 0, 0, 0]))
@@ -179,7 +168,7 @@ if __name__ == "__main__":
     # if args.debug_traj and not args.use_graspnet: # does not work with use_graspnet due to EGL render issues with mayavi downstream
     # TODO check if this works
     # if args.debug_traj: # does not work with use_graspnet due to EGL render issues with mayavi downstream
-    #     scene.setup_renderer()
+        # scene.setup_renderer()
     #     init_traj = scene.planner.traj.data
     #     init_traj_im = scene.fast_debug_vis(traj=init_traj, interact=0, write_video=False,
     #                                 nonstop=False, collision_pt=False, goal_set=False, traj_idx=0)
@@ -215,6 +204,7 @@ if __name__ == "__main__":
         if args.scenes == ['acronym_book']:
             # Hotfix: Manually set book object
             # TODO create scene file
+            # TODO make minimum reproducible
             # pos = (0.07345162518699465, -0.4098033797439253, -1.1014019481737773)
             pos = (0.07345162518699465, -0.4098033797439253, -1.10)
             p.resetBasePositionAndOrientation(
@@ -225,12 +215,23 @@ if __name__ == "__main__":
             p.resetBaseVelocity(
                 env._objectUids[env.target_idx], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)
             )
+            
+            bot_pos, bot_orn = p.getBasePositionAndOrientation(env._panda.pandaUid)
+            mat = np.asarray(p.getMatrixFromQuaternion(bot_orn)).reshape(3, 3)
+            T_world2bot = np.eye(4)
+            T_world2bot[:3, :3] = mat
+            T_world2bot[:3, 3] = bot_pos
+            for i, name in enumerate(object_lists):
+                if 'Book' in name: 
+                    book_worldpose = list(pos) + [1, 0, 0, 0]
+                    object_poses[i] = pack_pose(np.linalg.inv(T_world2bot) @ unpack_pose(book_worldpose))
+                    break
             # for _ in range(1000):
                 # p.stepSimulation()
 
         # Update planning scene
         exists_ids, placed_poses = [], []
-        for i, name in enumerate(object_lists[:-2]):  
+        for i, name in enumerate(object_lists[:-2]):   
             scene.env.update_pose(name, object_poses[i])
             obj_idx = env.obj_path[:-2].index("data/objects/" + name)
             exists_ids.append(obj_idx)
@@ -249,7 +250,6 @@ if __name__ == "__main__":
         elif args.grasp_inference == 'ours_outputpose':
             start_time = time.time()
 
-            # TODO hardcode book position and transforms into and out of world / book frame
             pos, orn = p.getBasePositionAndOrientation(env._objectUids[env.target_idx])
             world2obj_T = np.eye(4)
             world2obj_T[:3, 3] = pos
@@ -257,31 +257,38 @@ if __name__ == "__main__":
             world2ctr_T = world2obj_T @ obj2ctr_T
             draw_pose(world2ctr_T)
 
-            # initpos, initorn = p.getLinkState(env._panda.pandaUid, env._panda.pandaEndEffectorIndex)[:2]
-            # initpos = list(initpos)
-            # Correct for panda gripper rotation about z axis in bullet
-            rotgrasp2grasp_T = pt.transform_from(pr.matrix_from_axis_angle([0, 0, 1, -np.pi/2]), [0, 0, 0])
-
             # Get end effector pose frame
             pos, orn = p.getLinkState(env._panda.pandaUid, env._panda.pandaEndEffectorIndex)[:2]
             world2ee_T = pt.transform_from_pq(np.concatenate([pos, pr.quaternion_wxyz_from_xyzw(orn)]))
             draw_pose(world2ee_T)
 
-            # Correct for panda gripper rotation about z axis in bullet
-            obj2grasp_T = obj2rotgrasp_T @ rotgrasp2grasp_T
-            grasp2obj_T = np.linalg.inv(obj2grasp_T)
+            # Get end effector in centroid frame, do inference
+            ctr2ee_T = np.linalg.inv(world2ctr_T) @ world2ee_T
+            ee_pos = ctr2ee_T[:3, 3]
+            ee_orn = pr.quaternion_from_matrix(ctr2ee_T[:3, :3]) # wxyz
+            ee_pose = np.concatenate([ee_pos, pr.quaternion_xyzw_from_wxyz(ee_orn)])
+            ee_pose = torch.tensor(ee_pose, dtype=torch.float32).unsqueeze(0)
 
-            # Place single object, YCB for now but ultimately acronym mesh
-            pq = pt.pq_from_transform(world2ctr_T)
-            p.resetBasePositionAndOrientation(
-                env._objectUids[i],
-                pq[:3],
-                pr.quaternion_xyzw_from_wxyz(pq[3:])
-            )  # xyzw
-            p.resetBaseVelocity(env._objectUids[i], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+            fwd_time = time.time()
+            out_pose = grasp_inf_method.inference(ee_pose)
+            fwd_duration = time.time() - fwd_time
 
-            ee_pose = torch.tensor([0, 0, 0, 0, 0, 0, 1], dtype=torch.float32).unsqueeze(0)
-            grasp_inf_method.inference(ee_pose)
+            # Convert output into world frame
+            out_pos = out_pose[:3]
+            out_orn = out_pose[3:] # xyzw
+            ctr2out_T = pt.transform_from_pq(np.concatenate([out_pos, pr.quaternion_wxyz_from_xyzw(out_orn)]))
+            world2out_T = world2ctr_T @ ctr2out_T
+            draw_pose(world2out_T)
+
+            # TODO consolidate
+            pos, orn = p.getBasePositionAndOrientation(env._panda.pandaUid)
+            mat = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
+            T_world2bot = np.eye(4)
+            T_world2bot[:3, :3] = mat
+            T_world2bot[:3, 3] = pos
+            grasps = np.linalg.inv(T_world2bot) @ world2out_T[np.newaxis, :]
+            grasp_scores = np.array([1.0])
+
             # TODO integrate into planner. 
 
             inference_duration = time.time() - start_time
@@ -311,10 +318,6 @@ if __name__ == "__main__":
             grasps = np.linalg.inv(T_world2bot) @ Ts_world2grasp
             inference_duration = time.time() - start_time
 
-        # if grasps is not None and len(grasps) == 0:
-            # print("No valid predicted grasps")
-            # import IPython; IPython.embed()
-
         # Set grasp selection method for planner
         if args.grasp_selection == 'Fixed':
             scene.planner.cfg.ol_alg = 'Baseline'
@@ -331,8 +334,9 @@ if __name__ == "__main__":
 
         # # Visualize intermediate trajectories
         # if args.debug_traj:
-        #     # if args.use_graspnet:
-        #         # scene.setup_renderer()
+        #     # TODO make gif
+        # #     # if args.use_graspnet:
+        #     # scene.setup_renderer()
         #     for i, traj in enumerate(scene.planner.history_trajectories):
         #         traj_im = scene.fast_debug_vis(traj=traj, interact=0, write_video=False,
         #                                        nonstop=False, collision_pt=False, goal_set=True, traj_idx=i)
