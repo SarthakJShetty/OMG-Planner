@@ -25,7 +25,7 @@ class ContactGraspNetInference:
         return pred_grasps_cam[1], scores[1], contact_pts[1]
 
     def get_args(self):
-        # parser = argparse.ArgumentParser()
+        parser = argparse.ArgumentParser()
         parser.add_argument('--ckpt_dir', default=f'{os.path.dirname(contact_graspnet.__file__)}/../checkpoints/scene_test_2048_bs3_hor_sigma_001', help='Log dir [default: checkpoints/scene_test_2048_bs3_hor_sigma_001]')
         parser.add_argument('--np_path', default='test_data/7.npy', help='Input data: npz/npy file with keys either "depth" & camera matrix "K" or just point cloud "pc" in meters. Optionally, a 2D "segmap"')
         parser.add_argument('--png_path', default='', help='Input data: depth map png in meters')
@@ -39,5 +39,5 @@ class ContactGraspNetInference:
         parser.add_argument('--forward_passes', type=int, default=1,  help='Run multiple parallel forward passes to mesh_utils more potential contact points.')
         parser.add_argument('--segmap_id', type=int, default=0,  help='Only return grasps of the given object id')
         parser.add_argument('--arg_configs', nargs="*", type=str, default=[], help='overwrite config parameters')
-        args = parser.parse_args()
+        args = parser.parse_args([])
         return args

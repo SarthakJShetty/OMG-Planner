@@ -71,6 +71,7 @@ class ImplicitGraspInference:
         # TODO config output pose
         ckpt = torch.load('/checkpoint/thomasweng/grasp_manifolds/runs/outputs/nopc_book_logmap_10kfree/2021-11-23_232102_dsetacronym_Book_train0.9_val0.1_free10.0k_sym_distlogmap/default_default/0_0/checkpoints/last.ckpt')
         self.model = Decoder(**ckpt['hyper_parameters'])
+        self.model.cuda()
         self.model.load_state_dict(ckpt['state_dict'])
         self.model.eval()
 
@@ -80,7 +81,8 @@ class ImplicitGraspInference:
         """
         with torch.no_grad():
             outpose = self.model(x)
-        outpose = outpose.squeeze(0).cpu().numpy()
+        # outpose = outpose.squeeze(0).cpu().numpy()
+        outpose = outpose.squeeze(0)
         return outpose
 
 
@@ -255,30 +257,33 @@ if __name__ == "__main__":
             world2obj_T[:3, 3] = pos
             world2obj_T[:3, :3] = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
             world2ctr_T = world2obj_T @ obj2ctr_T
-            draw_pose(world2ctr_T)
+            # draw_pose(world2ctr_T)
 
             # Get end effector pose frame
             pos, orn = p.getLinkState(env._panda.pandaUid, env._panda.pandaEndEffectorIndex)[:2]
             world2ee_T = pt.transform_from_pq(np.concatenate([pos, pr.quaternion_wxyz_from_xyzw(orn)]))
-            draw_pose(world2ee_T)
+            # draw_pose(world2ee_T)
 
             # Get end effector in centroid frame, do inference
             ctr2ee_T = np.linalg.inv(world2ctr_T) @ world2ee_T
             ee_pos = ctr2ee_T[:3, 3]
             ee_orn = pr.quaternion_from_matrix(ctr2ee_T[:3, :3]) # wxyz
             ee_pose = np.concatenate([ee_pos, pr.quaternion_xyzw_from_wxyz(ee_orn)])
-            ee_pose = torch.tensor(ee_pose, dtype=torch.float32).unsqueeze(0)
+            # ee_pose = torch.tensor(ee_pose, dtype=torch.float32).unsqueeze(0)
+            ee_pose = torch.tensor(ee_pose, dtype=torch.float32, device='cuda').unsqueeze(0)
 
             fwd_time = time.time()
             out_pose = grasp_inf_method.inference(ee_pose)
             fwd_duration = time.time() - fwd_time
+            print(f"fwd pass: {fwd_duration}")
+            out_pose = out_pose.cpu().numpy()
 
             # Convert output into world frame
             out_pos = out_pose[:3]
             out_orn = out_pose[3:] # xyzw
             ctr2out_T = pt.transform_from_pq(np.concatenate([out_pos, pr.quaternion_wxyz_from_xyzw(out_orn)]))
             world2out_T = world2ctr_T @ ctr2out_T
-            draw_pose(world2out_T)
+            # draw_pose(world2out_T)
 
             # TODO consolidate
             pos, orn = p.getBasePositionAndOrientation(env._panda.pandaUid)
@@ -292,6 +297,7 @@ if __name__ == "__main__":
             # TODO integrate into planner. 
 
             inference_duration = time.time() - start_time
+            print(f"inf pass: {inference_duration}")
         elif args.grasp_inference == 'contact_graspnet':
             start_time = time.time()
             idx = env._objectUids[env.target_idx]
@@ -307,7 +313,7 @@ if __name__ == "__main__":
             T_camgl2cam[:3, :3] = pr.matrix_from_axis_angle([1, 0, 0, np.pi])
             T_camgl2cam[3, 3] = 1
             T_world2cam = T_world2camgl @ T_camgl2cam
-            draw_pose(T_world2cam)
+            # draw_pose(T_world2cam)
 
             Ts_world2grasp = T_world2cam @ Ts_cam2grasp
             pos, orn = p.getBasePositionAndOrientation(env._panda.pandaUid)
@@ -317,6 +323,36 @@ if __name__ == "__main__":
             T_world2bot[:3, 3] = pos
             grasps = np.linalg.inv(T_world2bot) @ Ts_world2grasp
             inference_duration = time.time() - start_time
+            print(f"inf duration: {inference_duration}")
+
+
+
+
+            start_time = time.time()
+            idx = env._objectUids[env.target_idx]
+            segmask = deepcopy(obs['mask'])
+            segmask[segmask != idx] = 0
+            segmask[segmask == idx] = 1
+            x = {'rgb': obs['rgb'], 'depth': obs['depth'], 'K': env._intr_matrix, 'seg': segmask}
+            Ts_cam2grasp, grasp_scores, contact_pts = grasp_inf_method.inference(x)
+
+            # Get transform from world to camera
+            T_world2camgl = np.linalg.inv(np.asarray(env._view_matrix).reshape((4, 4), order='F'))
+            T_camgl2cam = np.zeros((4, 4))
+            T_camgl2cam[:3, :3] = pr.matrix_from_axis_angle([1, 0, 0, np.pi])
+            T_camgl2cam[3, 3] = 1
+            T_world2cam = T_world2camgl @ T_camgl2cam
+            # draw_pose(T_world2cam)
+
+            Ts_world2grasp = T_world2cam @ Ts_cam2grasp
+            pos, orn = p.getBasePositionAndOrientation(env._panda.pandaUid)
+            mat = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
+            T_world2bot = np.eye(4)
+            T_world2bot[:3, :3] = mat
+            T_world2bot[:3, 3] = pos
+            grasps = np.linalg.inv(T_world2bot) @ Ts_world2grasp
+            inference_duration = time.time() - start_time
+            print(f"inf duration: {inference_duration}")
 
         # Set grasp selection method for planner
         if args.grasp_selection == 'Fixed':
