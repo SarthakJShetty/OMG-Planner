@@ -89,7 +89,7 @@ parser = argparse.ArgumentParser(
     "See README for used 3rd party packages to generate new mesh (importantly"
     "grasp is required to be used as target "
 )
-parser.add_argument("--mesh_root", help="root directory for meshes", default="/data/manifolds/acronym/meshes/Book/")
+parser.add_argument("--mesh_root", help="root directory for meshes", default="/data/manifolds/acronym/meshes/Book")
 parser.add_argument("--save_root", help="save directory for bullet outputs", default="/data/manifolds/acronym/bullet")
 parser.add_argument(
     "-f",
@@ -122,14 +122,14 @@ args = parser.parse_args()
 if not os.path.exists(args.save_root):
     os.mkdir(args.save_root)
 
-save_dir = f'{args.save_root}/Book_{args.file.replace(".obj", "")}'
+save_dir = f'{args.save_root}/{args.mesh_root.split('/')[-1]}_{args.file.replace(".obj", "")}'
 if not os.path.exists(save_dir):
     os.mkdir(save_dir)
 
 # save_dirs = [save_dir]
 
 # file = os.path.join(dir, file)
-os.system("cp {} {}".format(f'{args.mesh_root}{args.file}', f'{save_dir}/model_normalized.obj'))
+os.system("cp {} {}".format(f'{args.mesh_root}/{args.file}', f'{save_dir}/model_normalized.obj'))
 
 # TODO add back checks
 gen_xyz.generate_extents_points(random_paths=[save_dir])
