@@ -21,8 +21,8 @@ try:
     from . import blender_process
 except:
     pass
-import IPython
 import platform
+import shutil
 
 PYTHON2 = True
 if platform.python_version().startswith("3"):
@@ -91,12 +91,13 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument("--mesh_root", help="root directory for meshes", default="/data/manifolds/acronym/meshes/Book")
 parser.add_argument("--save_root", help="save directory for bullet outputs", default="/data/manifolds/acronym/bullet")
+parser.add_argument("-o", "--overwrite", help="overwrite save root", action="store_true")
 parser.add_argument(
     "-f",
     "--file",
     help="filename, needs to be in data/objects and contain model_normalized.obj",
     type=str,
-    default="003_cracker_box",
+    default="",
 )
 parser.add_argument("-a", "--all", help="generate all", action="store_true")
 parser.add_argument("-c", "--clean", help="clean all", action="store_true")
@@ -117,99 +118,30 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-# root_dir = "data/objects/"
-
 if not os.path.exists(args.save_root):
     os.mkdir(args.save_root)
 
-save_dir = f'{args.save_root}/{args.mesh_root.split('/')[-1]}_{args.file.replace(".obj", "")}'
-if not os.path.exists(save_dir):
-    os.mkdir(save_dir)
+# Iterate over all meshes in acronym/meshes and process them into /outdir/objname_meshid/
+for obj_name in os.listdir(args.mesh_root):
+    for mesh_file in os.listdir(f"{args.mesh_root}/{obj_name}"):
+        mesh_id = mesh_file.replace('.obj', '')
+        mesh_path = f"{args.save_root}/{obj_name}_{mesh_id}"
+        if os.path.exists(mesh_path):
+            if not args.overwrite:
+                continue
+            shutil.rmtree(mesh_path)
+        os.mkdir(mesh_path)
 
-# save_dirs = [save_dir]
+        os.system(f"cp {args.mesh_root}/{obj_name}/{mesh_file} {mesh_path}/model_normalized.obj")
 
-# file = os.path.join(dir, file)
-os.system("cp {} {}".format(f'{args.mesh_root}/{args.file}', f'{save_dir}/model_normalized.obj'))
+        gen_xyz.generate_extents_points(random_paths=[mesh_path])
 
-# TODO add back checks
-gen_xyz.generate_extents_points(random_paths=[save_dir])
+        ####### The object SDF is required for CHOMP Scene
+        gen_sdf.gen_sdf(random_paths=[mesh_path])
+        convert_sdf.convert_sdf([mesh_path])
 
-####### The object SDF is required for CHOMP Scene
-gen_sdf.gen_sdf(random_paths=[save_dir])
-convert_sdf.convert_sdf([save_dir])
-
-####### These two are mainly for rendering and simulation, needs update urdf if used in bullet
-####### This can be used for meshes with broken topology and add textures uvs
-# blender_process.process_obj([save_dir]) # Don't think we need blender for this, the YCB objects don't seem to be processed versions?
-gen_convex_shape.convexify_model_subprocess([save_dir])
-cp_urdf([save_dir])
-
-
-# I'm not sure if we need this or if we need a more sophisticated version since the acronym meshes are nested under category (i.e. 'Book')
-# if os.path.isdir(args.file):
-#     class_id = [
-#         os.path.join(args.file, obj)
-#         for obj in os.listdir(args.file)
-#         if os.path.isdir(os.path.join(args.file, obj))
-#     ]
-# else:
-#     class_id = [os.path.join(args.root_dir, args.file)]
-
-# Clean any previously generated outputs into the acronym mesh dir from this file
-# TODO We may want to change this to clean generated outputs into a save dir, not the acronym mesh dir. 
-# if args.clean:
-#     print("clear all")
-#     clean_file(class_id)
-
-# print("files we have:", class_id)
-# generate = args.all or args.rename
-# if generate:
-#     print("rename file <======================")
-    
-#     # Need to modify this to rename to a save dir? But what if all the class_ids are files and not dirs
-    # rename_file(class_id, args.save_root)
-# rename_file(save_dirs, args.save_root)
-
-# generate = args.all or args.xyz
-# if generate:
-#     # Add a flag for save directory that is different from this dir
-#     gen_xyz.generate_extents_points(random_paths=class_id)
-
-
-# ####### The object SDF is required for CHOMP Scene
-# generate = args.all or args.sdf
-# if generate:
-#     print("generate sdf (dont fail this one) <======================")
-#     gen_sdf.gen_sdf(random_paths=class_id)
-
-# generate = args.all or args.sdf
-# if generate:
-#     print("convert sdf <======================")
-#     convert_sdf.convert_sdf(class_id)
-
-
-# ####### These two are mainly for rendering and simulation, needs update urdf if used in bullet
-# ####### This can be used for meshes with broken topology and add textures uvs
-# try:
-#     generate = args.all or args.blender
-#     if generate:
-#         print("blender fix <======================")
-#         blender_process.process_obj(class_id)
-# except:
-#     print(
-#         "=================> need bpy or blender installed, (python 3.7 and see README)"
-#     )
-
-# ####### The convex shape can be used for bullet.
-# try:
-#     generate = args.all or args.convex
-#     if generate:
-#         print("convexify object <======================")
-#         gen_convex_shape.convexify_model_subprocess(class_id)
-# except:
-#     print("=================> need vhacd from bullet, see README")
-
-# generate = args.all or args.urdf
-# if generate:
-#     print("copy uniform urdf <======================")
-#     cp_urdf(class_id)
+        ####### These two are mainly for rendering and simulation, needs update urdf if used in bullet
+        ####### This can be used for meshes with broken topology and add textures uvs
+        # blender_process.process_obj([save_dir]) # Don't think we need blender for this, the YCB objects don't seem to be processed versions?
+        gen_convex_shape.convexify_model_subprocess([mesh_path])
+        cp_urdf([mesh_path])

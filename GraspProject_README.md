@@ -24,7 +24,8 @@ Setup
 * Download ACRONYM
 * Convert acronym meshes so they can be used in pybullet
     * Convert meshes using procedure described in OMG-planner repo https://github.com/liruiw/OMG-Planner#process-new-shapes 
-    * Run acronym version of process_shape file (why?)
+        * Run acronym version of process_shape file (all objects)
+           `python -m real_world.process_shape_acronym -a --save_root=/checkpoint/thomasweng/acronym/meshes_omg --mesh_root=/checkpoint/thomasweng/acronym/meshes`
 * Get grasps from acronym dataset that are valid in pybullet
     * Book object
         `python -m bullet.get_bullet_labels --mesh_root /checkpoint/thomasweng/acronym_Bookonly_bullet --grasp_root /checkpoint/thomasweng/acronym_Bookonly_bullet/grasps -o Book_5e90bf1bb411069c115aef9ae267d6b7 --out_dir /checkpoint/thomasweng/acronym_Bookonly_bullet/grasps/bullet --overwrite`
