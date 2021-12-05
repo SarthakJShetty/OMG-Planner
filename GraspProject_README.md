@@ -25,7 +25,12 @@ Setup
 * Convert acronym meshes so they can be used in pybullet
     * Convert meshes using procedure described in OMG-planner repo https://github.com/liruiw/OMG-Planner#process-new-shapes 
     * Run acronym version of process_shape file (why?)
-* Get grasps from acronym dataset that are valid in pybullet `python -m bullet.panda_testgrasp_scene -w -ow -o Book_5e90bf1bb411069c115aef9ae267d6b7 Mug_10f6e09036350e92b3f21f1137c3c347`
+* Get grasps from acronym dataset that are valid in pybullet
+    * Book object
+        `python -m bullet.get_bullet_labels --mesh_root /checkpoint/thomasweng/acronym_Bookonly_bullet --grasp_root /checkpoint/thomasweng/acronym_Bookonly_bullet/grasps -o Book_5e90bf1bb411069c115aef9ae267d6b7 --out_dir /checkpoint/thomasweng/acronym_Bookonly_bullet/grasps/bullet --overwrite`
+    * All objects
+        `python -m bullet.get_bullet_labels --mesh_root /checkpoint/thomasweng/acronym --grasp_root /checkpoint/thomasweng/acronym/grasps --out_dir /checkpoint/thomasweng/acronym/grasps_bullet_dbg --overwrite`
+
 * Generate grasp dataset with positive, negative, and free grasps
 * Generate partial point cloud views for each object
 
@@ -38,4 +43,4 @@ Evaluation
     * Contact-Graspnet: 
         `CUDA_VISIBLE_DEVICES=0 python -m bullet.panda_scene -gi contact_graspnet -gs Fixed`
     * Implicit Grasp Network:
-* Others (run level set visualization, etc.)  
+* Others (run level set visualization, etc.)

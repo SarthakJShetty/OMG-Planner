@@ -64,6 +64,7 @@ class PandaYCBEnv:
         gui_debug=True,
         cache_objects=False,
         isTest=False,
+        gravity=True
     ):
         """Initializes the pandaYCBObjectEnv.
 
@@ -93,6 +94,7 @@ class PandaYCBEnv:
         self._maxSteps = maxSteps
         self._actionRepeat = actionRepeat
         self._env_step = 0
+        self._gravity = gravity
 
         self._cam_dist = 1.3
         # self._cam_dist = 2
@@ -258,7 +260,8 @@ class PandaYCBEnv:
         p.setTimeStep(self._timeStep)
 
         # Intialize robot and objects
-        # p.setGravity(0, 0, -9.81)
+        if self._gravity:
+            p.setGravity(0, 0, -9.81)
         p.stepSimulation()
         if init_joints == None:
             self._panda = Panda(stepsize=self._timeStep, base_shift=self._shift)
@@ -604,15 +607,17 @@ class PandaYCBEnv:
         episode.
         """
         reward = 0
-        hand_pos, _ = p.getLinkState(
-            self._panda.pandaUid, self._panda.pandaEndEffectorIndex
-        )[:2]
-        pos, _ = p.getBasePositionAndOrientation(
-            self._objectUids[self.target_idx]
-        )  # target object
+        # hand_pos, _ = p.getLinkState(
+        #     self._panda.pandaUid, self._panda.pandaEndEffectorIndex
+        # )[:2]
+        # pos, _ = p.getBasePositionAndOrientation(
+        #     self._objectUids[self.target_idx]
+        # )  # target object
+        grip_pos = self._panda.getJointStates()[0][-2:]
         if (
-            np.linalg.norm(np.subtract(pos, hand_pos)) < 0.2
-            and pos[2] > -0.35 - self._shift[2]
+            # np.linalg.norm(np.subtract(pos, hand_pos)) < 0.2
+            # and pos[2] > -0.35 - self._shift[2]
+            min(grip_pos) > 0.001
         ):
             reward = 1
         return reward

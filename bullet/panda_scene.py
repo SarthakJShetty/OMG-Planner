@@ -102,7 +102,7 @@ if __name__ == "__main__":
 
     # Set up bullet env
     mkdir_if_missing(args.output_dir)
-    env = PandaYCBEnv(renders=args.render, egl_render=args.egl)
+    env = PandaYCBEnv(renders=args.render, egl_render=args.egl, gravity=False)
 
     if args.scenes == ['acronym_book']:
         grasp_root = "/data/manifolds/acronym/grasps"
@@ -299,35 +299,6 @@ if __name__ == "__main__":
             inference_duration = time.time() - start_time
             print(f"inf pass: {inference_duration}")
         elif args.grasp_inference == 'contact_graspnet':
-            start_time = time.time()
-            idx = env._objectUids[env.target_idx]
-            segmask = deepcopy(obs['mask'])
-            segmask[segmask != idx] = 0
-            segmask[segmask == idx] = 1
-            x = {'rgb': obs['rgb'], 'depth': obs['depth'], 'K': env._intr_matrix, 'seg': segmask}
-            Ts_cam2grasp, grasp_scores, contact_pts = grasp_inf_method.inference(x)
-
-            # Get transform from world to camera
-            T_world2camgl = np.linalg.inv(np.asarray(env._view_matrix).reshape((4, 4), order='F'))
-            T_camgl2cam = np.zeros((4, 4))
-            T_camgl2cam[:3, :3] = pr.matrix_from_axis_angle([1, 0, 0, np.pi])
-            T_camgl2cam[3, 3] = 1
-            T_world2cam = T_world2camgl @ T_camgl2cam
-            # draw_pose(T_world2cam)
-
-            Ts_world2grasp = T_world2cam @ Ts_cam2grasp
-            pos, orn = p.getBasePositionAndOrientation(env._panda.pandaUid)
-            mat = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
-            T_world2bot = np.eye(4)
-            T_world2bot[:3, :3] = mat
-            T_world2bot[:3, 3] = pos
-            grasps = np.linalg.inv(T_world2bot) @ Ts_world2grasp
-            inference_duration = time.time() - start_time
-            print(f"inf duration: {inference_duration}")
-
-
-
-
             start_time = time.time()
             idx = env._objectUids[env.target_idx]
             segmask = deepcopy(obs['mask'])
