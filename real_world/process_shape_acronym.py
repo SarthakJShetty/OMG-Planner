@@ -127,7 +127,8 @@ for obj_name in os.listdir(args.mesh_root):
         mesh_id = mesh_file.replace('.obj', '')
         mesh_path = f"{args.save_root}/{obj_name}_{mesh_id}"
         if os.path.exists(mesh_path):
-            if not args.overwrite:
+            if not args.overwrite and len(os.listdir(mesh_path)) != 9:
+                print(f"overwriting {mesh_path}")
                 continue
             shutil.rmtree(mesh_path)
         os.mkdir(mesh_path)
