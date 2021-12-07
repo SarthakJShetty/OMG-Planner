@@ -26,11 +26,15 @@ Setup
     * Convert meshes using procedure described in OMG-planner repo https://github.com/liruiw/OMG-Planner#process-new-shapes 
         * Run acronym version of process_shape file (all objects)
            `python -m real_world.process_shape_acronym -a --save_root=/checkpoint/thomasweng/acronym/meshes_omg --mesh_root=/checkpoint/thomasweng/acronym/meshes`
+        * Might need to set `ulimit -n 4096` if you get an OSError for too many open files. 
 * Get grasps from acronym dataset that are valid in pybullet
     * Book object
         `python -m bullet.get_bullet_labels --mesh_root /checkpoint/thomasweng/acronym_Bookonly_bullet --grasp_root /checkpoint/thomasweng/acronym_Bookonly_bullet/grasps -o Book_5e90bf1bb411069c115aef9ae267d6b7 --out_dir /checkpoint/thomasweng/acronym_Bookonly_bullet/grasps/bullet --overwrite`
     * All objects
         `python -m bullet.get_bullet_labels --mesh_root /checkpoint/thomasweng/acronym --grasp_root /checkpoint/thomasweng/acronym/grasps --out_dir /checkpoint/thomasweng/acronym/grasps_bullet_dbg --overwrite`
+* Retrain contact_graspnet
+    * Book only with bullet labels
+        `CUDA_VISIBLE_DEVICES=1 python contact_graspnet/train.py --ckpt_dir checkpoints/bookonly_bullet --data_path /checkpoint/thomasweng/acronym_Bookonly_bullet/ --arg_configs DATA.train_and_test:1`
 
 * Generate grasp dataset with positive, negative, and free grasps
 * Generate partial point cloud views for each object
@@ -42,6 +46,11 @@ Evaluation
 ---
 * Run grasping using 100-scene test set from OMG-Planner in PyBullet
     * Contact-Graspnet: 
-        `CUDA_VISIBLE_DEVICES=0 python -m bullet.panda_scene -gi contact_graspnet -gs Fixed`
+        `python -m bullet.panda_scene -gi contact_graspnet -gs Fixed`
     * Implicit Grasp Network:
+* Run book object only 
+    * Contact-Graspnet:
+        `python -m bullet.panda_scene -gi contact_graspnet -gs Fixed --scenes acronym_book --output_dir /checkpoint/thomasweng/grasp_manifolds/pybullet_eval/contact_graspnet/ -r`
+    * Implicit Grasp Network:
+        `python -m bullet.panda_scene -gi ours_outputpose -gs Fixed -w --scenes acronym_book --output_dir /checkpoint/thomasweng/grasp_manifolds/pybullet_eval/ours_outputpose/ -r`
 * Others (run level set visualization, etc.)

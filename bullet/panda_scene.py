@@ -91,21 +91,22 @@ if __name__ == "__main__":
     parser.add_argument("-gi", "--grasp_inference", help="which grasp inference method to use", required=True, choices=['acronym', 'contact_graspnet', 'ours_outputpose'])
     parser.add_argument("-gs", "--grasp_selection", help="Which grasp selection algorithm to use", required=True, choices=['Fixed', 'Proj', 'OMG'])
     parser.add_argument("-o", "--output_dir", help="Output directory", type=str, default="./output_videos") 
-    parser.add_argument("-d", "--debug_exp", help="Override default experiment name with dbg", action="store_true"),  
     parser.add_argument("-s", "--scenes", help="scene(s) to run. If set to '', loops through all 100 scenes", nargs='*', default=["scene_1"])
     parser.add_argument("-r", "--render", help="render", action="store_true")
     parser.add_argument("-v", "--visualize", help="visualize grasps", action="store_true")
     parser.add_argument("--egl", help="use egl render", action="store_true")
     parser.add_argument("-w", "--write_video", help="write video", action="store_true")
+    parser.add_argument("-a", "--acronym_dir", help="acronym dataset directory", type=str, default='')
+    parser.add_argument("-d", "--debug_exp", help="Override default experiment name with dbg", action="store_true"),  
     parser.add_argument("--debug_traj", help="Visualize intermediate trajectories", action="store_true")
     args = parser.parse_args()
 
     # Set up bullet env
     mkdir_if_missing(args.output_dir)
-    env = PandaYCBEnv(renders=args.render, egl_render=args.egl, gravity=False)
 
     if args.scenes == ['acronym_book']:
-        grasp_root = "/data/manifolds/acronym/grasps"
+        env = PandaYCBEnv(renders=args.render, egl_render=args.egl, gravity=False)
+        grasp_root = f"{args.acronym_dir}/grasps"
         # objects = ['Book_5e90bf1bb411069c115aef9ae267d6b7']
         objects = ['Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836']
         grasp_paths = [] # path to grasp file for a given object
@@ -117,9 +118,8 @@ if __name__ == "__main__":
 
         # Load acronym objects
         object_infos = []
-        mesh_root = "/data/manifolds/acronym"
         for grasp_path, objname in grasp_paths:
-            obj_mesh, obj_scale = load_mesh(f"{grasp_root}/{grasp_path}", mesh_root_dir=mesh_root, ret_scale=True)
+            obj_mesh, obj_scale = load_mesh(f"{grasp_root}/{grasp_path}", mesh_root_dir=args.acronym_dir, ret_scale=True)
             object_infos.append((objname, obj_scale, obj_mesh))
         env.reset(object_infos=object_infos)
 
@@ -129,6 +129,7 @@ if __name__ == "__main__":
         # obj2ctr_T[:3, 3] = -obj_mesh.centroid
         obj2ctr_T[:3, 3] = obj_mesh.centroid
     else:
+        env = PandaYCBEnv(renders=args.render, egl_render=args.egl, gravity=True)
         env.reset()
 
     # Set up planning scene
@@ -170,7 +171,8 @@ if __name__ == "__main__":
     # if args.debug_traj and not args.use_graspnet: # does not work with use_graspnet due to EGL render issues with mayavi downstream
     # TODO check if this works
     # if args.debug_traj: # does not work with use_graspnet due to EGL render issues with mayavi downstream
-        # scene.setup_renderer()
+    import IPython; IPython.embed()
+    scene.setup_renderer()
     #     init_traj = scene.planner.traj.data
     #     init_traj_im = scene.fast_debug_vis(traj=init_traj, interact=0, write_video=False,
     #                                 nonstop=False, collision_pt=False, goal_set=False, traj_idx=0)

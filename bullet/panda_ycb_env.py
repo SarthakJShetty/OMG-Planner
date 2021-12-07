@@ -24,10 +24,10 @@ import scipy.io as sio
 import pkgutil
 
 # For backprojection
-import cv2
-import matplotlib.pyplot as plt
+# import cv2
+# import matplotlib.pyplot as plt
 # import glm
-import open3d as o3d
+# import open3d as o3d
 
 # # For 6-DOF graspnet
 # import torch
