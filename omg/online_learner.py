@@ -94,7 +94,7 @@ class Learner(object):
         if (
             (self.alg_name == "Baseline"
             or (self.cfg.goal_idx == -2 and self.alg_name != "Proj"))
-            and len(self.env.objects[self.env.target_idx].reach_grasps) > 0  
+            and (len(self.env.objects) > 0 and len(self.env.objects[self.env.target_idx].reach_grasps) > 0)
         ):
             costs = self.cost_vector()
             sorted_idx = np.argsort(costs)

@@ -250,9 +250,7 @@ class PandaYCBEnv:
         self._intr_matrix = np.eye(3)
         self._intr_matrix[0, 2] = self._window_width / 2
         self._intr_matrix[1, 2] = self._window_height / 2
-        # self._intr_matrix[0, 0] = self._window_height / (2 * np.tan(np.deg2rad(self._fov) / 2)) * self._aspect
         self._intr_matrix[0, 0] = focal_length
-        # self._intr_matrix[1, 1] = self._window_height / (2 * np.tan(np.deg2rad(self._fov) / 2))
         self._intr_matrix[1, 1] = focal_length
 
         # Set table and plane

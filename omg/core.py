@@ -654,10 +654,11 @@ class PlanningScene(object):
         robot_poses = r.forward_kinematics_parallel(
             np.array(joints)[None, ...], base_link=config.cfg.base_link
         )[0]
-        cls_indexes = list(range(10))
+        # cls_indexes = list(range(10))
+        cls_indexes = self.env.indexes
         poses = [pack_pose(pose) for pose in robot_poses]
-        base_idx = 10
-        cls_indexes += [idx + base_idx for idx in self.env.indexes]
+        # base_idx = 10
+        # cls_indexes += [idx + base_idx for idx in self.env.indexes]
         object_pose = [obj.pose for obj in self.env.objects]
         if len(self.env.objects) > 0 and self.env.objects[self.env.target_idx].attached:
             object_pose[self.env.target_idx] = compose_pose(

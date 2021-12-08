@@ -12,7 +12,7 @@ import argparse
 # from . import _init_paths
 
 from omg.core import *
-from omg.util import *
+# from omg.util import *
 from omg.config import cfg
 import numpy as np
 import pybullet_data
@@ -33,21 +33,11 @@ import matplotlib.pyplot as plt
 sys.path.append(os.path.dirname(__file__))
 from panda_ycb_env import PandaYCBEnv
 
-# For 6-DOF graspnet
-# import torch
-# import grasp_estimator
-# from utils import utils as gutils
-# from utils import visualization_utils
-# import mayavi.mlab as mlab
-# mlab.options.offscreen = True
-
-from contact_graspnet_infer import *
 from utils import *
 
 from acronym_tools import load_mesh
 import pytransform3d.rotations as pr
 import pytransform3d.transformations as pt
-
 
 def bullet_execute_plan(env, plan, write_video, video_writer):
     print('executing...')
@@ -61,30 +51,6 @@ def bullet_execute_plan(env, plan, write_video, video_writer):
             video_writer.write(robs['rgb'][:, :, [2, 1, 0]].astype(np.uint8))
             video_writer.write(robs['rgb'][:, :, [2, 1, 0]].astype(np.uint8)) # to get enough frames to save
     return rew
-
-import torch
-import pytorch_lightning
-from manifold_grasping.networks import Decoder
-
-class ImplicitGraspInference:
-    def __init__(self):
-        # TODO config output pose
-        ckpt = torch.load('/checkpoint/thomasweng/grasp_manifolds/runs/outputs/nopc_book_logmap_10kfree/2021-11-23_232102_dsetacronym_Book_train0.9_val0.1_free10.0k_sym_distlogmap/default_default/0_0/checkpoints/last.ckpt')
-        self.model = Decoder(**ckpt['hyper_parameters'])
-        self.model.cuda()
-        self.model.load_state_dict(ckpt['state_dict'])
-        self.model.eval()
-
-    def inference(self, x):
-        """
-        x: xyz, xyzw
-        """
-        with torch.no_grad():
-            outpose = self.model(x)
-        # outpose = outpose.squeeze(0).cpu().numpy()
-        outpose = outpose.squeeze(0)
-        return outpose
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -104,6 +70,17 @@ if __name__ == "__main__":
     # Set up bullet env
     mkdir_if_missing(args.output_dir)
 
+    # Set up planning scene
+    cfg.traj_init = "grasp"
+    cfg.vis = False
+    cfg.timesteps = 50
+    cfg.get_global_param(cfg.timesteps)
+    cfg.scene_file = ''
+    cfg.vis = args.debug_traj
+    scene = PlanningScene(cfg)
+    scene.reset()
+
+    # Set up env
     if args.scenes == ['acronym_book']:
         env = PandaYCBEnv(renders=args.render, egl_render=args.egl, gravity=False)
         grasp_root = f"{args.acronym_dir}/grasps"
@@ -132,29 +109,14 @@ if __name__ == "__main__":
         env = PandaYCBEnv(renders=args.render, egl_render=args.egl, gravity=True)
         env.reset()
 
-    # Set up planning scene
-    cfg.traj_init = "grasp"
-    cfg.vis = False
-    cfg.timesteps = 50
-    cfg.get_global_param(cfg.timesteps)
-    cfg.scene_file = ''
-    scene = PlanningScene(cfg)
+    # Add objects to scene
     for i, name in enumerate(env.obj_path[:-2]):  # load all objects
         name = name.split("/")[-1]
         trans, orn = env.cache_object_poses[i]
         scene.env.add_object(name, trans, tf_quat(orn), compute_grasp=True)
-    scene.reset()
-
-    # Set up scene
     scene.env.add_plane(np.array([0.05, 0, -0.17]), np.array([1, 0, 0, 0]))
     scene.env.add_table(np.array([0.55, 0, -0.17]), np.array([0.707, 0.707, 0.0, 0]))
     scene.env.combine_sdfs()
-
-    cfg.scene_files = args.scenes
-    if cfg.scene_files == []:
-        scene_files = ['scene_{}'.format(i) for i in range(100)] # TODO change to listdir
-    else:
-        scene_files = cfg.scene_files
 
     # Set up save folders
     if args.debug_exp:
@@ -168,23 +130,19 @@ if __name__ == "__main__":
         yaml.dump(args, f)
     # TODO save cfg to exp folder
     
-    # if args.debug_traj and not args.use_graspnet: # does not work with use_graspnet due to EGL render issues with mayavi downstream
-    # TODO check if this works
-    # if args.debug_traj: # does not work with use_graspnet due to EGL render issues with mayavi downstream
-    import IPython; IPython.embed()
-    scene.setup_renderer()
-    #     init_traj = scene.planner.traj.data
-    #     init_traj_im = scene.fast_debug_vis(traj=init_traj, interact=0, write_video=False,
-    #                                 nonstop=False, collision_pt=False, goal_set=False, traj_idx=0)
-    #     init_traj_im = cv2.cvtColor(init_traj_im, cv2.COLOR_RGB2BGR)
-    #     cv2.imwrite(f"{args.output_dir}/{exp_name}/{scene_file}/traj_0.png", init_traj_im)
-
     # Set up grasp inference method
     if args.grasp_inference == 'contact_graspnet':
+        from contact_graspnet_infer import *
         grasp_inf_method = ContactGraspNetInference(args.visualize)
     if args.grasp_inference == 'ours_outputpose':
+        from implicit_infer import ImplicitGraspInference
         grasp_inf_method = ImplicitGraspInference()
 
+    cfg.scene_files = args.scenes
+    if cfg.scene_files == []:
+        scene_files = ['scene_{}'.format(i) for i in range(100)] # TODO change to listdir
+    else:
+        scene_files = cfg.scene_files
     cnts, rews = 0, 0
     for scene_file in scene_files:
         print(scene_file)
@@ -271,7 +229,6 @@ if __name__ == "__main__":
             ee_pos = ctr2ee_T[:3, 3]
             ee_orn = pr.quaternion_from_matrix(ctr2ee_T[:3, :3]) # wxyz
             ee_pose = np.concatenate([ee_pos, pr.quaternion_xyzw_from_wxyz(ee_orn)])
-            # ee_pose = torch.tensor(ee_pose, dtype=torch.float32).unsqueeze(0)
             ee_pose = torch.tensor(ee_pose, dtype=torch.float32, device='cuda').unsqueeze(0)
 
             fwd_time = time.time()
@@ -341,16 +298,27 @@ if __name__ == "__main__":
         info = scene.step()
         plan = scene.planner.history_trajectories[-1]
 
-        # # Visualize intermediate trajectories
-        # if args.debug_traj:
-        #     # TODO make gif
-        # #     # if args.use_graspnet:
-        #     # scene.setup_renderer()
-        #     for i, traj in enumerate(scene.planner.history_trajectories):
-        #         traj_im = scene.fast_debug_vis(traj=traj, interact=0, write_video=False,
-        #                                        nonstop=False, collision_pt=False, goal_set=True, traj_idx=i)
-        #         traj_im = cv2.cvtColor(traj_im, cv2.COLOR_RGB2BGR)
-        #         cv2.imwrite(f"{args.output_dir}/{exp_name}/{scene_file}/traj_{i+1}.png", traj_im)
+        # Visualize intermediate trajectories
+        if args.debug_traj:
+            from moviepy.editor import ImageClip, TextClip, CompositeVideoClip, concatenate_videoclips
+            fps = 30
+            comps = []
+            for i, traj in enumerate(scene.planner.history_trajectories):
+                traj_im = scene.fast_debug_vis(traj=traj, interact=0, write_video=False,
+                                               nonstop=False, collision_pt=False, goal_set=True, traj_idx=i)
+                traj_im = cv2.cvtColor(traj_im, cv2.COLOR_RGB2BGR)
+                clip = ImageClip(traj_im).set_duration(fps/60).set_fps(fps)
+                txt_clip = (TextClip(f"iter {i}", fontsize=70, color='black')
+                    .set_position('bottom')
+                    .set_duration(fps/60))
+                comp = CompositeVideoClip([clip, txt_clip]).set_fps(fps).set_duration(fps/60)
+                comps.append(comp)
+                cv2.imwrite(f"{args.output_dir}/{exp_name}/{scene_file}/traj_{i+1}.png", traj_im)
+            for _ in range(3): # add more frames to the end
+                comps.append(comp)
+            result = concatenate_videoclips(comps)
+            result.write_gif(f"{args.output_dir}/{exp_name}/{scene_file}/traj.gif")
+            result.close()
 
         if info != []:
             rew = bullet_execute_plan(env, plan, args.write_video, video_writer)
