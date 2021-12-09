@@ -154,25 +154,29 @@ class PandaYCBEnv:
             scales = [1 for i in range(len(paths))]
         else:
             # Object mesh needs to be under data/objects 
-            objects = []
+            # objects = []
             paths = []
             scales = []
             fnames = os.listdir(obj_path)
             for name, scale, _ in object_infos:
                 obj = next(filter(lambda x: x in name, fnames), None)
                 if obj != None:
-                    objects.append(obj)
+                    # objects.append(obj)
                     paths.append('data/objects/' + obj)
                     scales.append(scale)
-            self._all_objs = [0]
-            self._target_objs = [0]
+            # Does not work without adding more objects
+            objects = sorted([m for m in os.listdir(obj_path) if m.startswith("0")])
+            paths += ["data/objects/" + objects[i] for i in self._all_objs[:-1]]
+            scales += [1 for i in range(len(self._all_objs) - 1)]
+            # self._all_objs = [0]
+            # self._target_objs = [0]
 
         pose = np.zeros([len(paths), 3])
         pose[:, 0] = -2.0 - np.linspace(0, 4, len(paths))  # place in the back
         pos, orn = p.getBasePositionAndOrientation(self._panda.pandaUid)
         paths = [p_.strip() for p_ in paths]
         objectUids = []
-        self.obj_path = paths  
+        self.obj_path = paths 
         self.cache_object_poses = []
         self.cache_object_extents = []
 
@@ -313,20 +317,8 @@ class PandaYCBEnv:
         self.reset_objects()
 
         if scene_file is None or not os.path.exists(scene_file):
-            # if 'acronym_book' in scene_file:
-            #     pos = (0.07345162518699465, -0.4098033797439253, 0.7014019481737773)
-            #     p.resetBasePositionAndOrientation(
-            #         self._objectUids[self.target_idx],
-            #         pos, 
-            #         [0, 0, 0, 1] 
-            #     )
-            #     # p.resetBaseVelocity(
-            #     #     self._objectUids[self.target_idx], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)
-            #     # )
-            #     # for _ in range(1000):
-            #         # p.stepSimulation()
-            # else:
-            self._randomly_place_objects(self._get_random_object(self._numObjects))
+            if 'acronym_book' not in scene_file:
+                self._randomly_place_objects(self._get_random_object(self._numObjects))
         else:
             self.place_objects_from_scene(scene_file)
         self._env_step = 0

@@ -77,6 +77,8 @@ if __name__ == "__main__":
     cfg.get_global_param(cfg.timesteps)
     cfg.scene_file = ''
     cfg.vis = args.debug_traj
+    cfg.window_width = 240
+    cfg.window_height = 240
     scene = PlanningScene(cfg)
     scene.reset()
 
@@ -301,20 +303,47 @@ if __name__ == "__main__":
         # Visualize intermediate trajectories
         if args.debug_traj:
             from moviepy.editor import ImageClip, TextClip, CompositeVideoClip, concatenate_videoclips
-            fps = 30
+            # import multiprocessing
+            # def f(tup):
+            #     i, traj = tup
+            #     print(f"create trajectory image {i}")
+            #     traj_im = scene.fast_debug_vis(traj=traj, interact=0, write_video=False,
+            #                                    nonstop=False, collision_pt=False, goal_set=True, traj_idx=i)
+            #     traj_im = cv2.cvtColor(traj_im, cv2.COLOR_RGB2BGR)
+            #     return i, traj_im
+
+            # n = len(scene.planner.history_trajectories)
+            # traj_ims = [None for _ in range(n)]
+            # input_array = list(enumerate(scene.planner.history_trajectories))
+            # start = time.time()
+            # with multiprocessing.Pool(32) as pool:
+            #     for result in pool.map(f, input_array):
+            #         traj_ims[result[0]] = result[1]
+            # print(f"fast debug vis: {time.time() - start}")
+
+            fps = 24
+            duration = 0.2
             comps = []
             for i, traj in enumerate(scene.planner.history_trajectories):
+                start = time.time()
                 traj_im = scene.fast_debug_vis(traj=traj, interact=0, write_video=False,
-                                               nonstop=False, collision_pt=False, goal_set=True, traj_idx=i)
+                                               nonstop=False, collision_pt=False, goal_set=False, traj_idx=i)
+                print(f"fast debug vis: {time.time() - start}")
                 traj_im = cv2.cvtColor(traj_im, cv2.COLOR_RGB2BGR)
-                clip = ImageClip(traj_im).set_duration(fps/60).set_fps(fps)
-                txt_clip = (TextClip(f"iter {i}", fontsize=70, color='black')
+                start = time.time()
+                clip = ImageClip(traj_im).set_duration(duration).set_fps(fps)
+                txt_clip = (TextClip(f"iter {i}", fontsize=50, color='black')
                     .set_position('bottom')
-                    .set_duration(fps/60))
-                comp = CompositeVideoClip([clip, txt_clip]).set_fps(fps).set_duration(fps/60)
+                    .set_duration(duration))
+                comp = CompositeVideoClip([clip, txt_clip]).set_fps(fps).set_duration(duration)
+                print(f"video clip: {time.time() - start}")
                 comps.append(comp)
                 cv2.imwrite(f"{args.output_dir}/{exp_name}/{scene_file}/traj_{i+1}.png", traj_im)
             for _ in range(3): # add more frames to the end
+                txt_clip = (TextClip(f"iter {i}*", fontsize=50, color='black')
+                    .set_position('bottom')
+                    .set_duration(duration))
+                comp = CompositeVideoClip([clip, txt_clip]).set_fps(fps).set_duration(duration)
                 comps.append(comp)
             result = concatenate_videoclips(comps)
             result.write_gif(f"{args.output_dir}/{exp_name}/{scene_file}/traj.gif")
