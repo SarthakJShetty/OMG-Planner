@@ -78,6 +78,12 @@ def rad2deg(rad):
         return [x / np.pi * 180 for x in rad]
     return rad / np.pi * 180
 
+def kdl_to_mat(data):
+    mat = np.zeros((data.rows(), data.columns()))
+    for i in range(data.rows()):
+        for j in range(data.columns()):
+            mat[i,j] = data[i,j]
+    return mat
 
 class robot_kinematics(object):
     """
@@ -145,6 +151,12 @@ class robot_kinematics(object):
         self._ik_p_kdl = PyKDL.ChainIkSolverPos_NR_JL(
             self._arm_chain, mins_kdl, maxs_kdl, self._fk_p_kdl, self._ik_v_kdl
         )
+        self._jac_kdl = PyKDL.ChainJntToJacSolver(self._arm_chain)
+
+    def jacobian(self,joint_values=None):
+        jacobian = PyKDL.Jacobian(self._num_jnts)
+        self._jac_kdl.JntToJac(joint_list_to_kdl(joint_values), jacobian)
+        return kdl_to_mat(jacobian)
 
     def forward_kinematics_parallel(
         self,

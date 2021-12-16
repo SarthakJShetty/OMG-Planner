@@ -23,20 +23,6 @@ from panda_gripper import Panda
 import scipy.io as sio
 import pkgutil
 
-# For backprojection
-# import cv2
-# import matplotlib.pyplot as plt
-# import glm
-# import open3d as o3d
-
-# # For 6-DOF graspnet
-# import torch
-# import grasp_estimator
-# from utils import utils as gutils
-# from utils import visualization_utils
-# import mayavi.mlab as mlab
-# mlab.options.offscreen = True
-
 class PandaYCBEnv:
     """Class for panda environment with ycb objects.
     adapted from kukadiverse env in pybullet
@@ -64,7 +50,8 @@ class PandaYCBEnv:
         gui_debug=True,
         cache_objects=False,
         isTest=False,
-        gravity=True
+        gravity=True,
+        root_dir=None,
     ):
         """Initializes the pandaYCBObjectEnv.
 
@@ -101,7 +88,7 @@ class PandaYCBEnv:
         self._cam_yaw = 180
         self._cam_pitch = -41
         self._safeDistance = safeDistance
-        self._root_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        self._root_dir = root_dir if root_dir is not None else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
         self._p = p
         self._target_objs = target_obj
         self._all_objs = all_objs
@@ -147,9 +134,9 @@ class PandaYCBEnv:
         """
         Load all YCB objects and set up (only work for single apperance)
         """
-        obj_path = self._root_dir + "/data/objects/"
+        obj_path = self._root_dir 
         if object_infos == []:
-            objects = sorted([m for m in os.listdir(obj_path) if m.startswith("0")])
+            objects = sorted([m for m in os.listdir(obj_path+"/data/objects") if m.startswith("0")])
             paths = ["data/objects/" + objects[i] for i in self._all_objs]
             scales = [1 for i in range(len(paths))]
         else:
@@ -162,11 +149,12 @@ class PandaYCBEnv:
                 obj = next(filter(lambda x: x in name, fnames), None)
                 if obj != None:
                     # objects.append(obj)
-                    paths.append('data/objects/' + obj)
+                    paths.append(obj)
                     scales.append(scale)
             # Does not work without adding more objects
-            objects = sorted([m for m in os.listdir(obj_path) if m.startswith("0")])
-            paths += ["data/objects/" + objects[i] for i in self._all_objs[:-1]]
+            ycb_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "objects")
+            objects = sorted([m for m in os.listdir(ycb_dir) if m.startswith("0")])
+            paths += [objects[i] for i in self._all_objs[:-1]]
             scales += [1 for i in range(len(self._all_objs) - 1)]
             # self._all_objs = [0]
             # self._target_objs = [0]
@@ -183,13 +171,18 @@ class PandaYCBEnv:
         for i, name in enumerate(paths):
             trans = pose[i] + np.array(pos)  # fixed position
             self.cache_object_poses.append((trans.copy(), np.array(orn).copy()))
+            if object_infos!=[] and i > 0: # workaround to load ycb files
+                root_dir = ycb_dir
+            else:
+                root_dir = self._root_dir
+
             uid = self._add_mesh(
-                os.path.join(self._root_dir, name, "model_normalized.urdf"), trans, orn, scale=scales[i]
+                os.path.join(root_dir, name, "model_normalized.urdf"), trans, orn, scale=scales[i]
             )  # xyzw
             objectUids.append(uid)
             self.cache_object_extents.append(
                 np.loadtxt(
-                    os.path.join(self._root_dir, name, "model_normalized.extent.txt")
+                    os.path.join(root_dir, name, "model_normalized.extent.txt")
                 )
             )
             p.setCollisionFilterPair(
@@ -213,7 +206,7 @@ class PandaYCBEnv:
 
         return objectUids
 
-    def reset(self, init_joints=None, scene_file=None, object_infos=[]):
+    def reset(self, init_joints=None, scene_file=None, object_infos=[], no_table=False, reset_cache=False):
         """Environment reset"""
 
         # Set the camera settings.
@@ -224,7 +217,6 @@ class PandaYCBEnv:
         ]   
         distance = self._cam_dist   
         pitch = self._cam_pitch
-        # pitch = 0
         yaw = self._cam_yaw  
         roll = 0
         self._fov = 60.0 + self._cameraRandom * np.random.uniform(-2, 2)
@@ -232,10 +224,6 @@ class PandaYCBEnv:
         self._view_matrix = p.computeViewMatrixFromYawPitchRoll(
             look, distance, yaw, pitch, roll, 2
         )
-        # lookdir = np.array([0, -1, 0]).reshape(3, 1)
-        # updir = np.array([0, 0, 1]).reshape(3, 1)
-        # pos = np.array([-.35, .88, -.72]).reshape(3, 1)
-        # self._view_matrix = p.computeViewMatrix(pos, pos+lookdir, updir)
 
         self._aspect = float(self._window_width) / self._window_height
 
@@ -280,18 +268,19 @@ class PandaYCBEnv:
             os.path.join(plane_file, 'model_normalized.urdf'), 
             [0 - self._shift[0], 0 - self._shift[1], -0.82 - self._shift[2]]
         )
+        table_z = -5 if no_table else -0.82 - self._shift[2]
         self.table_id = p.loadURDF(
             os.path.join(table_file, 'model_normalized.urdf'),
             0.5 - self._shift[0],
             0.0 - self._shift[1],
-            -0.82 - self._shift[2],
+            table_z,
             0.707,
             0.0,
             0.0,
             0.707,
         )
 
-        if not self._object_cached:
+        if not self._object_cached or reset_cache:
             self._objectUids = self.cache_objects(object_infos=object_infos)
 
             self.obj_path += [plane_file, table_file]

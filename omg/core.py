@@ -36,6 +36,13 @@ class Trajectory(object):
 
         self.start = np.array([0.0, -1.285, 0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04])
         self.end = np.array([-0.99, -1.74, -0.61, -3.04, 0.88, 1.21, -1.12, 0.04, 0.04])
+        
+        # When trajectory end does not match goal
+        self.selected_goal = None
+        self.end_pose = None
+        self.goal_pose = None
+        self.goal_cost = None
+        self.goal_grad = None
 
         self.interpolate_waypoints(mode=config.cfg.traj_interpolate)
 
@@ -432,15 +439,13 @@ class PlanningScene(object):
     def update_planner(self):
         self.planner.update(self.env, self.traj)
 
-    def reset(self, lazy=False, grasps=None, grasp_scores=None):
+    def reset(self, lazy=False, grasps=None, grasp_scores=None, implicit_model=None, init_traj_end_at_start=False):
         """
         Reset the scene for next run
         """
-        self.planner = Planner(self.env, self.traj, lazy, grasps=grasps, grasp_scores=grasp_scores)
+        self.planner = Planner(self.env, self.traj, lazy, grasps=grasps, grasp_scores=grasp_scores, implicit_model=implicit_model, init_traj_end_at_start=init_traj_end_at_start)
         if config.cfg.vis and not hasattr(self, "renderer"):
             self.setup_renderer()
-
-
 
     def fast_debug_vis(
         self,
@@ -642,7 +647,12 @@ class PlanningScene(object):
         """
         Run an optimization step
         """
-        plan = self.planner.plan(self.traj)
+        # if self.planner.traj.selected_goal
+        if self.planner.traj.selected_goal is not None: # only works for fixed goal currently?
+            rk = self.env.robot.robot_kinematics
+            plan = self.planner.plan(self.traj, robot_fk=rk)
+        else:
+            plan = self.planner.plan(self.traj)
         return plan
 
     def prepare_render_list(self, joints):

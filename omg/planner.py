@@ -10,7 +10,23 @@ from .online_learner import Learner
 from . import config
 import time
 import multiprocessing
+from copy import deepcopy
 
+# # for traj init end at start
+# from manifold_grasping.control_pts import *
+
+# def get_control_pts_goal_cost(gt_T, query_T):
+#     gt_T = torch.tensor(gt_T[np.newaxis, ...], dtype=torch.float32)
+#     query_T = torch.tensor(query_T[np.newaxis, ...], dtype=torch.float32, requires_grad=True)
+
+#     # Control points losses
+#     gt_control_points = transform_control_points(gt_T, len(gt_T), mode='rt')
+#     pred_control_points = transform_control_points(query_T, len(query_T), mode='rt')
+#     cp_l1_loss = control_point_l1_loss(pred_control_points, gt_control_points)
+
+#     cp_l1_loss.backward()
+#     cp_l1_grad = query_T.grad.sum()
+#     return cp_l1_loss.item(), cp_l1_grad.item()
 
 def solve_one_pose_ik(input):
     """
@@ -90,7 +106,7 @@ class Planner(object):
     Tricks such as standoff pregrasp, flip grasps are for real world experiments. 
     """
 
-    def __init__(self, env, traj, lazy=False, grasps=None, grasp_scores=None):
+    def __init__(self, env, traj, lazy=False, grasps=None, grasp_scores=None, implicit_model=None, init_traj_end_at_start=False):
 
         self.cfg = config.cfg  # env.config
         self.env = env
@@ -100,6 +116,14 @@ class Planner(object):
         self.lazy = lazy
         self.grasps = grasps
         self.grasp_scores = grasp_scores
+        self.implicit_model = implicit_model
+        self.init_traj_end_at_start = init_traj_end_at_start
+
+        if self.implicit_model is not None:
+            # What is learner in this context?
+            # Is there a learner?
+            # What happens after init? planner.plan()
+            raise NotImplementedError
 
         if self.grasps is not None:
             self.load_grasp_set_gn(self.env, self.grasps, self.grasp_scores)
@@ -116,47 +140,56 @@ class Planner(object):
 
                 self.grasp_init(env)
                 self.learner = Learner(env, self.traj, self.cost)
-            else:
-                self.traj.interpolate_waypoints()
-
-        self.history_trajectories = []
-        self.info = []
-        self.ik_cache = []
-
-    # update planner according to the env
-    def update(self, env, traj):
-        self.cfg = config.cfg
-        self.env = env
-        self.traj = traj
-        # update cost
-        self.cost.env = env
-        self.cost.cfg = config.cfg
-        if len(self.env.objects) > 0:
-            self.cost.target_obj = self.env.objects[self.env.target_idx]
-
-        # update optimizer
-        self.optim = Optimizer(env, self.cost)
-
-        # load grasps if needed
-        if self.grasps is not None:
-            self.load_grasp_set_gn(env, self.grasps, self.grasp_scores)
-            self.setup_goal_set(env)
-            self.grasp_init(env)
-        else:
-            if self.cfg.goal_set_proj:
-                if self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
-                    self.load_grasp_set(env)
-                    self.setup_goal_set(env)
-                else:
-                    self.load_goal_from_scene()
-
+            elif self.init_traj_end_at_start: # fixed
+                self.load_grasp_set(env)
+                self.setup_goal_set(env)
                 self.grasp_init(env)
-                self.learner = Learner(env, traj, self.cost)
             else:
                 self.traj.interpolate_waypoints()
+
+        if self.init_traj_end_at_start:
+            self.traj.selected_goal = deepcopy(self.traj.end) # fixed
+            self.traj.end = self.traj.start
+            self.traj.interpolate_waypoints()
+
         self.history_trajectories = []
         self.info = []
         self.ik_cache = []
+
+    # # update planner according to the env
+    # def update(self, env, traj):
+    #     self.cfg = config.cfg
+    #     self.env = env
+    #     self.traj = traj
+    #     # update cost
+    #     self.cost.env = env
+    #     self.cost.cfg = config.cfg
+    #     if len(self.env.objects) > 0:
+    #         self.cost.target_obj = self.env.objects[self.env.target_idx]
+
+    #     # update optimizer
+    #     self.optim = Optimizer(env, self.cost)
+
+    #     # load grasps if needed
+    #     if self.grasps is not None:
+    #         self.load_grasp_set_gn(env, self.grasps, self.grasp_scores)
+    #         self.setup_goal_set(env)
+    #         self.grasp_init(env)
+    #     else:
+    #         if self.cfg.goal_set_proj:
+    #             if self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
+    #                 self.load_grasp_set(env)
+    #                 self.setup_goal_set(env)
+    #             else:
+    #                 self.load_goal_from_scene()
+
+    #             self.grasp_init(env)
+    #             self.learner = Learner(env, traj, self.cost)
+    #         else:
+    #             self.traj.interpolate_waypoints()
+    #     self.history_trajectories = []
+    #     self.info = []
+    #     self.ik_cache = []
 
     def load_goal_from_scene(self):
         """
@@ -573,7 +606,7 @@ class Planner(object):
                             self.traj.start,
                             np.array(target_obj.reach_grasps[:, -1]),
                             n,
-                            9,
+                            self.traj.dof, # 9,
                             "linear",
                         )
                         target_hand_pose = (
@@ -707,7 +740,7 @@ class Planner(object):
                     target_obj.grasp_vis_points = []
             target_obj.compute_grasp = False
 
-    def plan(self, traj):
+    def plan(self, traj, robot_fk=None):
         """
         Run chomp optimizer to do trajectory optmization
         """
@@ -720,14 +753,92 @@ class Planner(object):
         # and self.cfg.ol_alg != "Proj"
 
         if (not self.cfg.goal_set_proj) or len(self.traj.goal_set) > 0:
+
+            # If implicit model
+            # get last trajectory end point
+            # compute distance of closest positive grasp to last trajectory end point
+            # compute gradients and cost using distance
+            # Run optimizer
+
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
                 start_time = time.time()
+
+                if self.implicit_model is not None:
+                    distance, grad = self.implicit_model.predict(self.traj.end)
+                    raise NotImplementedError
+
                 if (
                     self.cfg.goal_set_proj
                     and alg_switch and t < self.cfg.optim_steps 
                 ):
                     self.learner.update_goal()
                     self.selected_goals.append(self.traj.goal_idx)
+
+                # compute and store in traj
+                # https://robotics.stackexchange.com/questions/6382/can-a-jacobian-be-used-to-determine-required-joint-angles-for-end-effector-veloc
+                if robot_fk is not None: 
+                    traj.end = traj.data[-1]
+                    end_joints = wrap_value(traj.end)
+                    goal_joints = wrap_value(traj.selected_goal)
+                    end_poses, goal_poses = robot_fk.forward_kinematics_parallel(
+                        joint_values=np.stack([end_joints, goal_joints]), base_link=config.cfg.base_link)
+                    traj.end_pose = end_poses[-3] # end effector 3rd from last
+                    traj.goal_pose = goal_poses[-3]
+                    
+                    T_world2ee = end_poses[-3]
+                    T_world2goal = goal_poses[-3]
+                    T_ee2goal = np.linalg.inv(T_world2ee) @ T_world2goal
+
+                    # l1 cost function
+                    # gt_T = torch.tensor(traj.goal_pose[np.newaxis, ...], dtype=torch.float32)
+                    # query_T = torch.tensor(traj.end_pose[np.newaxis, ...], dtype=torch.float32, requires_grad=True)
+                    # loss = torch.nn.functional.l1_loss(query_T, gt_T)
+                    # loss.backward()
+                    # dloss_dg = query_T.grad # g is query as SE(3)
+                    # goal_grad = query_T.grad.sum()
+                    # goal_cost = goal_cost.item()
+                    # goal_grad = goal_grad.item()
+
+                    # control points cost function
+                    # goal_cost, goal_grad = get_control_pts_goal_cost(traj.goal_pose, traj.end_pose)
+                    
+                    # logmap cost function
+                    import pytransform3d.rotations as pr
+                    import pytransform3d.transformations as pt
+                    Stheta = pt.exponential_coordinates_from_transform(T_ee2goal)
+                    Stheta = torch.tensor(Stheta, dtype=torch.float32, requires_grad=True)
+                    loss = torch.linalg.norm(Stheta)
+                    loss.backward()
+
+                    # Sthetadot is the end effector gradient / velocity
+                    # Need end effector velocity relative to the base frame of the arm, not tool frame.
+                    # I think the velocity is already defined in terms of the base frame since we are in world coordinates.  
+                    Sthetadot_body = -Stheta.grad.numpy()
+                    # Sthetadot_body = -Stheta.detach().numpy()
+
+                    # Match kdl conventions for screw axis, linear first then angular
+                    Sthetadot_body = Sthetadot_body[[3, 4, 5, 0, 1, 2]]
+
+                    adjoint = pt.adjoint_from_transform(T_world2ee)
+                    Sthetadot_spatial = adjoint @ Sthetadot_body
+
+                    # Compute jacobian inverse
+                    J = robot_fk.jacobian(traj.end[:7])
+                    J_pinv = J.T @ np.linalg.inv(J @ J.T)
+                    q_dot = J_pinv @ Sthetadot_spatial
+
+                    # import pybullet as p
+                    # pos, orn = p.getBasePositionAndOrientation(0)
+                    # mat = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
+                    # T_world2bot = np.eye(4)
+                    # T_world2bot[:3, :3] = mat
+                    # T_world2bot[:3, 3] = pos
+
+                    # T_world2bot @ T_world2ee
+
+                    traj.goal_cost = loss.item()
+                    traj.goal_grad = q_dot
+                    print(f"cost: {traj.goal_cost}, grad: {traj.goal_grad}")
 
                 self.info.append(self.optim.optimize(traj, force_update=True))  
                 self.history_trajectories.append(np.copy(traj.data))

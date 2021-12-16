@@ -468,13 +468,30 @@ class Cost(object):
         )
         weighted_smooth_grad = self.cfg.smoothness_weight * smoothness_grad
 
-        cost = weighted_obs + weighted_smooth
-        grad = weighted_obs_grad + weighted_smooth_grad
+        if traj.goal_cost is not None and traj.goal_grad is not None:
+            weighted_goal_cost = 1 * traj.goal_cost
+            weighted_goal_grad = np.zeros_like(weighted_obs_grad)
+            weighted_goal_grad[-1, :7] = 1 * traj.goal_grad
+            print(f"w_obs_cost: {weighted_obs}, w_smooth: {weighted_smooth}, w_goal: {weighted_goal_cost}")
+            cost = weighted_obs + weighted_smooth + weighted_goal_cost
+            grad = weighted_obs_grad + weighted_smooth_grad + weighted_goal_grad
 
-        cost_traj = (
-            self.cfg.obstacle_weight * obstacle_loss.sum(-1)
-            + self.cfg.smoothness_weight * smoothness_loss[:-1]
-        )
+            cost_traj = (
+                self.cfg.obstacle_weight * obstacle_loss.sum(-1)
+                + self.cfg.smoothness_weight * smoothness_loss[:-1]
+                + weighted_goal_grad.sum(-1) 
+            )
+        else:
+            weighted_goal_cost = 0
+            weighted_goal_grad = 0
+
+            cost = weighted_obs + weighted_smooth
+            grad = weighted_obs_grad + weighted_smooth_grad
+
+            cost_traj = (
+                self.cfg.obstacle_weight * obstacle_loss.sum(-1)
+                + self.cfg.smoothness_weight * smoothness_loss[:-1]
+            )
    
         goal_dist = (
             np.linalg.norm(traj.data[-1] - traj.goal_set[traj.goal_idx])
@@ -506,6 +523,8 @@ class Cost(object):
             "weighted_smooth": weighted_smooth,
             "weighted_smooth_grad": np.linalg.norm(weighted_smooth_grad),
             "weighted_obs_grad": np.linalg.norm(weighted_obs_grad),
+            "weighted_goal_grad": weighted_goal_grad,
+            "weighted_goal": weighted_goal_cost,
             "weighted_grasp_grad": 0,
             "weighted_grasp": 0,
             "gradient": grad,
