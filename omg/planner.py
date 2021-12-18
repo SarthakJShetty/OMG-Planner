@@ -12,6 +12,11 @@ import time
 import multiprocessing
 from copy import deepcopy
 
+import torch
+from liegroups.torch import SE3
+# import pytransform3d.rotations as pr
+# import pytransform3d.transformations as pt
+
 # # for traj init end at start
 # from manifold_grasping.control_pts import *
 
@@ -803,21 +808,30 @@ class Planner(object):
                     # goal_cost, goal_grad = get_control_pts_goal_cost(traj.goal_pose, traj.end_pose)
                     
                     # logmap cost function
-                    import pytransform3d.rotations as pr
-                    import pytransform3d.transformations as pt
-                    Stheta = pt.exponential_coordinates_from_transform(T_ee2goal)
-                    Stheta = torch.tensor(Stheta, dtype=torch.float32, requires_grad=True)
-                    loss = torch.linalg.norm(Stheta)
+                    # TODO use T_obj2ee instead of ee2goal and see if we can still minimize
+                    # TODO check reaching / standoff behavior
+                    T_eye = torch.eye(4)
+                    se3_eye = SE3.from_matrix(T_eye)
+                    Stheta_eye = se3_eye.log()
+                    Stheta_eye.requires_grad = True
+                    T_ee2goal_t = torch.tensor(T_ee2goal, dtype=torch.float32)
+                    se3_ee2goal = SE3.from_matrix(T_ee2goal_t)
+                    Stheta_ee2goal = se3_ee2goal.log()
+                    loss = torch.linalg.norm(Stheta_eye + Stheta_ee2goal)
                     loss.backward()
+                    Sthetadot_body = -Stheta_eye.grad.numpy()
 
+                    # Stheta = pt.exponential_coordinates_from_transform(T_ee2goal)
+                    # Stheta = torch.tensor(Stheta, dtype=torch.float32, requires_grad=True)
+                    # loss = torch.linalg.norm(Stheta)
+                    # loss.backward()
                     # Sthetadot is the end effector gradient / velocity
                     # Need end effector velocity relative to the base frame of the arm, not tool frame.
                     # I think the velocity is already defined in terms of the base frame since we are in world coordinates.  
-                    Sthetadot_body = -Stheta.grad.numpy()
-                    # Sthetadot_body = -Stheta.detach().numpy()
+                    # Sthetadot_body = -Stheta.grad.numpy()
 
-                    # Match kdl conventions for screw axis, linear first then angular
-                    Sthetadot_body = Sthetadot_body[[3, 4, 5, 0, 1, 2]]
+                    # # Match kdl conventions for screw axis, linear first then angular
+                    # Sthetadot_body = Sthetadot_body[[3, 4, 5, 0, 1, 2]]
 
                     adjoint = pt.adjoint_from_transform(T_world2ee)
                     Sthetadot_spatial = adjoint @ Sthetadot_body
