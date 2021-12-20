@@ -22,6 +22,8 @@ from panda_gripper import Panda
 # from transforms3d import quaternions
 import scipy.io as sio
 import pkgutil
+from utils import depth2pc
+from copy import deepcopy
 
 class PandaYCBEnv:
     """Class for panda environment with ycb objects.
@@ -288,7 +290,7 @@ class PandaYCBEnv:
             self._objectUids += [self.plane_id, self.table_id]
         
         self._env_step = 0
-        return self._get_observation(pc=True)
+        return self._get_observation()
 
     def reset_objects(self):
         for idx, obj in enumerate(self._objectUids): 
@@ -299,7 +301,8 @@ class PandaYCBEnv:
                     self.cache_object_poses[idx][0],
                     self.cache_object_poses[idx][1],
                 )
-            self.cached_objects[idx] = False
+            # self.cached_objects[idx] = False
+            self.cached_objects[idx] = True # consider objects always cached
 
     def cache_reset(self, init_joints=None, scene_file=None):
         self._panda.reset(init_joints)
@@ -312,7 +315,7 @@ class PandaYCBEnv:
             self.place_objects_from_scene(scene_file)
         self._env_step = 0
         self.obj_names, self.obj_poses = self.get_env_info()
-        return self._get_observation(pc=True)
+        # return self._get_observation()
 
     def place_objects_from_scene(self, scene_file):
         """place objects with pose based on the scene file"""
@@ -511,7 +514,7 @@ class PandaYCBEnv:
 
         return observation, reward, done, None
 
-    def _get_observation(self, pc=False):
+    def _get_observation(self, get_pc=False):
         _, _, rgba, zbuffer, mask = p.getCameraImage(
             width=self._window_width,
             height=self._window_height,
@@ -524,9 +527,6 @@ class PandaYCBEnv:
         # To get the metric depth, scale to [-1, 1] and then apply inverse of projection matrix.
         # https://stackoverflow.com/questions/51315865/glreadpixels-how-to-get-actual-depth-instead-of-normalized-values
         # https://github.com/bulletphysics/bullet3/blob/master/examples/pybullet/examples/getCameraImageTest.py 
-        # depth_norm = 2 * zbuffer - 1
-        # depth = self.far * self.near / (self.far - (self.far - self.near) * depth_norm)
-
         # https://stackoverflow.com/questions/51315865/glreadpixels-how-to-get-actual-depth-instead-of-normalized-values
         depth_zo = 2. * zbuffer - 1.
         depth = (self.far + self.near - depth_zo * (self.far - self.near))
@@ -535,9 +535,16 @@ class PandaYCBEnv:
 
         joint_pos, joint_vel = self._panda.getJointStates()
 
-        # pc = self.get_pc(rgba, depth_zo, mask) if pc else None # N x 7 (XYZ, RGB, Mask ID)
-        # pc = self.get_pc(rgba, zbuffer, mask) if pc else None # N x 7 (XYZ, RGB, Mask ID)
-        pc = None # N x 7 (XYZ, RGB, Mask ID)
+        depth_masked = deepcopy(depth)
+        depth_masked[~(mask == self._objectUids[self.target_idx])] = 0
+        pc = depth2pc(depth_masked, self._intr_matrix)[0] if get_pc else None # N x 7 (XYZ, RGB, Mask ID)
+
+        if False and pc is not None:
+            import matplotlib.pyplot as plt
+            fig = plt.figure()
+            ax = fig.add_subplot(projection='3d')
+            ax.scatter(pc[:, 0], pc[:, 1], pc[:, 2])
+            plt.show()
 
         obs = {
             'rgb': rgb, 
@@ -548,33 +555,6 @@ class PandaYCBEnv:
             'joint_vel': joint_vel
         }
         return obs
-        # obs = np.concatenate(
-        #     [rgba[..., :3], depth_normed[..., None], mask[..., None]], axis=-1
-        # )
-        # return (obs, joint_pos)
-
-    # def get_pc(self, rgba, depth, mask):
-    #     rgba = rgba / 255.0
-
-    #     imgH, imgW = depth.shape
-    #     projGLM = np.asarray(self._proj_matrix).reshape([4, 4], order='F')
-    #     view = np.asarray(self._view_matrix).reshape([4, 4], order='F')
-
-    #     all_pc = []
-    #     stepX = 1
-    #     stepY = 1
-    #     for h in range(0, imgH, stepY):
-    #         for w in range(0, imgW, stepX):
-    #             win = glm.vec3(w, imgH - h, depth[h][w])
-    #             # unProject takes normalized device coordinates [-1, 1] 
-    #             # https://github.com/Zuzu-Typ/PyGLM/blob/master/wiki/function-reference/stable_extensions/matrix_projection.md#unProject-function
-    #             position = glm.unProjectNO(win, glm.mat4(view), glm.mat4(projGLM), glm.vec4(0, 0, imgW, imgH))
-    #             all_pc.append([position[0], position[1], position[2], rgba[h, w, 0], rgba[h, w, 1], rgba[h, w, 2], mask[h, w]])
-
-    #     all_pc = np.array(all_pc)
-    #     return all_pc
-    #     # pos, orn = p.getBasePositionAndOrientation(self._panda.pandaUid)
-    #     # all_pc[:, :3] -= pos # Transform to robot frame 
 
     def _get_target_obj_pose(self):
         return p.getBasePositionAndOrientation(self._objectUids[self.target_idx])[0]
@@ -614,7 +594,7 @@ class PandaYCBEnv:
         except:
             print("load {} failed".format(obj_file))
 
-    def get_env_info(self ):
+    def get_env_info(self):
         pos, orn = p.getBasePositionAndOrientation(self._panda.pandaUid)
         base_pose = list(pos) + [orn[3], orn[0], orn[1], orn[2]]
         poses = []
@@ -628,31 +608,3 @@ class PandaYCBEnv:
                 obj_dir.append(self.obj_path[idx])  # .encode("utf-8")
 
         return obj_dir, poses
-
-
-        # all_pcd = o3d.geometry.PointCloud()
-        # all_pcd.points = o3d.utility.Vector3dVector(all_pc[:, :3])
-        # all_pcd.colors = o3d.utility.Vector3dVector(all_pc[:, 3:6])
-
-        # object_pc = []
-        # target_id = env._objectUids[env.target_idx]
-        # obj_idxs = np.where(mask == target_id)
-        # for i in range(len(obj_idxs[0])):
-        #     h = obj_idxs[0][i]
-        #     w = obj_idxs[1][i]
-        #     win = glm.vec3(w, imgH - h, depth[h][w])
-        #     position = glm.unProject(win, glm.mat4(view), glm.mat4(projGLM), glm.vec4(0, 0, imgW, imgH))
-        #     pc.append([position[0], position[1], position[2], rgba[h, w, 0], rgba[h, w, 1], rgba[h, w, 2]])
-        # object_pc = np.array(object_pc)
-        # object_pc[:, :3] -= pos
-        
-        # pcd = o3d.geometry.PointCloud()
-        # pcd.points = o3d.utility.Vector3dVector(object_pc[:, :3])
-        # pcd.colors = o3d.utility.Vector3dVector(object_pc[:, 3:])
-
-        # print("Visualizing point cloud...")
-        # o3d.visualization.draw_geometries([pcd])
-        # downpcd = pcd.voxel_down_sample(voxel_size=0.05)
-        # o3d.visualization.draw_geometries([downpcd])
-        # print("Point cloud visualized.")
-        # return pcd, all_pcd

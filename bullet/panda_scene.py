@@ -95,12 +95,13 @@ if __name__ == "__main__":
     cfg.window_width = 240
     cfg.window_height = 240
     cfg.goal_set_proj = False if args.init_traj_end_at_start else True
+    cfg.use_standoff = False if args.init_traj_end_at_start else True
     scene = PlanningScene(cfg)
     scene.reset()
 
     # Set up env
     if args.scenes == ['acronym_book']:
-        env = PandaYCBEnv(renders=args.render, egl_render=args.egl, gravity=False)
+        env = PandaYCBEnv(renders=args.render, egl_render=args.egl, gravity=False, root_dir=f'{args.acronym_dir}/meshes_omg')
         grasp_root = f"{args.acronym_dir}/grasps"
         objects = ['Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836']
         grasp_paths = [] # path to grasp file for a given object
@@ -188,7 +189,7 @@ if __name__ == "__main__":
                 (640, 480),
             )
         full_name = os.path.join('data/scenes', scene_file + ".mat")
-        obs = env.cache_reset(scene_file=full_name)
+        env.cache_reset(scene_file=full_name)
         obj_names, obj_poses = env.get_env_info()
         object_lists = [name.split("/")[-1].strip() for name in obj_names]
         object_poses = [pack_pose(pose) for pose in obj_poses]
@@ -223,7 +224,10 @@ if __name__ == "__main__":
         exists_ids, placed_poses = [], []
         for i, name in enumerate(object_lists[:-2]):   
             scene.env.update_pose(name, object_poses[i])
-            obj_idx = env.obj_path[:-2].index("data/objects/" + name)
+            if args.scenes == ['acronym_book']:
+                obj_idx = env.obj_path[:-2].index(name)
+            else:
+                obj_idx = env.obj_path[:-2].index("data/objects/" + name)
             exists_ids.append(obj_idx)
             trans, orn = env.cache_object_poses[obj_idx]
             placed_poses.append(np.hstack([trans, ros_quat(orn)]))
@@ -234,6 +238,7 @@ if __name__ == "__main__":
             if obj_idx not in exists_ids
         ]
 
+        obs = env._get_observation(get_pc=True if args.init_traj_end_at_start else False) # TODO change flag to whether pc obs is used
         if args.grasp_inference == 'acronym':
             grasps, grasp_scores = None, None
             inference_duration = 0
@@ -243,54 +248,6 @@ if __name__ == "__main__":
         elif args.grasp_inference == 'ours_outputpose':
             grasps, grasp_scores = None, None
             inference_duration = 0 # TODO
-
-            # start_time = time.time()
-
-            # pos, orn = p.getBasePositionAndOrientation(env._objectUids[env.target_idx])
-            # world2obj_T = np.eye(4)
-            # world2obj_T[:3, 3] = pos
-            # world2obj_T[:3, :3] = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
-            # world2ctr_T = world2obj_T @ obj2ctr_T
-            # # draw_pose(world2ctr_T)
-
-            # # Get end effector pose frame
-            # pos, orn = p.getLinkState(env._panda.pandaUid, env._panda.pandaEndEffectorIndex)[:2]
-            # world2ee_T = pt.transform_from_pq(np.concatenate([pos, pr.quaternion_wxyz_from_xyzw(orn)]))
-            # # draw_pose(world2ee_T)
-
-            # # Get end effector in centroid frame, do inference
-            # ctr2ee_T = np.linalg.inv(world2ctr_T) @ world2ee_T
-            # ee_pos = ctr2ee_T[:3, 3]
-            # ee_orn = pr.quaternion_from_matrix(ctr2ee_T[:3, :3]) # wxyz
-            # ee_pose = np.concatenate([ee_pos, pr.quaternion_xyzw_from_wxyz(ee_orn)])
-            # ee_pose = torch.tensor(ee_pose, dtype=torch.float32, device='cuda').unsqueeze(0)
-
-            # fwd_time = time.time()
-            # out_pose = grasp_inf_method.inference(ee_pose)
-            # fwd_duration = time.time() - fwd_time
-            # print(f"fwd pass: {fwd_duration}")
-            # out_pose = out_pose.cpu().numpy()
-
-            # # Convert output into world frame
-            # out_pos = out_pose[:3]
-            # out_orn = out_pose[3:] # xyzw
-            # ctr2out_T = pt.transform_from_pq(np.concatenate([out_pos, pr.quaternion_wxyz_from_xyzw(out_orn)]))
-            # world2out_T = world2ctr_T @ ctr2out_T
-            # # draw_pose(world2out_T)
-
-            # # TODO consolidate
-            # pos, orn = p.getBasePositionAndOrientation(env._panda.pandaUid)
-            # mat = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
-            # T_world2bot = np.eye(4)
-            # T_world2bot[:3, :3] = mat
-            # T_world2bot[:3, 3] = pos
-            # grasps = np.linalg.inv(T_world2bot) @ world2out_T[np.newaxis, :]
-            # grasp_scores = np.array([1.0])
-
-            # # TODO integrate into planner. 
-
-            # inference_duration = time.time() - start_time
-            # print(f"inf pass: {inference_duration}")
         elif args.grasp_inference == 'contact_graspnet':
             start_time = time.time()
             idx = env._objectUids[env.target_idx]
@@ -301,19 +258,11 @@ if __name__ == "__main__":
             Ts_cam2grasp, grasp_scores, contact_pts = grasp_inf_method.inference(x)
 
             # Get transform from world to camera
-            T_world2camgl = np.linalg.inv(np.asarray(env._view_matrix).reshape((4, 4), order='F'))
-            T_camgl2cam = np.zeros((4, 4))
-            T_camgl2cam[:3, :3] = pr.matrix_from_axis_angle([1, 0, 0, np.pi])
-            T_camgl2cam[3, 3] = 1
-            T_world2cam = T_world2camgl @ T_camgl2cam
+            T_world2cam = get_world2cam_transform(env)
             # draw_pose(T_world2cam)
 
             Ts_world2grasp = T_world2cam @ Ts_cam2grasp
-            pos, orn = p.getBasePositionAndOrientation(env._panda.pandaUid)
-            mat = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
-            T_world2bot = np.eye(4)
-            T_world2bot[:3, :3] = mat
-            T_world2bot[:3, 3] = pos
+            T_world2bot = get_world2bot_transform(env)
             grasps = np.linalg.inv(T_world2bot) @ Ts_world2grasp
             inference_duration = time.time() - start_time
             print(f"inf duration: {inference_duration}")
@@ -328,8 +277,23 @@ if __name__ == "__main__":
             scene.planner.cfg.ol_alg = 'MD'
         scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
         scene.reset(lazy=True, grasps=grasps, grasp_scores=grasp_scores, implicit_model=grasp_inf_method, init_traj_end_at_start=args.init_traj_end_at_start)
+        
+        if args.init_traj_end_at_start and args.scenes == ["acronym_book"]:
+            pc_cam = obs['points']
+            T_world2cam = get_world2cam_transform(env)
+            T_cam2obj = np.linalg.inv(T_world2cam) @ unpack_pose(book_worldpose)
+            pc_obj = (T_cam2obj @ pc_cam.T).T 
+            T_world2obj = T_world2cam @ T_cam2obj
+        else:
+            pc_cam = obs['points']
+            T_world2cam = get_world2cam_transform(env)
+            T_world2bot = get_world2bot_transform(env)
+            T_cam2obj = np.linalg.inv(T_world2cam) @ T_world2bot @ unpack_pose(object_poses[env.target_idx])
+            pc_obj = (T_cam2obj @ pc_cam.T).T
+            T_bot2obj = np.linalg.inv(T_world2bot) @ T_world2cam @ T_cam2obj
+            # draw_pose(T_bot2obj)
 
-        info = scene.step()
+        info = scene.step(pc=pc_obj, T_bot2obj=T_bot2obj)
         plan = scene.planner.history_trajectories[-1]
 
         # Visualize intermediate trajectories
@@ -382,3 +346,51 @@ if __name__ == "__main__":
         if args.write_video and info != []:
             os.system(f'ffmpeg -y -i {args.output_dir}/{exp_name}/{scene_file}/bullet.avi -vf "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 {args.output_dir}/{exp_name}/{scene_file}/scene.gif')
     env.disconnect()
+
+            # start_time = time.time()
+
+            # pos, orn = p.getBasePositionAndOrientation(env._objectUids[env.target_idx])
+            # world2obj_T = np.eye(4)
+            # world2obj_T[:3, 3] = pos
+            # world2obj_T[:3, :3] = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
+            # world2ctr_T = world2obj_T @ obj2ctr_T
+            # # draw_pose(world2ctr_T)
+
+            # # Get end effector pose frame
+            # pos, orn = p.getLinkState(env._panda.pandaUid, env._panda.pandaEndEffectorIndex)[:2]
+            # world2ee_T = pt.transform_from_pq(np.concatenate([pos, pr.quaternion_wxyz_from_xyzw(orn)]))
+            # # draw_pose(world2ee_T)
+
+            # # Get end effector in centroid frame, do inference
+            # ctr2ee_T = np.linalg.inv(world2ctr_T) @ world2ee_T
+            # ee_pos = ctr2ee_T[:3, 3]
+            # ee_orn = pr.quaternion_from_matrix(ctr2ee_T[:3, :3]) # wxyz
+            # ee_pose = np.concatenate([ee_pos, pr.quaternion_xyzw_from_wxyz(ee_orn)])
+            # ee_pose = torch.tensor(ee_pose, dtype=torch.float32, device='cuda').unsqueeze(0)
+
+            # fwd_time = time.time()
+            # out_pose = grasp_inf_method.inference(ee_pose)
+            # fwd_duration = time.time() - fwd_time
+            # print(f"fwd pass: {fwd_duration}")
+            # out_pose = out_pose.cpu().numpy()
+
+            # # Convert output into world frame
+            # out_pos = out_pose[:3]
+            # out_orn = out_pose[3:] # xyzw
+            # ctr2out_T = pt.transform_from_pq(np.concatenate([out_pos, pr.quaternion_wxyz_from_xyzw(out_orn)]))
+            # world2out_T = world2ctr_T @ ctr2out_T
+            # # draw_pose(world2out_T)
+
+            # # TODO consolidate
+            # pos, orn = p.getBasePositionAndOrientation(env._panda.pandaUid)
+            # mat = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
+            # T_world2bot = np.eye(4)
+            # T_world2bot[:3, :3] = mat
+            # T_world2bot[:3, 3] = pos
+            # grasps = np.linalg.inv(T_world2bot) @ world2out_T[np.newaxis, :]
+            # grasp_scores = np.array([1.0])
+
+            # # TODO integrate into planner. 
+
+            # inference_duration = time.time() - start_time
+            # print(f"inf pass: {inference_duration}")

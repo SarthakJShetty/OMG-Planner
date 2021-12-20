@@ -15,7 +15,9 @@ from copy import deepcopy
 import torch
 from liegroups.torch import SE3
 # import pytransform3d.rotations as pr
-# import pytransform3d.transformations as pt
+import pytransform3d.transformations as pt
+
+from bullet.utils import draw_pose
 
 # # for traj init end at start
 # from manifold_grasping.control_pts import *
@@ -745,7 +747,7 @@ class Planner(object):
                     target_obj.grasp_vis_points = []
             target_obj.compute_grasp = False
 
-    def plan(self, traj, robot_fk=None):
+    def plan(self, traj, robot_fk=None, pc=None, T_bot2obj=None):
         """
         Run chomp optimizer to do trajectory optmization
         """
@@ -789,10 +791,34 @@ class Planner(object):
                         joint_values=np.stack([end_joints, goal_joints]), base_link=config.cfg.base_link)
                     traj.end_pose = end_poses[-3] # end effector 3rd from last
                     traj.goal_pose = goal_poses[-3]
+                    T_bot2ee = end_poses[-3]
+
+                    # Get Stheta of identity transform matrix to be backpropped
+                    T_eye = torch.eye(4)
+                    se3_eye = SE3.from_matrix(T_eye)
+                    Stheta_eye = se3_eye.log()
+                    Stheta_eye.requires_grad = True
+
+                    # Get Stheta ee2obj
+                    T_bot2goal = goal_poses[-3]
+                    T_ee2obj = np.linalg.inv(T_bot2ee) @ T_world2goal
+                    # T_ee2obj = np.linalg.inv(T_bot2ee) @ T_bot2obj
+                    T_ee2obj_t = torch.tensor(T_ee2obj, dtype=torch.float32)
+                    se3_ee2obj = SE3.from_matrix(T_ee2obj_t)
+                    Stheta_ee2obj = se3_ee2obj.log()
+                    Stheta_ee2obj += Stheta_eye
                     
-                    T_world2ee = end_poses[-3]
-                    T_world2goal = goal_poses[-3]
-                    T_ee2goal = np.linalg.inv(T_world2ee) @ T_world2goal
+                    # Use ee2obj to transform pc
+                    if pc is not None:
+                        pc_obj = pc
+                        se3_ee2obj = SE3.exp(Stheta_ee2obj)
+                        pc_obj = torch.tensor(pc_obj, dtype=torch.float32)
+                        pc_ee = (se3_ee2obj.as_matrix() @ pc_obj.T).T
+
+                    # Compute loss and get grad from backprop
+                    loss = torch.linalg.norm(Stheta_ee2obj)
+                    loss.backward()
+                    Sthetadot_body = -Stheta_eye.grad.numpy()
 
                     # l1 cost function
                     # gt_T = torch.tensor(traj.goal_pose[np.newaxis, ...], dtype=torch.float32)
@@ -806,34 +832,8 @@ class Planner(object):
 
                     # control points cost function
                     # goal_cost, goal_grad = get_control_pts_goal_cost(traj.goal_pose, traj.end_pose)
-                    
-                    # logmap cost function
-                    # TODO use T_obj2ee instead of ee2goal and see if we can still minimize
-                    # TODO check reaching / standoff behavior
-                    T_eye = torch.eye(4)
-                    se3_eye = SE3.from_matrix(T_eye)
-                    Stheta_eye = se3_eye.log()
-                    Stheta_eye.requires_grad = True
-                    T_ee2goal_t = torch.tensor(T_ee2goal, dtype=torch.float32)
-                    se3_ee2goal = SE3.from_matrix(T_ee2goal_t)
-                    Stheta_ee2goal = se3_ee2goal.log()
-                    loss = torch.linalg.norm(Stheta_eye + Stheta_ee2goal)
-                    loss.backward()
-                    Sthetadot_body = -Stheta_eye.grad.numpy()
 
-                    # Stheta = pt.exponential_coordinates_from_transform(T_ee2goal)
-                    # Stheta = torch.tensor(Stheta, dtype=torch.float32, requires_grad=True)
-                    # loss = torch.linalg.norm(Stheta)
-                    # loss.backward()
-                    # Sthetadot is the end effector gradient / velocity
-                    # Need end effector velocity relative to the base frame of the arm, not tool frame.
-                    # I think the velocity is already defined in terms of the base frame since we are in world coordinates.  
-                    # Sthetadot_body = -Stheta.grad.numpy()
-
-                    # # Match kdl conventions for screw axis, linear first then angular
-                    # Sthetadot_body = Sthetadot_body[[3, 4, 5, 0, 1, 2]]
-
-                    adjoint = pt.adjoint_from_transform(T_world2ee)
+                    adjoint = pt.adjoint_from_transform(T_bot2ee)
                     Sthetadot_spatial = adjoint @ Sthetadot_body
 
                     # Compute jacobian inverse
@@ -847,7 +847,6 @@ class Planner(object):
                     # T_world2bot = np.eye(4)
                     # T_world2bot[:3, :3] = mat
                     # T_world2bot[:3, 3] = pos
-
                     # T_world2bot @ T_world2ee
 
                     traj.goal_cost = loss.item()

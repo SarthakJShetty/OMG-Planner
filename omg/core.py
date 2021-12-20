@@ -643,14 +643,13 @@ class PlanningScene(object):
         resize = [self.env.objects[-1].resize]
         self.renderer.load_objects(models, scale=resize, add=True)
 
-    def step(self):
+    def step(self, pc=None, T_bot2obj=None):
         """
         Run an optimization step
         """
-        # if self.planner.traj.selected_goal
         if self.planner.traj.selected_goal is not None: # only works for fixed goal currently?
             rk = self.env.robot.robot_kinematics
-            plan = self.planner.plan(self.traj, robot_fk=rk)
+            plan = self.planner.plan(self.traj, robot_fk=rk, pc=pc, T_bot2obj=T_bot2obj)
         else:
             plan = self.planner.plan(self.traj)
         return plan
