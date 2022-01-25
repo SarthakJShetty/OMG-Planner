@@ -8,7 +8,7 @@ import argparse
 
 from omg.core import *
 from omg.util import *
-from omg.config import cfg
+# from omg.config import cfg
 import pybullet as p
 import numpy as np
 import pybullet_data
@@ -24,6 +24,18 @@ import scipy.io as sio
 import pkgutil
 from utils import depth2pc
 from copy import deepcopy
+from omg.config import cfg
+
+
+# class Cameras:
+#     def __init__(self, p):
+#         self.cam_look = [-0.35, -0.58, -0.88],
+#         self._cam_dist = 0.9
+#         self._cam_yaw = 180
+#         self._cam_pitch = -41
+#         self._window_width = 640
+#         self._window_height = 480
+
 
 class PandaYCBEnv:
     """Class for panda environment with ycb objects.
@@ -51,9 +63,9 @@ class PandaYCBEnv:
         egl_render=False,
         gui_debug=True,
         cache_objects=False,
-        isTest=False,
         gravity=True,
         root_dir=None,
+        cam_look=[-0.35, -0.58, -0.88],
     ):
         """Initializes the pandaYCBObjectEnv.
 
@@ -72,10 +84,7 @@ class PandaYCBEnv:
             width: The observation image width.
             height: The observation image height.
             numObjects: The number of objects in the bin.
-            isTest: If true, use the test set of objects. If false, use the train
-                set of objects.
         """
-
         self._timeStep = 1.0 / 1000.0
         self._urdfRoot = urdfRoot
         self._observation = []
@@ -85,8 +94,8 @@ class PandaYCBEnv:
         self._env_step = 0
         self._gravity = gravity
 
-        self._cam_dist = 1.3
-        # self._cam_dist = 2
+        self._cam_look = cam_look
+        self._cam_dist = 0.9 # 1.3
         self._cam_yaw = 180
         self._cam_pitch = -41
         self._safeDistance = safeDistance
@@ -100,7 +109,6 @@ class PandaYCBEnv:
         self._cameraRandom = cameraRandom
         self._numObjects = numObjects
         self._shift = [0.5, 0.5, 0.5]  # to work without axis in DIRECT mode
-        # self._shift = [0., 0., 0.]  # to work without axis in DIRECT mode
         self._egl_render = egl_render
 
         self._cache_objects = cache_objects
@@ -211,12 +219,7 @@ class PandaYCBEnv:
     def reset(self, init_joints=None, scene_file=None, object_infos=[], no_table=False, reset_cache=False):
         """Environment reset"""
 
-        # Set the camera settings.
-        look = [
-            -0.35,
-            -0.58,
-            -0.88,
-        ]   
+        look = self._cam_look
         distance = self._cam_dist   
         pitch = self._cam_pitch
         yaw = self._cam_yaw  
@@ -304,18 +307,45 @@ class PandaYCBEnv:
             # self.cached_objects[idx] = False
             self.cached_objects[idx] = True # consider objects always cached
 
+    def _place_acronym_book():
+        # Debug: Manually set book object
+        pos = (0.07345162518699465, -0.4098033797439253, -1.10)
+        p.resetBasePositionAndOrientation(
+            self._objectUids[self.target_idx],
+            pos, 
+            [0, 0, 0, 1] 
+        )
+        p.resetBaseVelocity(
+            self._objectUids[self.target_idx], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)
+        )
+        
+        bot_pos, bot_orn = p.getBasePositionAndOrientation(self._panda.pandaUid)
+        mat = np.asarray(p.getMatrixFromQuaternion(bot_orn)).reshape(3, 3)
+        T_world2bot = np.eye(4)
+        T_world2bot[:3, :3] = mat
+        T_world2bot[:3, 3] = bot_pos
+
+        self.cached_objects[self.target_idx] = True
+
+        # for i, name in enumerate(objectV_lists):
+        #     if 'Book' in name: 
+        #         book_worldpose = list(pos) + [1, 0, 0, 0]
+        #         object_poses[i] = pack_pose(np.linalg.inv(T_world2bot) @ unpack_pose(book_worldpose))
+        #         break
+
     def cache_reset(self, init_joints=None, scene_file=None):
         self._panda.reset(init_joints)
         self.reset_objects()
 
-        if scene_file is None or not os.path.exists(scene_file):
-            if 'acronym_book' not in scene_file:
-                self._randomly_place_objects(self._get_random_object(self._numObjects))
+        if scene_file == 'acronym_book':
+            self._place_acronym_book()
+        elif scene_file is None or not os.path.exists(scene_file):
+            # if 'acronym_book' not in scene_file:
+            self._randomly_place_objects(self._get_random_object(self._numObjects))
         else:
             self.place_objects_from_scene(scene_file)
         self._env_step = 0
         self.obj_names, self.obj_poses = self.get_env_info()
-        # return self._get_observation()
 
     def place_objects_from_scene(self, scene_file):
         """place objects with pose based on the scene file"""

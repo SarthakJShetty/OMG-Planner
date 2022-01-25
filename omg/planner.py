@@ -14,7 +14,7 @@ from copy import deepcopy
 
 import torch
 from liegroups.torch import SE3
-# import pytransform3d.rotations as pr
+import pytransform3d.rotations as pr
 import pytransform3d.transformations as pt
 
 from bullet.utils import draw_pose
@@ -113,51 +113,66 @@ class Planner(object):
     Tricks such as standoff pregrasp, flip grasps are for real world experiments. 
     """
 
-    def __init__(self, env, traj, lazy=False, grasps=None, grasp_scores=None, implicit_model=None, init_traj_end_at_start=False):
-
-        self.cfg = config.cfg  # env.config
+    # def __init__(self, env, traj, lazy=False, grasps=None, grasp_scores=None, implicit_model=None, init_traj_end_at_start=False):
+    def __init__(self, env, traj, lazy=False):
+        self.cfg = env.cfg  
         self.env = env
         self.traj = traj
         self.cost = Cost(env)
         self.optim = Optimizer(env, self.cost)
         self.lazy = lazy
-        self.grasps = grasps
-        self.grasp_scores = grasp_scores
-        self.implicit_model = implicit_model
-        self.init_traj_end_at_start = init_traj_end_at_start
+        # self.grasps = grasps
+        # self.grasp_scores = grasp_scores
+        # self.implicit_model = implicit_model
+        # self.init_traj_end_at_start = init_traj_end_at_start
 
-        if self.implicit_model is not None:
+        # if self.implicit_model is not None:
             # What is learner in this context?
             # Is there a learner?
             # What happens after init? planner.plan()
+            # raise NotImplementedError
+
+        # if self.grasps is not None:
+        #     self.load_grasp_set_gn(self.env, self.grasps, self.grasp_scores)
+        #     self.setup_goal_set(self.env)
+        #     self.grasp_init(self.env)
+        #     self.learner = Learner(self.env, self.traj, self.cost) # 
+        # else:
+
+        # Planning methods 
+        if 'knowngrasps' in self.cfg.method:
+            self.load_grasp_set(env)
+            self.setup_goal_set(env)
+            self.grasp_init(env)
+            self.learner = Learner(env, self.traj, self.cost)
+            # if 'Fixed' in self.cfg.method and self.cfg.ol_alg == 'Baseline' and not self.cfg.goal_set_proj:
+            # elif 'Proj' in self.cfg.method and self.cfg.ol_alg == 'Proj' and self.cfg.goal_set_proj:
+            #     raise NotImplementedError
+            # elif 'OMG' in self.cfg.method and self.cfg.ol_alg == 'OMG' and self.cfg.goal_set_proj:
+            #     raise NotImplementedError
+        else:
             raise NotImplementedError
 
-        if self.grasps is not None:
-            self.load_grasp_set_gn(self.env, self.grasps, self.grasp_scores)
-            self.setup_goal_set(self.env)
-            self.grasp_init(self.env)
-            self.learner = Learner(self.env, self.traj, self.cost) # 
-        else:
-            if self.cfg.goal_set_proj:
-                if self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
-                    self.load_grasp_set(env)
-                    self.setup_goal_set(env)
-                else:
-                    self.load_goal_from_scene()
+        # if self.cfg.goal_set_proj:
+        #     if self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
+        #         self.load_grasp_set(env)
+        #         self.setup_goal_set(env)
+        #     else:
+        #         self.load_goal_from_scene()
 
-                self.grasp_init(env)
-                self.learner = Learner(env, self.traj, self.cost)
-            elif self.init_traj_end_at_start: # fixed
-                self.load_grasp_set(env)
-                self.setup_goal_set(env)
-                self.grasp_init(env)
-            else:
-                self.traj.interpolate_waypoints()
+        #     self.grasp_init(env)
+        #     self.learner = Learner(env, self.traj, self.cost)
+        # # elif self.init_traj_end_at_start: # can be fixed or proj
+        # #     self.load_grasp_set(env)
+        # #     self.setup_goal_set(env)
+        # #     self.grasp_init(env)
+        # else:
+        #     self.traj.interpolate_waypoints()
 
-        if self.init_traj_end_at_start:
-            self.traj.selected_goal = deepcopy(self.traj.end) # fixed
-            self.traj.end = self.traj.start
-            self.traj.interpolate_waypoints()
+        # if self.init_traj_end_at_start:
+        #     self.traj.selected_goal = deepcopy(self.traj.end) # Init to some grasp
+        #     self.traj.end = self.traj.start
+        #     self.traj.interpolate_waypoints()
 
         self.history_trajectories = []
         self.info = []
@@ -198,24 +213,24 @@ class Planner(object):
     #     self.info = []
     #     self.ik_cache = []
 
-    def load_goal_from_scene(self):
-        """
-        Load saved goals from scene file, standoff is not used.
-        """
-        file = self.cfg.scene_path + self.cfg.scene_file + ".mat"
-        if self.cfg.traj_init == "scene":
-            self.cfg.use_standoff = False
-        if os.path.exists(file):
-            scene = sio.loadmat(file)
-            self.cfg.goal_set_max_num = len(scene["goals"])
-            indexes = range(self.cfg.goal_set_max_num)
-            self.traj.goal_set = scene["goals"][indexes]
-            if "grasp_qualities" in scene:
-                self.traj.goal_quality = scene["grasp_qualities"][0][indexes]
-                self.traj.goal_potentials = scene["grasp_potentials"][0][indexes]
-            else:
-                self.traj.goal_quality = np.zeros(self.cfg.goal_set_max_num)
-                self.traj.goal_potentials = np.zeros(self.cfg.goal_set_max_num)
+    # def load_goal_from_scene(self):
+    #     """
+    #     Load saved goals from scene file, standoff is not used.
+    #     """
+    #     file = self.cfg.scene_path + self.cfg.scene_file + ".mat"
+    #     if self.cfg.traj_init == "scene":
+    #         self.cfg.use_standoff = False
+    #     if os.path.exists(file):
+    #         scene = sio.loadmat(file)
+    #         self.cfg.goal_set_max_num = len(scene["goals"])
+    #         indexes = range(self.cfg.goal_set_max_num)
+    #         self.traj.goal_set = scene["goals"][indexes]
+    #         if "grasp_qualities" in scene:
+    #             self.traj.goal_quality = scene["grasp_qualities"][0][indexes]
+    #             self.traj.goal_potentials = scene["grasp_potentials"][0][indexes]
+    #         else:
+    #             self.traj.goal_quality = np.zeros(self.cfg.goal_set_max_num)
+    #             self.traj.goal_potentials = np.zeros(self.cfg.goal_set_max_num)
 
     def grasp_init(self, env=None):
         """
@@ -229,7 +244,8 @@ class Planner(object):
                 if bool(env.objects[env.target_idx].grasps_scores): # not None or empty
                     self.traj.goal_quality = env.objects[env.target_idx].grasps_scores
                     grasp_ees = env.objects[env.target_idx].grasp_ees
-                if self.cfg.goal_set_proj and self.cfg.use_standoff:
+                # if self.cfg.goal_set_proj and self.cfg.use_standoff:
+                if self.cfg.use_standoff:
                     if len(env.objects[env.target_idx].reach_grasps) > 0:
                         self.traj.goal_set = env.objects[env.target_idx].reach_grasps[:, -1]
 
@@ -464,7 +480,6 @@ class Planner(object):
                         new_grasp_set = np.concatenate(
                                     [[pack_pose(pose_grasp_global[i+idx]) for _ in range(len(s[1]))]
                                         for idx, s in enumerate(res) if len(s[1]) > 0], axis=0)
-                        # import IPython; IPython.embed()
                         grasp_set = np.concatenate(
                             (
                                 grasp_set,
@@ -495,41 +510,42 @@ class Planner(object):
         )
         return list(reach_goal_set), list(standoff_goal_set), list(score_set), list(grasp_set)
 
-    def load_grasp_set_gn(self, env, grasps, grasp_scores):
-        """
-        Load grasps from graspnet as grasp set.
-        """
-        for i, target_obj in enumerate(env.objects):
-            if target_obj.compute_grasp and (i == env.target_idx or not self.lazy):
-                if not target_obj.attached:
-                    offset_pose = np.array(rotZ(np.pi / 2))  # and
-                    target_obj.grasps_poses = np.matmul(grasps, offset_pose)  # flip x, y # TODO not sure if this is still necessary
-                    target_obj.grasps_scores = grasp_scores
-                    z_upsample = False
-                else:
-                    print("Target attached")
-                    import IPython; IPython.embed()
-                    z_upsample=True
+    # def load_grasp_set_gn(self, env, grasps, grasp_scores):
+    #     """
+    #     Load grasps from graspnet as grasp set.
+    #     """
+    #     for i, target_obj in enumerate(env.objects):
+    #         if target_obj.compute_grasp and (i == env.target_idx or not self.lazy):
+    #             if not target_obj.attached:
+    #                 # offset_pose = np.array(rotZ(np.pi / 2))  # and
+    #                 # target_obj.grasps_poses = np.matmul(grasps, offset_pose)  # flip x, y # TODO not sure if this is still necessary
+    #                 target_obj.grasps_poses = grasps # acronym_book
+    #                 target_obj.grasps_scores = grasp_scores
+    #                 z_upsample = False
+    #             else:
+    #                 print("Target attached")
+    #                 import IPython; IPython.embed()
+    #                 z_upsample=True
 
-                # import trimesh
-                # from acronym_tools import load_mesh, load_grasps, create_gripper_marker
-                # inf_viz = []
-                # # for T in target_obj.grasps_poses:
-                #     # inf_viz.append(create_gripper_marker(color=[0, 0, 255]).apply_transform(T))
-                # for T in grasps: # visualize unrotated
-                #     inf_viz.append(create_gripper_marker(color=[0, 0, 255]).apply_transform(T))
-                # mesh_root = "/data/manifolds/acronym"
-                # grasp_root = "/data/manifolds/acronym/grasps"
-                # grasp_path = 'Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836.h5'
-                # obj_mesh, obj_scale = load_mesh(f"{grasp_root}/{grasp_path}", mesh_root_dir=mesh_root, ret_scale=True)
-                # m = obj_mesh.apply_transform(unpack_pose(target_obj.pose))
-                # trimesh.Scene([m] + inf_viz).show()
+    #             # import trimesh
+    #             # from acronym_tools import load_mesh, load_grasps, create_gripper_marker
+    #             # inf_viz = []
+    #             # # for T in target_obj.grasps_poses:
+    #             #     # inf_viz.append(create_gripper_marker(color=[0, 0, 255]).apply_transform(T))
+    #             # for T in grasps: # visualize unrotated
+    #             #     inf_viz.append(create_gripper_marker(color=[0, 0, 255]).apply_transform(T))
+    #             # mesh_root = "/data/manifolds/acronym"
+    #             # grasp_root = "/data/manifolds/acronym/grasps"
+    #             # grasp_path = 'Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836.h5'
+    #             # obj_mesh, obj_scale = load_mesh(f"{grasp_root}/{grasp_path}", mesh_root_dir=mesh_root, ret_scale=True)
+    #             # m = obj_mesh.apply_transform(unpack_pose(target_obj.pose))
+    #             # trimesh.Scene([m] + inf_viz).show()
 
-                target_obj.reach_grasps, target_obj.grasps, target_obj.grasps_scores, target_obj.grasp_ees = self.solve_goal_set_ik(
-                    target_obj, env, target_obj.grasps_poses, grasp_scores=target_obj.grasps_scores, z_upsample=z_upsample, y_upsample=self.cfg.y_upsample,
-                    in_global_coords=True
-                )
-                target_obj.grasp_potentials = []
+    #             target_obj.reach_grasps, target_obj.grasps, target_obj.grasps_scores, target_obj.grasp_ees = self.solve_goal_set_ik(
+    #                 target_obj, env, target_obj.grasps_poses, grasp_scores=target_obj.grasps_scores, z_upsample=z_upsample, y_upsample=self.cfg.y_upsample,
+    #                 in_global_coords=True
+    #             )
+    #             target_obj.grasp_potentials = []
 
     def load_grasp_set(self, env):
         """
@@ -651,6 +667,20 @@ class Planner(object):
         for i, target_obj in enumerate(env.objects):
             goal_set = target_obj.grasps
             reach_goal_set = target_obj.reach_grasps
+
+            # for grasp in target_obj.grasps:
+            #     import pybullet as p
+            #     pos, orn = p.getBasePositionAndOrientation(0)
+            #     mat = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
+            #     T_world2bot = np.eye(4)
+            #     T_world2bot[:3, :3] = mat
+            #     T_world2bot[:3, 3] = pos
+
+            #     T_bot2grasp = np.eye(4)
+            #     T_bot2grasp[:3, :3] = np.asarray(p.getMatrixFromQuaternion(grasp[3:])).reshape(3, 3)
+            #     T_bot2grasp[:3, 3] = grasp[:3]
+            #     draw_pose(T_world2bot @ T_bot2grasp)
+
             if len(goal_set) > 0 and target_obj.compute_grasp:  # goal_set
                 potentials, _, vis_points, collide = self.cost.batch_obstacle_cost(
                     goal_set, special_check_id=i, uncheck_finger_collision=-1
@@ -747,7 +777,8 @@ class Planner(object):
                     target_obj.grasp_vis_points = []
             target_obj.compute_grasp = False
 
-    def plan(self, traj, robot_fk=None, pc=None, T_bot2obj=None):
+    # def plan(self, traj, pc=None, T_bot2obj=None):
+    def plan(self, traj):
         """
         Run chomp optimizer to do trajectory optmization
         """
@@ -770,88 +801,105 @@ class Planner(object):
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
                 start_time = time.time()
 
-                if self.implicit_model is not None:
-                    distance, grad = self.implicit_model.predict(self.traj.end)
-                    raise NotImplementedError
+                # if self.implicit_model is not None:
+                #     distance, grad = self.implicit_model.predict(self.traj.end)
+                #     raise NotImplementedError
 
                 if (
+                    # (self.cfg.goal_set_proj or robot_fk is not None) # robot_fk not none is running with trajectory all initialized at start
                     self.cfg.goal_set_proj
                     and alg_switch and t < self.cfg.optim_steps 
                 ):
                     self.learner.update_goal()
                     self.selected_goals.append(self.traj.goal_idx)
 
-                # compute and store in traj
-                # https://robotics.stackexchange.com/questions/6382/can-a-jacobian-be-used-to-determine-required-joint-angles-for-end-effector-veloc
-                if robot_fk is not None: 
-                    traj.end = traj.data[-1]
-                    end_joints = wrap_value(traj.end)
-                    goal_joints = wrap_value(traj.selected_goal)
-                    end_poses, goal_poses = robot_fk.forward_kinematics_parallel(
-                        joint_values=np.stack([end_joints, goal_joints]), base_link=config.cfg.base_link)
-                    traj.end_pose = end_poses[-3] # end effector 3rd from last
-                    traj.goal_pose = goal_poses[-3]
-                    T_bot2ee = end_poses[-3]
+                # # compute and store in traj
+                # # https://robotics.stackexchange.com/questions/6382/can-a-jacobian-be-used-to-determine-required-joint-angles-for-end-effector-veloc
+                # if robot_fk is not None: 
+                #     traj.end = traj.data[-1]
+                #     end_joints = wrap_value(traj.end)
+                #     goal_joints = wrap_value(traj.selected_goal)
+                #     end_poses, goal_poses = robot_fk.forward_kinematics_parallel(
+                #         joint_values=np.stack([end_joints, goal_joints]), base_link=config.cfg.base_link)
+                #     traj.end_pose = end_poses[-3] # end effector 3rd from last
+                #     traj.goal_pose = goal_poses[-3]
+                #     T_bot2ee = end_poses[-3]
 
-                    # Get Stheta of identity transform matrix to be backpropped
-                    T_eye = torch.eye(4)
-                    se3_eye = SE3.from_matrix(T_eye)
-                    Stheta_eye = se3_eye.log()
-                    Stheta_eye.requires_grad = True
+                #     # # Load grasps (sidestep collision problem? But there will be collision computation in traj opt)
+                #     # from acronym_tools import load_grasps
+                #     # rotgrasp2grasp_T = pt.transform_from(pr.matrix_from_axis_angle([0, 0, 1, -np.pi/2]), [0, 0, 0])
+                #     # obj2rotgrasp_Ts, success = load_grasps(f"/data/manifolds/acronym/grasps/Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836.h5")
+                #     # obj2grasp_Ts = (obj2rotgrasp_Ts @ rotgrasp2grasp_T)[success == 1]
 
-                    # Get Stheta ee2obj
-                    T_bot2goal = goal_poses[-3]
-                    T_ee2obj = np.linalg.inv(T_bot2ee) @ T_world2goal
-                    # T_ee2obj = np.linalg.inv(T_bot2ee) @ T_bot2obj
-                    T_ee2obj_t = torch.tensor(T_ee2obj, dtype=torch.float32)
-                    se3_ee2obj = SE3.from_matrix(T_ee2obj_t)
-                    Stheta_ee2obj = se3_ee2obj.log()
-                    Stheta_ee2obj += Stheta_eye
+                #     # T_world2cam = get_world2cam_transform(env)
+                #     # T_world2bot = get_world2bot_transform(env)
+                #     # T_cam2obj = np.linalg.inv(T_world2cam) @ T_world2bot @ unpack_pose(object_poses[env.target_idx])
+                #     # T_bot2obj = np.linalg.inv(T_world2bot) @ T_world2cam @ T_cam2obj
+
+                #     # grasps = T_bot2obj @ obj2grasp_Ts #[:10] # limit number
+
+                #     # Get Stheta of identity transform matrix to be backpropped
+                #     T_eye = torch.eye(4)
+                #     se3_eye = SE3.from_matrix(T_eye)
+                #     Stheta_eye = se3_eye.log()
+                #     Stheta_eye.requires_grad = True
+
+                #     # Get Stheta ee2obj
+                #     T_bot2goal = goal_poses[-3]
+                #     T_ee2obj = np.linalg.inv(T_bot2ee) @ T_bot2goal
+                #     # T_ee2obj = np.linalg.inv(T_bot2ee) @ T_bot2obj
+                #     T_ee2obj_t = torch.tensor(T_ee2obj, dtype=torch.float32)
+                #     se3_ee2obj = SE3.from_matrix(T_ee2obj_t)
+                #     Stheta_ee2obj = se3_ee2obj.log()
+                #     Stheta_ee2obj += Stheta_eye
                     
-                    # Use ee2obj to transform pc
-                    if pc is not None:
-                        pc_obj = pc
-                        se3_ee2obj = SE3.exp(Stheta_ee2obj)
-                        pc_obj = torch.tensor(pc_obj, dtype=torch.float32)
-                        pc_ee = (se3_ee2obj.as_matrix() @ pc_obj.T).T
+                #     # Use ee2obj to transform pc
+                #     if pc is not None:
+                #         pc_obj = pc
+                #         se3_ee2obj = SE3.exp(Stheta_ee2obj)
+                #         pc_obj = torch.tensor(pc_obj, dtype=torch.float32)
+                #         pc_ee = (se3_ee2obj.as_matrix() @ pc_obj.T).T
+                        
+                #         # Compute loss and get grad from backprop
+                #         # TODO use implicit model
+                #         loss = torch.linalg.norm(Stheta_ee2obj)
+                #     else:
+                #         # Compute loss and get grad from backprop
+                #         loss = torch.linalg.norm(Stheta_ee2obj)
+                #     loss.backward()
+                #     Sthetadot_body = -Stheta_eye.grad.numpy()
 
-                    # Compute loss and get grad from backprop
-                    loss = torch.linalg.norm(Stheta_ee2obj)
-                    loss.backward()
-                    Sthetadot_body = -Stheta_eye.grad.numpy()
+                #     # l1 cost function
+                #     # gt_T = torch.tensor(traj.goal_pose[np.newaxis, ...], dtype=torch.float32)
+                #     # query_T = torch.tensor(traj.end_pose[np.newaxis, ...], dtype=torch.float32, requires_grad=True)
+                #     # loss = torch.nn.functional.l1_loss(query_T, gt_T)
+                #     # loss.backward()
+                #     # dloss_dg = query_T.grad # g is query as SE(3)
+                #     # goal_grad = query_T.grad.sum()
+                #     # goal_cost = goal_cost.item()
+                #     # goal_grad = goal_grad.item()
 
-                    # l1 cost function
-                    # gt_T = torch.tensor(traj.goal_pose[np.newaxis, ...], dtype=torch.float32)
-                    # query_T = torch.tensor(traj.end_pose[np.newaxis, ...], dtype=torch.float32, requires_grad=True)
-                    # loss = torch.nn.functional.l1_loss(query_T, gt_T)
-                    # loss.backward()
-                    # dloss_dg = query_T.grad # g is query as SE(3)
-                    # goal_grad = query_T.grad.sum()
-                    # goal_cost = goal_cost.item()
-                    # goal_grad = goal_grad.item()
+                #     # control points cost function
+                #     # goal_cost, goal_grad = get_control_pts_goal_cost(traj.goal_pose, traj.end_pose)
 
-                    # control points cost function
-                    # goal_cost, goal_grad = get_control_pts_goal_cost(traj.goal_pose, traj.end_pose)
+                #     adjoint = pt.adjoint_from_transform(T_bot2ee)
+                #     Sthetadot_spatial = adjoint @ Sthetadot_body
 
-                    adjoint = pt.adjoint_from_transform(T_bot2ee)
-                    Sthetadot_spatial = adjoint @ Sthetadot_body
+                #     # Compute jacobian inverse
+                #     J = robot_fk.jacobian(traj.end[:7])
+                #     J_pinv = J.T @ np.linalg.inv(J @ J.T)
+                #     q_dot = J_pinv @ Sthetadot_spatial
 
-                    # Compute jacobian inverse
-                    J = robot_fk.jacobian(traj.end[:7])
-                    J_pinv = J.T @ np.linalg.inv(J @ J.T)
-                    q_dot = J_pinv @ Sthetadot_spatial
+                #     # import pybullet as p
+                #     # pos, orn = p.getBasePositionAndOrientation(0)
+                #     # mat = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
+                #     # T_world2bot = np.eye(4)
+                #     # T_world2bot[:3, :3] = mat
+                #     # T_world2bot[:3, 3] = pos
 
-                    # import pybullet as p
-                    # pos, orn = p.getBasePositionAndOrientation(0)
-                    # mat = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
-                    # T_world2bot = np.eye(4)
-                    # T_world2bot[:3, :3] = mat
-                    # T_world2bot[:3, 3] = pos
-                    # T_world2bot @ T_world2ee
-
-                    traj.goal_cost = loss.item()
-                    traj.goal_grad = q_dot
-                    print(f"cost: {traj.goal_cost}, grad: {traj.goal_grad}")
+                #     traj.goal_cost = loss.item()
+                #     traj.goal_grad = q_dot
+                #     print(f"cost: {traj.goal_cost}, grad: {traj.goal_grad}")
 
                 self.info.append(self.optim.optimize(traj, force_update=True))  
                 self.history_trajectories.append(np.copy(traj.data))

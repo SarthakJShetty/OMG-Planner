@@ -64,7 +64,7 @@ class Learner(object):
     """
 
     def __init__(self, env, traj, cost):
-        self.cfg = env.config
+        self.cfg = env.cfg
         self.env = env
         self.traj = traj
         self.cost = cost
@@ -98,7 +98,7 @@ class Learner(object):
         ):
             costs = self.cost_vector()
             sorted_idx = np.argsort(costs)
-            self.traj.goal_idx = np.argmin(costs)  # sorted_idx[25] # np.argmin(costs)
+            self.traj.goal_idx = np.argmin(costs)  
             self.traj.end = self.traj.goal_set[self.traj.goal_idx]  #
             self.traj.interpolate_waypoints()
 

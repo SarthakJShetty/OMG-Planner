@@ -16,7 +16,7 @@ class Cost(object):
 
     def __init__(self, env):
         self.env = env
-        self.cfg = env.config
+        self.cfg = env.cfg
         self.sdf_loss = SDFLoss()
         if len(self.env.objects) > 0:
             self.target_obj = self.env.objects[self.env.target_idx]
@@ -338,7 +338,8 @@ class Cost(object):
         potential_grads = potential_grads.reshape([n, m, p, 3])
         collides = collides.reshape([n, m, p])
 
-        if self.cfg.use_standoff and self.cfg.goal_set_proj:
+        # if self.cfg.use_standoff and self.cfg.goal_set_proj:
+        if self.cfg.use_standoff:
             potentials[-self.cfg.reach_tail_length :] = 0
             potential_grads[-self.cfg.reach_tail_length :] = 0
             collides[-self.cfg.reach_tail_length :] = 0
@@ -423,7 +424,7 @@ class Cost(object):
         Computes smoothness loss
         """
         link_smooth_weight = np.array(self.cfg.link_smooth_weight)[None]
-        ed = np.zeros([xi.shape[0] + 1, xi.shape[1]])
+        ed = np.zeros([xi.shape[0] + 1, xi.shape[1]]) # e
         ed[0] = (
             self.cfg.diff_rule[0][self.cfg.diff_rule_length // 2 - 1]
             * start
@@ -468,7 +469,10 @@ class Cost(object):
         )
         weighted_smooth_grad = self.cfg.smoothness_weight * smoothness_grad
 
-        if traj.goal_cost is not None and traj.goal_grad is not None:
+        # if traj.goal_cost is not None and traj.goal_grad is not None:
+        if 'implicitgrasps' in self.cfg.method:
+            assert traj.goal_cost is not None
+            assert traj.goal_grad is not None
             weighted_goal_cost = 1 * traj.goal_cost
             weighted_goal_grad = np.zeros_like(weighted_obs_grad)
             weighted_goal_grad[-1, :7] = 1 * traj.goal_grad
@@ -487,22 +491,36 @@ class Cost(object):
 
             cost = weighted_obs + weighted_smooth
             grad = weighted_obs_grad + weighted_smooth_grad
+            # print(f"w_obs_cost: {weighted_obs}, w_smooth: {weighted_smooth}")
 
             cost_traj = (
                 self.cfg.obstacle_weight * obstacle_loss.sum(-1)
                 + self.cfg.smoothness_weight * smoothness_loss[:-1]
             )
    
-        goal_dist = (
-            np.linalg.norm(traj.data[-1] - traj.goal_set[traj.goal_idx])
-            if self.cfg.goal_set_proj
-            else 0
-        )
+        if ('Proj' in self.cfg.method or 'OMG' in self.cfg.method) and self.cfg.goal_set_proj:
+        # if self.cfg.goal_set_proj:
+            goal_dist = np.linalg.norm(traj.data[-1] - traj.goal_set[traj.goal_idx])
+            goal_dist_thresh = 0.01
+        elif 'implicitgrasps' in self.cfg.method and traj.goal_cost is not None:
+        # elif traj.goal_cost is not None:
+            goal_dist = traj.goal_cost
+            goal_dist_thresh = 0.03 
+        elif 'Fixed' in self.cfg.method:
+            goal_dist = 0
+            goal_dist_thresh = 0.01
+        else:
+            raise NotImplementedError
+        # goal_dist = (
+        #     np.linalg.norm(traj.data[-1] - traj.goal_set[traj.goal_idx])
+        #     if self.cfg.goal_set_proj
+        #     else 0
+        # )
          
         terminate = (
             (collide <= self.cfg.allow_collision_point)
             and self.cfg.pre_terminate
-            and (goal_dist < 0.01)
+            and (goal_dist < goal_dist_thresh)
             and smoothness_loss_sum < self.cfg.terminate_smooth_loss
         )
          
@@ -523,10 +541,10 @@ class Cost(object):
             "weighted_smooth": weighted_smooth,
             "weighted_smooth_grad": np.linalg.norm(weighted_smooth_grad),
             "weighted_obs_grad": np.linalg.norm(weighted_obs_grad),
-            "weighted_goal_grad": weighted_goal_grad,
-            "weighted_goal": weighted_goal_cost,
-            "weighted_grasp_grad": 0,
-            "weighted_grasp": 0,
+            "weighted_goal_grad": weighted_goal_grad, #
+            "weighted_goal": weighted_goal_cost, #
+            "weighted_grasp_grad": 0, # 
+            "weighted_grasp": 0, #
             "gradient": grad,
             "cost": cost,
             "grad": np.linalg.norm(grad),

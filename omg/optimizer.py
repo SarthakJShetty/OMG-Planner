@@ -12,7 +12,7 @@ class Optimizer(object):
     """
 
     def __init__(self, scene, cost):
-        self.cfg = scene.config
+        self.cfg = scene.cfg
         self.joint_lower_limit = scene.robot.joint_lower_limit
         self.joint_upper_limit = scene.robot.joint_upper_limit
         self.cost = cost

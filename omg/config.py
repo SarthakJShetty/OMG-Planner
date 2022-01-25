@@ -55,14 +55,14 @@ cfg.obstacle_size = 1  # obstacle's resize ratio
 cfg.obj_point_num = 800  # object points for KDTree in isf
 cfg.terminate_smooth_ratio = 4  # 35 terminate condition for trajectory
 cfg.terminate_grad_norm = 1.5  # terminate condition for smooth grad norm
-cfg.terminate_smooth_loss = 30 # 35  # terminate condition for trajectory
+cfg.terminate_smooth_loss = 35  # terminate condition for trajectory
 cfg.penalize_constant = 5  # scaling negative sdf values to avoid collision
 cfg.grasp_optimize = False  # the option of optimizing grasp term
 cfg.traj_init = "grasp"  # use ik or precomputed grasp list to initialize the goal
 cfg.traj_interpolate = "cubic"  # interpolate trajectory waypoints between start and end
  
 cfg.goal_set_proj = True  # use the goal set variant of CHOMP
-cfg.goal_set_max_num = 30 # 100  # the maximum number of goals in the goal set
+cfg.goal_set_max_num = 100  # the maximum number of goals in the goal set
 cfg.ol_alg = "MD"  # the online learning algorithm for updating grasp distribution
 cfg.dist_eps = 0.1  # weight coefficients for projected distance
 cfg.goal_idx = -2  # >0: goal index in goal set, -1: closest, -2: minimum cost, -3: random
@@ -77,14 +77,14 @@ cfg.extra_smooth_steps = 20  # extra steps for postprocessing fixed goal
 cfg.clip_grad_scale = 10.0  # clip the update gradients
 cfg.normalize_cost = True  # normalize ol costs
 cfg.disable_collision_set = []  # object names to fully disable collision check
-cfg.use_standoff = True  # use use_standoff for grasp stability
+cfg.use_standoff = True # use use_standoff for grasp stability
 cfg.standoff_dist = 0.08  # standoff distance before grasping
 cfg.remove_flip_grasp = True  # remove all grasps that require wrist to rotate over 180 degrees
  
 cfg.augment_flip_grasp = True  # augment grasps by flipping over 180 degrees
 cfg.target_hand_filter_angle = 120  # for filtering grasps that require heavy rotation
 cfg.dynamic_timestep = False  # for dynamically choosing length of the trajectory
-cfg.post_standoff = False  # standoff interpolation after planning
+# cfg.post_standoff = False  # standoff interpolation after planning
 cfg.consider_finger = False  # consider finger in optimization
 cfg.reach_tail_length = 5  # the trajectory length for standoff reaching
 cfg.use_layer = True  # use sdf layer or torch cuda for collision check
@@ -109,7 +109,7 @@ cfg.window_width = 640  # 1280 # window height for visualization
 cfg.timesteps = 30  # discretize uniform timesteps for trajectory
 cfg.base_link = "panda_link0"  # the base of the robot
 cfg.report_cost = False  # print out cost in terminal
-cfg.vis = True  # visualization option
+cfg.vis = True # visualization option
 cfg.view_init = False  # visualize initial configuration to compare
 cfg.scene_file = "scene_35"  # the scene file to load
 cfg.cam_pos = [
@@ -121,7 +121,8 @@ cfg.cam_V = None  # the extrinsics for visualization
 cfg.report_time = False  # verbose plan time check
 cfg.output_video_name = "test_video.avi"
 cfg.silent = False
-
+cfg.render = True
+cfg.method = 'knowngrasps_OMG'
 
 """ global function """
 def get_derivative(data, start, end, diff_rule=1):

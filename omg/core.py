@@ -24,7 +24,7 @@ class Trajectory(object):
     Trajectory class that wraps an object or an obstacle
     """
 
-    def __init__(self, timesteps=100, dof=9):
+    def __init__(self, timesteps=100, dof=9, start_end_equal=False):
         """
         Initialize fixed endpoint trajectory.
         """
@@ -35,15 +35,16 @@ class Trajectory(object):
         self.goal_quality = []
 
         self.start = np.array([0.0, -1.285, 0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04])
-        self.end = np.array([-0.99, -1.74, -0.61, -3.04, 0.88, 1.21, -1.12, 0.04, 0.04])
-        
-        # When trajectory end does not match goal
-        self.selected_goal = None
-        self.end_pose = None
-        self.goal_pose = None
-        self.goal_cost = None
-        self.goal_grad = None
-
+        if start_end_equal:
+            self.end = self.start.copy()
+            # When trajectory end does not match goal
+            # self.selected_goal = None
+            # self.end_pose = None
+            # self.goal_pose = None
+            # self.goal_cost = None
+            # self.goal_grad = None
+        else:
+            self.end = np.array([-0.99, -1.74, -0.61, -3.04, 0.88, 1.21, -1.12, 0.04, 0.04])
         self.interpolate_waypoints(mode=config.cfg.traj_interpolate)
 
     def update(self, grad):
@@ -252,8 +253,8 @@ class Env(object):
     """
 
     def __init__(self, cfg):
-        self.robot = Robot(config.cfg.root_dir)
-        self.config = config.cfg
+        self.robot = Robot(cfg.root_dir)
+        self.cfg = cfg
         self.objects = []
         self.names = []
         self.indexes = []
@@ -261,8 +262,8 @@ class Env(object):
         self.sdf_limits = None
         self.target_idx = 0
 
-        if len(config.cfg.scene_file) > 0:
-            full_path = config.cfg.scene_path + config.cfg.scene_file + ".mat"
+        if len(self.cfg.scene_file) > 0:
+            full_path = self.cfg.scene_path + self.cfg.scene_file + ".mat"
             print('load from scene:', full_path)
             scene = sio.loadmat(full_path)
             poses = scene["pose"]
@@ -375,7 +376,7 @@ class Env(object):
             max_shape = np.array([obj.sdf.data.shape for obj in self.objects]).max(axis=0)
         else:
             max_shape = np.array([10, 10, 10])
-        if config.cfg.report_time:
+        if self.cfg.report_time:
             print("sdf max shape %d %d %d" % (max_shape[0], max_shape[1], max_shape[2]))
         self.sdf_torch = torch.ones(
             (num, max_shape[0], max_shape[1], max_shape[2]), dtype=torch.float32
@@ -397,7 +398,7 @@ class Env(object):
             self.sdf_limits[i, 7] = max_shape[1]
             self.sdf_limits[i, 8] = max_shape[2]
             self.sdf_limits[i, 9] = obj.sdf.delta
-            if config.cfg.report_time:
+            if self.cfg.report_time:
                 print(
                     "%s, shape %d, %d, %d, sdf limit %f, %f, %f, %f, %f, %f, delta %f"
                     % (
@@ -414,7 +415,7 @@ class Env(object):
                         obj.sdf.delta,
                     )
                 )
-        if config.cfg.report_time:
+        if self.cfg.report_time:
             print("combine sdf time {:.3f}".format(time.time() - s))
         self.sdf_limits = torch.from_numpy(self.sdf_limits).cuda()
 
@@ -425,26 +426,27 @@ class PlanningScene(object):
     """
 
     def __init__(self, cfg):
-        self.traj = Trajectory(config.cfg.timesteps)
+        self.cfg = cfg
+        self.traj = Trajectory(cfg.timesteps)
         print("Setting up env...")
         start_time = time.time()
-        self.env = Env(config.cfg)
+        self.env = Env(cfg)
         print("env init time: {:.3f}".format(time.time() - start_time))
-        config.cfg.ROBOT = self.env.robot.robot_kinematics  # hack for parallel ik
-        if len(config.cfg.scene_file) > 0:
-            self.planner = Planner(self.env, self.traj, lazy=config.cfg.default_lazy)
-            if config.cfg.vis:
-                self.setup_renderer()
+        cfg.ROBOT = self.env.robot.robot_kinematics  # hack for parallel ik
+        # if len(self.cfg.scene_file) > 0:
+        #     self.planner = Planner(self.env, self.traj, lazy=cfg.default_lazy)
+        #     if cfg.vis:
+        #         self.setup_renderer()
 
     def update_planner(self):
         self.planner.update(self.env, self.traj)
 
-    def reset(self, lazy=False, grasps=None, grasp_scores=None, implicit_model=None, init_traj_end_at_start=False):
+    def reset(self, lazy=False):
         """
         Reset the scene for next run
         """
-        self.planner = Planner(self.env, self.traj, lazy, grasps=grasps, grasp_scores=grasp_scores, implicit_model=implicit_model, init_traj_end_at_start=init_traj_end_at_start)
-        if config.cfg.vis and not hasattr(self, "renderer"):
+        self.planner = Planner(self.env, self.traj, lazy)
+        if self.cfg.vis and not hasattr(self, "renderer"):
             self.setup_renderer()
 
     def fast_debug_vis(
@@ -502,7 +504,7 @@ class PlanningScene(object):
                         )
 
         def fast_vis_goalset(poses, cls_indexes, i, traj, interact, traj_idx=None):
-            optim_i = int(float(i) / traj.shape[0] * config.cfg.optim_steps)
+            optim_i = int(float(i) / traj.shape[0] * self.cfg.optim_steps)
             vis_goal_set = optim_i < len(self.planner.selected_goals)
             if traj_idx is not None:
                 mix_frame_image, robot_mask = self.renderer.vis(
@@ -569,8 +571,8 @@ class PlanningScene(object):
             masks = []
             for i in range(traj.shape[0]):
                 cls_indexes, poses = self.prepare_render_list(traj[i])
-                text = "OMG" if i < config.cfg.timesteps else "standoff"
-                if collision_pt and i > 0 and i < config.cfg.timesteps:
+                text = "OMG" if i < self.cfg.timesteps else "standoff"
+                if collision_pt and i > 0 and i < self.cfg.timesteps:
                     frames.append(
                         fast_vis_collision(poses, cls_indexes, i, collision_pts, interact)
                     )
@@ -620,10 +622,10 @@ class PlanningScene(object):
 
         if write_video:
             if not hasattr(self, "video_writer"):
-                self.video_writer = config.make_video_writer(
-                    config.cfg.output_video_name
+                self.video_writer = self.cfg.make_video_writer(
+                    self.cfg.output_video_name
                 )
-            print("video would be save to:", config.cfg.output_video_name)
+            print("video would be save to:", self.cfg.output_video_name)
             for frame in frames:
                 self.video_writer.write(frame[..., [2, 1, 0]])
 
@@ -647,11 +649,12 @@ class PlanningScene(object):
         """
         Run an optimization step
         """
-        if self.planner.traj.selected_goal is not None: # only works for fixed goal currently?
-            rk = self.env.robot.robot_kinematics
-            plan = self.planner.plan(self.traj, robot_fk=rk, pc=pc, T_bot2obj=T_bot2obj)
-        else:
-            plan = self.planner.plan(self.traj)
+        # if self.planner.traj.selected_goal is not None: 
+        #     # rk = self.env.robot.robot_kinematics
+        #     # plan = self.planner.plan(self.traj, robot_fk=rk, pc=pc, T_bot2obj=T_bot2obj)
+        #     plan = self.planner.plan(self.traj, pc=pc, T_bot2obj=T_bot2obj)
+        # else:
+        plan = self.planner.plan(self.traj)
         return plan
 
     def prepare_render_list(self, joints):
@@ -661,7 +664,7 @@ class PlanningScene(object):
         r = self.env.robot.robot_kinematics
         joints = wrap_value(joints)
         robot_poses = r.forward_kinematics_parallel(
-            np.array(joints)[None, ...], base_link=config.cfg.base_link
+            np.array(joints)[None, ...], base_link=self.cfg.base_link
         )[0]
         # cls_indexes = list(range(10))
         cls_indexes = self.env.indexes
@@ -682,8 +685,8 @@ class PlanningScene(object):
         """
         print("Setting up renderer...")
         start_time = time.time()
-        width = config.cfg.window_width
-        height = config.cfg.window_height
+        width = self.cfg.window_width
+        height = self.cfg.window_height
         cam_param = [
             width,
             height,
@@ -712,7 +715,7 @@ class PlanningScene(object):
             "finger",
         ]
         models = [
-            config.cfg.robot_model_path + "/{}.DAE".format(item) for item in links
+            self.cfg.robot_model_path + "/{}.DAE".format(item) for item in links
         ]
         colors = [[0.1 * (idx + 1), 0, 0] for idx in range(len(links))]
         textures = ["" for _ in links]
@@ -730,9 +733,9 @@ class PlanningScene(object):
         renderer.set_camera_default()
         renderer.set_light_pos(np.random.uniform(-0.1, 0.1, 3))
         renderer.set_light_pos(np.ones(3) * 1.2)
-        self.cam_pos = config.cfg.cam_pos
+        self.cam_pos = self.cfg.cam_pos
         self.renderer = renderer
-        self.cam_V = config.cfg.cam_V
+        self.cam_V = self.cfg.cam_V
         print("Renderer loading time: {:.3f}".format(time.time() - start_time))
 
 
