@@ -8,7 +8,7 @@ import argparse
 
 from omg.core import *
 from omg.util import *
-# from omg.config import cfg
+from omg.config import cfg
 import pybullet as p
 import numpy as np
 import pybullet_data
@@ -24,7 +24,6 @@ import scipy.io as sio
 import pkgutil
 from utils import depth2pc
 from copy import deepcopy
-from omg.config import cfg
 
 
 # class Cameras:
@@ -140,34 +139,57 @@ class PandaYCBEnv:
         p.disconnect()
         self.connected = False
 
-    def cache_objects(self, object_infos=[]):
+    def cache_objects(self):
         """
         Load all YCB objects and set up (only work for single apperance)
         """
         obj_path = self._root_dir 
-        if object_infos == []:
-            objects = sorted([m for m in os.listdir(obj_path+"/data/objects") if m.startswith("0")])
-            paths = ["data/objects/" + objects[i] for i in self._all_objs]
-            scales = [1 for i in range(len(paths))]
-        else:
-            # Object mesh needs to be under data/objects 
-            # objects = []
-            paths = []
-            scales = []
-            fnames = os.listdir(obj_path)
-            for name, scale, _ in object_infos:
-                obj = next(filter(lambda x: x in name, fnames), None)
-                if obj != None:
-                    # objects.append(obj)
-                    paths.append(obj)
-                    scales.append(scale)
-            # Does not work without adding more objects
-            ycb_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "objects")
-            objects = sorted([m for m in os.listdir(ycb_dir) if m.startswith("0")])
-            paths += [objects[i] for i in self._all_objs[:-1]]
-            scales += [1 for i in range(len(self._all_objs) - 1)]
-            # self._all_objs = [0]
-            # self._target_objs = [0]
+        # if object_infos == []:
+        objects = sorted([m for m in os.listdir(obj_path+"/data/objects") if m.startswith("0")])
+        paths = ["data/objects/" + objects[i] for i in self._all_objs]
+        scales = [1 for i in range(len(paths))]
+        # else:
+        #     # Object mesh needs to be under data/objects 
+        #     # objects = []
+        #     paths = []
+        #     scales = []
+        #     fnames = os.listdir(obj_path)
+        #     for name, scale, _ in object_infos:
+        #         obj = next(filter(lambda x: x in name, fnames), None)
+        #         if obj != None:
+        #             # objects.append(obj)
+        #             paths.append(obj)
+        #             scales.append(scale)
+        #     # Does not work without adding more objects
+        #     ycb_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "objects")
+        #     objects = sorted([m for m in os.listdir(ycb_dir) if m.startswith("0")])
+        #     paths += [objects[i] for i in self._all_objs[:-1]]
+        #     scales += [1 for i in range(len(self._all_objs) - 1)]
+        #     # self._all_objs = [0]
+        #     # self._target_objs = [0]
+
+        if 'implicitgrasps_novision' in cfg.method:
+            # Load acronym_book object
+            grasp_root = f"{cfg.acronym_dir}/grasps"
+            obj_name = 'Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836'
+            assert len([x for x in os.listdir(grasp_root) if obj_name in x]) != 0
+
+            from acronym_tools import load_mesh
+            obj_mesh = load_mesh(f"{grasp_root}/{obj_name}.h5", mesh_root_dir=cfg.acronym_dir)
+
+            # hack: default acronym book frame to acronym centroid frame
+            cfg.T_obj2ctr = np.eye(4)
+            cfg.T_obj2ctr[:3, 3] = obj_mesh.centroid
+
+            objects[0] = obj_name
+            paths[0] = f"data/objects/Book_5e90bf1bb411069c115aef9ae267d6b7"
+            scales[0] = 0.0268818133810836 
+            self._all_objs = [0]
+            self._target_objs = [0]
+
+            # from utils import get_world2cam_transform, get_world2bot_transform
+            # cfg.T_world2cam = get_world2cam_transform(self)
+            # cfg.T_world2bot = get_world2bot_transform(self)
 
         pose = np.zeros([len(paths), 3])
         pose[:, 0] = -2.0 - np.linspace(0, 4, len(paths))  # place in the back
@@ -181,18 +203,18 @@ class PandaYCBEnv:
         for i, name in enumerate(paths):
             trans = pose[i] + np.array(pos)  # fixed position
             self.cache_object_poses.append((trans.copy(), np.array(orn).copy()))
-            if object_infos!=[] and i > 0: # workaround to load ycb files
-                root_dir = ycb_dir
-            else:
-                root_dir = self._root_dir
+            # if object_infos!=[] and i > 0: # workaround to load ycb files
+            #     root_dir = ycb_dir
+            # else:
+            #     root_dir = self._root_dir
 
             uid = self._add_mesh(
-                os.path.join(root_dir, name, "model_normalized.urdf"), trans, orn, scale=scales[i]
+                os.path.join(self._root_dir, name, "model_normalized.urdf"), trans, orn, scale=scales[i]
             )  # xyzw
             objectUids.append(uid)
             self.cache_object_extents.append(
                 np.loadtxt(
-                    os.path.join(root_dir, name, "model_normalized.extent.txt")
+                    os.path.join(self._root_dir, name, "model_normalized.extent.txt")
                 )
             )
             p.setCollisionFilterPair(
@@ -216,7 +238,8 @@ class PandaYCBEnv:
 
         return objectUids
 
-    def reset(self, init_joints=None, scene_file=None, object_infos=[], no_table=False, reset_cache=False):
+    # def reset(self, init_joints=None, scene_file=None, object_infos=[], no_table=False, reset_cache=False):
+    def reset(self, init_joints=None, scene_file=None, no_table=False, reset_cache=False):
         """Environment reset"""
 
         look = self._cam_look
@@ -286,7 +309,8 @@ class PandaYCBEnv:
         )
 
         if not self._object_cached or reset_cache:
-            self._objectUids = self.cache_objects(object_infos=object_infos)
+            # self._objectUids = self.cache_objects(object_infos=object_infos)
+            self._objectUids = self.cache_objects()
 
             self.obj_path += [plane_file, table_file]
 
@@ -307,7 +331,7 @@ class PandaYCBEnv:
             # self.cached_objects[idx] = False
             self.cached_objects[idx] = True # consider objects always cached
 
-    def _place_acronym_book():
+    def _place_acronym_book(self):
         # Debug: Manually set book object
         pos = (0.07345162518699465, -0.4098033797439253, -1.10)
         p.resetBasePositionAndOrientation(
@@ -340,7 +364,6 @@ class PandaYCBEnv:
         if scene_file == 'acronym_book':
             self._place_acronym_book()
         elif scene_file is None or not os.path.exists(scene_file):
-            # if 'acronym_book' not in scene_file:
             self._randomly_place_objects(self._get_random_object(self._numObjects))
         else:
             self.place_objects_from_scene(scene_file)

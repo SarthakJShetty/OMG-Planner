@@ -470,7 +470,7 @@ class Cost(object):
         weighted_smooth_grad = self.cfg.smoothness_weight * smoothness_grad
 
         # if traj.goal_cost is not None and traj.goal_grad is not None:
-        if 'implicitgrasps' in self.cfg.method:
+        if 'implicitgrasps' in self.cfg.method and self.cfg.use_goal_grad:
             assert traj.goal_cost is not None
             assert traj.goal_grad is not None
             weighted_goal_cost = 1 * traj.goal_cost
@@ -502,20 +502,15 @@ class Cost(object):
         # if self.cfg.goal_set_proj:
             goal_dist = np.linalg.norm(traj.data[-1] - traj.goal_set[traj.goal_idx])
             goal_dist_thresh = 0.01
-        elif 'implicitgrasps' in self.cfg.method and traj.goal_cost is not None:
-        # elif traj.goal_cost is not None:
-            goal_dist = traj.goal_cost
+        elif 'implicitgrasps' in self.cfg.method:
+        #  and traj.goal_cost is not None:
+            goal_dist = traj.goal_cost if self.cfg.use_goal_grad else np.linalg.norm(traj.data[-1] - traj.goal_joints)
             goal_dist_thresh = 0.03 
         elif 'Fixed' in self.cfg.method:
             goal_dist = 0
             goal_dist_thresh = 0.01
         else:
             raise NotImplementedError
-        # goal_dist = (
-        #     np.linalg.norm(traj.data[-1] - traj.goal_set[traj.goal_idx])
-        #     if self.cfg.goal_set_proj
-        #     else 0
-        # )
          
         terminate = (
             (collide <= self.cfg.allow_collision_point)
@@ -543,8 +538,8 @@ class Cost(object):
             "weighted_obs_grad": np.linalg.norm(weighted_obs_grad),
             "weighted_goal_grad": weighted_goal_grad, #
             "weighted_goal": weighted_goal_cost, #
-            "weighted_grasp_grad": 0, # 
-            "weighted_grasp": 0, #
+            # "weighted_grasp_grad": 0, # 
+            # "weighted_grasp": 0, #
             "gradient": grad,
             "cost": cost,
             "grad": np.linalg.norm(grad),
@@ -554,6 +549,7 @@ class Cost(object):
             "reach": goal_dist,
             "execute": execute,
             "cost_traj": cost_traj,
+            "transforms": []
         }
 
         return cost, grad, info

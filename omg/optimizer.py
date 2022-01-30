@@ -92,6 +92,9 @@ class Optimizer(object):
         if self.cfg.use_standoff:
             chosen_goal = self.cost.target_obj.reach_grasps[int(traj.goal_idx)]
             constraint_num = chosen_goal.shape[0]
+        elif 'implicitgrasps' in self.cfg.method: # goal pose output
+            chosen_goal = traj.goal_joints[np.newaxis, :]
+            constraint_num = 1
         else:
             chosen_goal = traj.goal_set[int(traj.goal_idx)]
             constraint_num = 1
@@ -125,12 +128,10 @@ class Optimizer(object):
 
         if self.cfg.goal_set_proj:
             update = self.goal_set_projection(traj, grad)
-            traj.update(update)
-            traj.set(self.handle_joint_limit(traj.data))
         else:
             update = -self.cfg.step_size * self.cfg.Ainv.dot(grad)
-            traj.update(update)
-            traj.set(self.handle_joint_limit(traj.data))
+        traj.update(update)
+        traj.set(self.handle_joint_limit(traj.data))
         return info
 
     def compute_traj_v(self, curve):

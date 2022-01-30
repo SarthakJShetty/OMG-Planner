@@ -38,11 +38,13 @@ class Trajectory(object):
         if start_end_equal:
             self.end = self.start.copy()
             # When trajectory end does not match goal
-            # self.selected_goal = None
+            # TODO check that these are necessary
+            # self.selected_goal = None 
             # self.end_pose = None
-            # self.goal_pose = None
-            # self.goal_cost = None
-            # self.goal_grad = None
+            self.goal_pose = None
+            self.goal_joints = None
+            self.goal_cost = None
+            self.goal_grad = None
         else:
             self.end = np.array([-0.99, -1.74, -0.61, -3.04, 0.88, 1.21, -1.12, 0.04, 0.04])
         self.interpolate_waypoints(mode=config.cfg.traj_interpolate)
@@ -262,7 +264,7 @@ class Env(object):
         self.sdf_limits = None
         self.target_idx = 0
 
-        if len(self.cfg.scene_file) > 0:
+        if len(self.cfg.scene_file) > 0 and self.cfg.scene_file != 'acronym_book':
             full_path = self.cfg.scene_path + self.cfg.scene_file + ".mat"
             print('load from scene:', full_path)
             scene = sio.loadmat(full_path)
@@ -427,7 +429,7 @@ class PlanningScene(object):
 
     def __init__(self, cfg):
         self.cfg = cfg
-        self.traj = Trajectory(cfg.timesteps)
+        self.traj = Trajectory(cfg.timesteps, start_end_equal=('implicitgrasps' in cfg.method))
         print("Setting up env...")
         start_time = time.time()
         self.env = Env(cfg)

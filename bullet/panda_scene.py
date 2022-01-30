@@ -26,7 +26,6 @@ import glob
 # import pkgutil
 from copy import deepcopy
 
-# For backprojection
 import cv2
 import matplotlib.pyplot as plt
 
@@ -40,6 +39,9 @@ import pytransform3d.rotations as pr
 import pytransform3d.transformations as pt
 from moviepy.editor import ImageClip, TextClip, CompositeVideoClip, concatenate_videoclips
 # import multiprocessing as m
+
+import trimesh
+from acronym_tools import *
 
 def bullet_execute_plan(env, plan, write_video, video_writer):
     print('executing...')
@@ -60,6 +62,9 @@ def init_cfg(args):
     """
     if args.render and args.save_all_trajectories:
         print("Error: render and save all trajectories flags both on, save trajectories will fail")
+    if args.render and cfg.vis:
+        print("Warning: setting vis to False because of render")
+        cfg.vis = False
 
     cfg.method = args.method
     cfg.window_width = 200
@@ -67,7 +72,8 @@ def init_cfg(args):
     cfg.exp_dir = args.exp_dir
     mkdir_if_missing(cfg.exp_dir)
     if args.scene_file:
-        cfg.scene_file = args.scene_file 
+        cfg.scene_file = args.scene_file
+    cfg.use_goal_grad = args.use_goal_grad
 
     if 'knowngrasps' in args.method: 
         if 'Fixed' in args.method:
@@ -80,9 +86,15 @@ def init_cfg(args):
             cfg.ol_alg = 'MD'
     elif 'implicitgrasps' in args.method:
         cfg.use_standoff = False
-        cfg.extra_smooth_steps = 0
+        cfg.ol_alg = None
+        cfg.acronym_dir = args.acronym_dir
+        # cfg.goal_set_proj = False
+        # cfg.extra_smooth_steps = 0
         if 'novision' in args.method:
             cfg.scene_file = 'acronym_book'
+            cfg.grasp_prediction_weights = '/checkpoint/thomasweng/grasp_manifolds/runs/outputs/nopc_book_logmap_10kfree/2021-11-23_232102_dsetacronym_Book_train0.9_val0.1_free10.0k_sym_distlogmap/default_default/0_0/checkpoints/last.ckpt'
+        else:
+            raise NotImplementedError
 
 def init_dirs():
     """
@@ -95,19 +107,20 @@ def init_dirs():
         yaml.dump(cfg, f)
     return exp_name
 
-def init_grasp_predictor():
-    """
-    Set up grasp prediction method
-    """
-    if 'knowngrasps' in cfg.method:
-        return None
-    elif cfg.method == 'implicitgrasps_novision':
-        raise NotImplementedError
-    # elif 'contactgraspnet' in cfg.method:
-    #     from contact_graspnet_infer import *
-    #     grasp_inf_method = ContactGraspNetInference(args.visualize)
-    else:
-        raise NotImplementedError
+# def init_grasp_predictor():
+#     """
+#     Set up grasp prediction method
+#     """
+#     if 'knowngrasps' in cfg.method:
+#         return None
+#     elif cfg.method == 'implicitgrasps_novision':
+#         from implicit_infer import ImplicitGraspInference
+#         return ImplicitGraspInference()
+#     # elif 'contactgraspnet' in cfg.method:
+#     #     from contact_graspnet_infer import *
+#     #     grasp_inf_method = ContactGraspNetInference(args.visualize)
+#     else:
+#         raise NotImplementedError
 
 def init_video_writer(scene_file, exp_name):
     return cv2.VideoWriter(
@@ -188,7 +201,6 @@ if __name__ == "__main__":
     parser.add_argument("--method", help="which method to use", required=True, 
         choices=['knowngrasps_Fixed', 'knowngrasps_Proj', 'knowngrasps_OMG', 'implicitgrasps_novision', 'implicitgrasps'])
     parser.add_argument("--exp_dir", help="Output directory", type=str, default="./output_videos") 
-    # parser.add_argument("--traj_init", help="how to initialize the trajectory", choices=["fixed", ""])
     parser.add_argument("--scene_file", help="Which scene to run", type=str)
     parser.add_argument("--experiment", help="run all scenes", action="store_true")
     parser.add_argument("--render", help="render", action="store_true")
@@ -196,31 +208,15 @@ if __name__ == "__main__":
     # parser.add_argument("--egl", help="use egl render", action="store_true")
     parser.add_argument("--acronym_dir", help="acronym dataset directory", type=str, default='')
     parser.add_argument("--write_video", help="write video", action="store_true")
-    # parser.add_argument("-d", "--debug_exp", help="Override default experiment name with dbg", action="store_true"),  
     parser.add_argument("--save_all_trajectories", help="Save intermediate trajectories", action="store_true")
-    # parser.add_argument("--init_traj_end_at_start", help="Initialize trajectory so end is at start", action="store_true")
-    # parser.add_argument("--cam_look", help="position of the camera", type=list, default=[-0.35, -0.58, -0.88])
-    # parser.add_argument("--cam_dist", help="distance of the camera", type=float, default=0.9)
+    parser.add_argument("--use_goal_grad", help="Use goal gradient with implicit method", action="store_true")
     args = parser.parse_args()
 
     init_cfg(args)
     exp_name = init_dirs()
-    grasp_predictor = init_grasp_predictor()
+    # grasp_predictor = init_grasp_predictor()
 
-    # Set up planning scene
-    # cfg.traj_init = "grasp"
-    # cfg.vis = False
-    # cfg.timesteps = 50
-    # cfg.optim_steps = 50
-    # cfg.extra_smooth_steps = 0
-    # cfg.get_global_param(cfg.timesteps)
-    # cfg.scene_file = ''
-    # cfg.vis = args.debug_traj
-    # cfg.goal_set_proj = False if args.init_traj_end_at_start else True
-    # cfg.use_standoff = False if args.init_traj_end_at_start else True
-    # cfg.init_traj_end_at_start = args.init_traj_end_at_start
     scene = PlanningScene(cfg)
-    # scene.reset()
 
     if args.experiment:   
         scene_files = ['scene_{}'.format(i) for i in range(100)]
@@ -228,39 +224,11 @@ if __name__ == "__main__":
         scene_files = [args.scene_file]
 
     # Set up env
-    root_dir = f'{args.acronym_dir}/meshes_omg' if cfg.scene_file == 'acronym_book' else None
+    # root_dir = f'{args.acronym_dir}/meshes_omg' if cfg.scene_file == 'acronym_book' else None
     gravity = cfg.scene_file != 'acronym_book'
     # env = PandaYCBEnv(renders=args.render, egl_render=True, root_dir=root_dir, gravity=gravity)
-    env = PandaYCBEnv(renders=args.render, root_dir=root_dir, gravity=gravity)
+    env = PandaYCBEnv(renders=args.render, gravity=gravity)
     env.reset() # TODO fix ycb env for acronym book
-
-    # if args.scenes == ['acronym_book']:
-    #     env = PandaYCBEnv(renders=args.render, egl_render=args.egl, gravity=False, root_dir=f'{args.acronym_dir}/meshes_omg', cam_look=args.cam_look)
-    #     # env = PandaYCBEnv(renders=args.render, egl_render=args.egl, gravity=False, root_dir=f'{args.acronym_dir}/meshes_omg')
-    #     grasp_root = f"{args.acronym_dir}/grasps"
-    #     objects = ['Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836']
-    #     grasp_paths = [] # path to grasp file for a given object
-    #     for fn in os.listdir(grasp_root):
-    #         for objname in objects:
-    #             if objname in fn:
-    #                 grasp_paths.append((fn, objname))
-    #                 objects.remove(objname) # Only load first scale of object 
-
-    #     # Load acronym objects
-    #     object_infos = []
-    #     for grasp_path, objname in grasp_paths:
-    #         obj_mesh, obj_scale = load_mesh(f"{grasp_root}/{grasp_path}", mesh_root_dir=args.acronym_dir, ret_scale=True)
-    #         object_infos.append((objname, obj_scale, obj_mesh))
-    #     env.reset(object_infos=object_infos)
-
-    #     # Move object frame to centroid
-    #     obj_mesh = object_infos[0][2]
-    #     obj2ctr_T = np.eye(4)
-    #     # obj2ctr_T[:3, 3] = -obj_mesh.centroid
-    #     obj2ctr_T[:3, 3] = obj_mesh.centroid
-    # else:
-    #     env = PandaYCBEnv(renders=args.render, egl_render=args.egl, gravity=True, cam_look=args.cam_look)
-    #     env.reset()
 
     # Add objects to scene
     # Scene has separate Env class which is used for planning
@@ -279,7 +247,7 @@ if __name__ == "__main__":
         mkdir_if_missing(f'{cfg.exp_dir}/{exp_name}/{scene_file}')
         video_writer = init_video_writer(scene_file, exp_name) if args.write_video else None
 
-        full_name = os.path.join('data/scenes', scene_file + ".mat")
+        full_name = os.path.join('data/scenes', scene_file + ".mat") if 'acronym_book' not in scene_file else 'acronym_book'
         env.cache_reset(scene_file=full_name)
         obj_names, obj_poses = env.get_env_info()
         object_lists = [name.split("/")[-1].strip() for name in obj_names]
@@ -289,12 +257,8 @@ if __name__ == "__main__":
         exists_ids, placed_poses = [], []
         for i, name in enumerate(object_lists[:-2]):   
             scene.env.update_pose(name, object_poses[i])
-            path = name if cfg.scene_file == 'acronym_book' else "data/objects/" + name
+            path = "data/objects/" + name
             obj_idx = env.obj_path[:-2].index(path) 
-            # if args.scenes == ['acronym_book']:
-            #     obj_idx = env.obj_path[:-2].index(name)
-            # else:
-            #     obj_idx = env.obj_path[:-2].index("data/objects/" + name)
             exists_ids.append(obj_idx)
             trans, orn = env.cache_object_poses[obj_idx]
             placed_poses.append(np.hstack([trans, ros_quat(orn)]))
@@ -304,21 +268,14 @@ if __name__ == "__main__":
             for obj_idx, name in enumerate(env.obj_path[:-2])
             if obj_idx not in exists_ids
         ]
-        # TODO acronym_book collision set is this necessary for target?
-        # cfg.disable_collision_set = ['Book_5e90bf1bb411069c115aef9ae267d6b7']
+
+        if 'acronym_book' in scene_file:
+            cfg.disable_collision_set += ['Book_5e90bf1bb411069c115aef9ae267d6b7']
 
         # obs = env._get_observation(get_pc=True if cfg.method == 'implicitgrasps' else False)
 
         # Set grasp selection method for planner
-        # if args.grasp_selection == 'Fixed':
-        #     scene.planner.cfg.ol_alg = 'Baseline'
-        #     scene.planner.cfg.goal_idx = -1
-        # elif args.grasp_selection == 'Proj':
-        #     scene.planner.cfg.ol_alg = 'Proj'
-        # elif args.grasp_selection == 'OMG':
-        #     scene.planner.cfg.ol_alg = 'MD'
         scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
-        # scene.reset(lazy=True, grasps=grasps, grasp_scores=grasp_scores, implicit_model=grasp_inf_method, init_traj_end_at_start=args.init_traj_end_at_start)
         scene.reset(lazy=True)
         
         # if args.init_traj_end_at_start and args.scenes == ["acronym_book"]:
@@ -364,9 +321,51 @@ if __name__ == "__main__":
         #     pc_obj = None
         #     T_bot2obj = None
 
-        # info = scene.step(pc=pc_obj, T_bot2obj=T_bot2obj)
+        # acronym book pose
+        draw_pose(get_world2bot_transform(env) @ unpack_pose(object_poses[0]))
+        draw_pose(get_world2bot_transform(env) @ unpack_pose(object_poses[0]) @ cfg.T_obj2ctr)
+
         info = scene.step()
         plan = scene.planner.history_trajectories[-1]
+
+        # grasp pose
+        end_joints = wrap_value(plan[-1]) # rad2deg
+        end_poses = cfg.ROBOT.forward_kinematics_parallel(
+            joint_values=end_joints[np.newaxis, :], base_link=cfg.base_link)[0]
+        T_bot2ee = end_poses[-3]
+        draw_pose(get_world2bot_transform(env) @ T_bot2ee)
+
+        # Visualize transforms
+        if False:
+            for i in range(len(info)):
+                T_bot2ee, T_bot2objfrm, T_objfrm2obj, T_obj2goal, T_obj2ee = info[i]["transforms"]
+
+                grasp_root = f"{cfg.acronym_dir}/grasps"
+                obj_name = 'Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836'
+                obj_mesh = load_mesh(f"{grasp_root}/{obj_name}.h5", mesh_root_dir=cfg.acronym_dir)
+
+                T_obj2ctr = np.eye(4)
+                T_obj2ctr[:3, 3] = obj_mesh.centroid
+                obj_mesh = obj_mesh.apply_transform(T_obj2ctr)
+
+                ee_pose = [create_gripper_marker(color=[0, 0, 255]).apply_transform(T_obj2ee)]
+                goal_pose = [create_gripper_marker(color=[255, 0, 0]).apply_transform(T_obj2goal)]
+
+                # # create visual markers for grasps
+                # successful_grasps = [
+                #     create_gripper_marker(color=[0, 255, 0]).apply_transform(t)
+                #     for t in T[np.random.choice(np.where(success == 1)[0], np.min([np.sum(success), 100]))]
+                # ]
+                # failed_grasps = [
+                #     create_gripper_marker(color=[255, 0, 0]).apply_transform(t)
+                #     for t in T[np.random.choice(np.where(success == 0)[0], np.min([np.sum(success == 0), 100]))]
+                # ]
+
+                trimesh.Scene([obj_mesh] + ee_pose + goal_pose).show()
+                # TODO if this doesn't work in render make a separate script...
+
+
+                # self.info[-1]["transforms"] = [T_bot2ee, T_bot2objfrm, T_objfrm2obj, T_obj2goal, T_obj2ee]
 
         if args.save_all_trajectories:
             save_all_trajectories(exp_name, scene)
