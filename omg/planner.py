@@ -113,7 +113,6 @@ class Planner(object):
     Tricks such as standoff pregrasp, flip grasps are for real world experiments. 
     """
 
-    # def __init__(self, env, traj, lazy=False, grasps=None, grasp_scores=None, implicit_model=None, init_traj_end_at_start=False):
     def __init__(self, env, traj, lazy=False):
         self.cfg = env.cfg  
         self.env = env
@@ -121,23 +120,6 @@ class Planner(object):
         self.cost = Cost(env)
         self.optim = Optimizer(env, self.cost)
         self.lazy = lazy
-        # self.grasps = grasps
-        # self.grasp_scores = grasp_scores
-        # self.implicit_model = implicit_model
-        # self.init_traj_end_at_start = init_traj_end_at_start
-
-        # if self.implicit_model is not None:
-            # What is learner in this context?
-            # Is there a learner?
-            # What happens after init? planner.plan()
-            # raise NotImplementedError
-
-        # if self.grasps is not None:
-        #     self.load_grasp_set_gn(self.env, self.grasps, self.grasp_scores)
-        #     self.setup_goal_set(self.env)
-        #     self.grasp_init(self.env)
-        #     self.learner = Learner(self.env, self.traj, self.cost) # 
-        # else:
 
         # Planning methods 
         if 'knowngrasps' in self.cfg.method:
@@ -145,37 +127,11 @@ class Planner(object):
             self.setup_goal_set(env)
             self.grasp_init(env)
             self.learner = Learner(env, self.traj, self.cost)
-            # if 'Fixed' in self.cfg.method and self.cfg.ol_alg == 'Baseline' and not self.cfg.goal_set_proj:
-            # elif 'Proj' in self.cfg.method and self.cfg.ol_alg == 'Proj' and self.cfg.goal_set_proj:
-            #     raise NotImplementedError
-            # elif 'OMG' in self.cfg.method and self.cfg.ol_alg == 'OMG' and self.cfg.goal_set_proj:
-            #     raise NotImplementedError
         elif 'implicitgrasps' in self.cfg.method:
             from methods.implicit import ImplicitGrasp_OutputPose
             self.grasp_predictor = ImplicitGrasp_OutputPose(ckpt_path=self.cfg.grasp_prediction_weights) 
         else:
             raise NotImplementedError
-
-        # if self.cfg.goal_set_proj:
-        #     if self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
-        #         self.load_grasp_set(env)
-        #         self.setup_goal_set(env)
-        #     else:
-        #         self.load_goal_from_scene()
-
-        #     self.grasp_init(env)
-        #     self.learner = Learner(env, self.traj, self.cost)
-        # # elif self.init_traj_end_at_start: # can be fixed or proj
-        # #     self.load_grasp_set(env)
-        # #     self.setup_goal_set(env)
-        # #     self.grasp_init(env)
-        # else:
-        #     self.traj.interpolate_waypoints()
-
-        # if self.init_traj_end_at_start:
-        #     self.traj.selected_goal = deepcopy(self.traj.end) # Init to some grasp
-        #     self.traj.end = self.traj.start
-        #     self.traj.interpolate_waypoints()
 
         self.history_trajectories = []
         self.info = []
@@ -186,17 +142,15 @@ class Planner(object):
         Use precomputed grasps to initialize the end point and goal set
         """
         grasp_ees = []
-        if self.cfg.scene_file == "" or self.cfg.traj_init == "grasp":
-            if len(env.objects) > 0:
-                self.traj.goal_set = env.objects[env.target_idx].grasps
-                self.traj.goal_potentials = env.objects[env.target_idx].grasp_potentials
-                if bool(env.objects[env.target_idx].grasps_scores): # not None or empty
-                    self.traj.goal_quality = env.objects[env.target_idx].grasps_scores
-                    grasp_ees = env.objects[env.target_idx].grasp_ees
-                # if self.cfg.goal_set_proj and self.cfg.use_standoff:
-                if self.cfg.use_standoff:
-                    if len(env.objects[env.target_idx].reach_grasps) > 0:
-                        self.traj.goal_set = env.objects[env.target_idx].reach_grasps[:, -1]
+        if len(env.objects) > 0:
+            self.traj.goal_set = env.objects[env.target_idx].grasps
+            self.traj.goal_potentials = env.objects[env.target_idx].grasp_potentials
+            if bool(env.objects[env.target_idx].grasps_scores): # not None or empty
+                self.traj.goal_quality = env.objects[env.target_idx].grasps_scores
+                grasp_ees = env.objects[env.target_idx].grasp_ees
+            if self.cfg.use_standoff:
+                if len(env.objects[env.target_idx].reach_grasps) > 0:
+                    self.traj.goal_set = env.objects[env.target_idx].reach_grasps[:, -1]
 
         if len(self.traj.goal_set) > 0:
             proj_dist = np.linalg.norm(
@@ -304,8 +258,8 @@ class Planner(object):
                 * np.linspace(0, 1, reach_tail_len, endpoint=False)
             )
         standoff_grasp_global = np.matmul(pose_grasp_global, pose_standoff)
-        # parallel = self.cfg.ik_parallel
-        parallel = False
+        parallel = self.cfg.ik_parallel
+        # parallel = False
         seeds_ = seeds[:]
 
         if not parallel:
@@ -467,29 +421,47 @@ class Planner(object):
 
                     """ simulator generated poses """
                     if len(target_obj.grasps_poses) == 0:
-                        simulator_path = (
-                            self.cfg.robot_model_path
-                            + "/../grasps/simulated/{}.npy".format(target_obj.name)
-                        )
-                        if not os.path.exists(simulator_path):
-                            continue
-                        try:
-                            simulator_grasp = np.load(simulator_path, allow_pickle=True)
-                            pose_grasp = simulator_grasp.item()["transforms"]
-                        except:
-                            simulator_grasp = np.load(
-                                simulator_path,
-                                allow_pickle=True,
-                                fix_imports=True,
-                                encoding="bytes",
+                        """ acronym book poses """
+                        if target_obj.name == 'Book_5e90bf1bb411069c115aef9ae267d6b7':
+                            from acronym_tools import load_grasps
+                            pose_grasp, success = load_grasps(f"/checkpoint/thomasweng/acronym/grasps/Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836.h5")
+                            pose_grasp = pose_grasp[success == 1]
+
+                            if False: 
+                                import trimesh
+                                from acronym_tools import load_mesh, load_grasps, create_gripper_marker
+                                grasp_viz = []
+                                for T in pose_grasp[:50]: # visualize unrotated
+                                    grasp_viz.append(create_gripper_marker(color=[0, 0, 255]).apply_transform(T).apply_transform(unpack_pose(target_obj.pose)))
+                                mesh_root = "/data/manifolds/acronym"
+                                grasp_root = "/data/manifolds/acronym/grasps"
+                                grasp_path = 'Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836.h5'
+                                obj_mesh = load_mesh(f"{grasp_root}/{grasp_path}", mesh_root_dir=mesh_root)
+                                m = obj_mesh.apply_transform(unpack_pose(target_obj.pose))
+                                trimesh.Scene([m] + grasp_viz).show()
+                        else:
+                            simulator_path = (
+                                self.cfg.robot_model_path
+                                + "/../grasps/simulated/{}.npy".format(target_obj.name)
                             )
-                            pose_grasp = simulator_grasp.item()[b"transforms"]
+                            if not os.path.exists(simulator_path):
+                                continue
+                            try:
+                                simulator_grasp = np.load(simulator_path, allow_pickle=True)
+                                pose_grasp = simulator_grasp.item()["transforms"]
+                            except:
+                                simulator_grasp = np.load(
+                                    simulator_path,
+                                    allow_pickle=True,
+                                    fix_imports=True,
+                                    encoding="bytes",
+                                )
+                                pose_grasp = simulator_grasp.item()[b"transforms"]
 
                         offset_pose = np.array(rotZ(np.pi / 2)) # rotate about z axis 
                         pose_grasp = np.matmul(pose_grasp, offset_pose)  # flip x, y
                         pose_grasp = ycb_special_case(pose_grasp, target_obj.name)
                         target_obj.grasps_poses = pose_grasp
-
                     else:
                         pose_grasp = target_obj.grasps_poses
                     z_upsample = False
@@ -577,18 +549,23 @@ class Planner(object):
             goal_set = target_obj.grasps
             reach_goal_set = target_obj.reach_grasps
 
-            # for grasp in target_obj.grasps:
-            #     import pybullet as p
-            #     pos, orn = p.getBasePositionAndOrientation(0)
-            #     mat = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
-            #     T_world2bot = np.eye(4)
-            #     T_world2bot[:3, :3] = mat
-            #     T_world2bot[:3, 3] = pos
+            if True:
+                for T_obj2grasp in target_obj.grasps_poses[:30]:
+                    import pybullet as p
+                    pos, orn = p.getBasePositionAndOrientation(0)
+                    T_world2bot = np.eye(4)
+                    T_world2bot[:3, :3] = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
+                    T_world2bot[:3, 3] = pos
+                    draw_pose(T_world2bot)
 
-            #     T_bot2grasp = np.eye(4)
-            #     T_bot2grasp[:3, :3] = np.asarray(p.getMatrixFromQuaternion(grasp[3:])).reshape(3, 3)
-            #     T_bot2grasp[:3, 3] = grasp[:3]
-            #     draw_pose(T_world2bot @ T_bot2grasp)
+                    T_bot2obj = np.eye(4)
+                    target_q = target_obj.pose[3:] # wxyz
+                    R = p.getMatrixFromQuaternion(ros_quat(target_q))
+                    T_bot2obj[:3, :3] = np.asarray(R).reshape(3, 3)                    
+                    T_bot2obj[:3, 3] = target_obj.pose[:3]
+                    draw_pose(T_world2bot @ T_bot2obj)
+
+                    draw_pose(T_world2bot @ T_bot2obj @ T_obj2grasp)                    
 
             if len(goal_set) > 0 and target_obj.compute_grasp:  # goal_set
                 potentials, _, vis_points, collide = self.cost.batch_obstacle_cost(
@@ -704,18 +681,12 @@ class Planner(object):
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
                 start_time = time.time()
 
-                # if self.implicit_model is not None:
-                #     distance, grad = self.implicit_model.predict(self.traj.end)
-                #     raise NotImplementedError
-
                 if (
-                    # (self.cfg.goal_set_proj or robot_fk is not None) # robot_fk not none is running with trajectory all initialized at start
                     self.cfg.goal_set_proj
                     and alg_switch and t < self.cfg.optim_steps 
                 ):
                     self.learner.update_goal()
                     self.selected_goals.append(self.traj.goal_idx)
-
 
                 # compute and store in traj
                 # https://robotics.stackexchange.com/questions/6382/can-a-jacobian-be-used-to-determine-required-joint-angles-for-end-effector-veloc
@@ -729,7 +700,7 @@ class Planner(object):
 
                     # Get desired goal pose
                     #   Run implicit grasp network that outputs pose                    
-                    T_bot2objfrm = pt.transform_from_pq(self.env.objects[0].pose) 
+                    T_bot2objfrm = pt.transform_from_pq(self.env.objects[self.env.target_idx].pose) 
                     T_objfrm2obj = self.cfg.T_obj2ctr
  
                     offset_T = np.array(rotZ(np.pi / 2)) # transform to correct wrist rotation 

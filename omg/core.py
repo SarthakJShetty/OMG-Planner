@@ -264,7 +264,7 @@ class Env(object):
         self.sdf_limits = None
         self.target_idx = 0
 
-        if len(self.cfg.scene_file) > 0 and self.cfg.scene_file != 'acronym_book':
+        if len(self.cfg.scene_file) > 0 and 'acronym_book' not in self.cfg.scene_file:
             full_path = self.cfg.scene_path + self.cfg.scene_file + ".mat"
             print('load from scene:', full_path)
             scene = sio.loadmat(full_path)
@@ -440,8 +440,8 @@ class PlanningScene(object):
         #     if cfg.vis:
         #         self.setup_renderer()
 
-    def update_planner(self):
-        self.planner.update(self.env, self.traj)
+    # def update_planner(self):
+        # self.planner.update(self.env, self.traj)
 
     def reset(self, lazy=False):
         """

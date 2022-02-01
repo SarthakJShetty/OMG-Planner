@@ -24,6 +24,7 @@ import scipy.io as sio
 import pkgutil
 from utils import depth2pc
 from copy import deepcopy
+import pytransform3d.rotations as pr
 
 
 # class Cameras:
@@ -168,7 +169,7 @@ class PandaYCBEnv:
         #     # self._all_objs = [0]
         #     # self._target_objs = [0]
 
-        if 'implicitgrasps_novision' in cfg.method:
+        if 'acronym_book' in cfg.scene_file:
             # Load acronym_book object
             grasp_root = f"{cfg.acronym_dir}/grasps"
             obj_name = 'Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836'
@@ -177,7 +178,7 @@ class PandaYCBEnv:
             from acronym_tools import load_mesh
             obj_mesh = load_mesh(f"{grasp_root}/{obj_name}.h5", mesh_root_dir=cfg.acronym_dir)
 
-            # hack: default acronym book frame to acronym centroid frame
+            # default acronym book frame to acronym centroid frame, wont work for other objects
             cfg.T_obj2ctr = np.eye(4)
             cfg.T_obj2ctr[:3, 3] = obj_mesh.centroid
 
@@ -186,10 +187,6 @@ class PandaYCBEnv:
             scales[0] = 0.0268818133810836 
             self._all_objs = [0]
             self._target_objs = [0]
-
-            # from utils import get_world2cam_transform, get_world2bot_transform
-            # cfg.T_world2cam = get_world2cam_transform(self)
-            # cfg.T_world2bot = get_world2bot_transform(self)
 
         pose = np.zeros([len(paths), 3])
         pose[:, 0] = -2.0 - np.linspace(0, 4, len(paths))  # place in the back
@@ -331,38 +328,52 @@ class PandaYCBEnv:
             # self.cached_objects[idx] = False
             self.cached_objects[idx] = True # consider objects always cached
 
-    def _place_acronym_book(self):
-        # Debug: Manually set book object
-        pos = (0.07345162518699465, -0.4098033797439253, -1.10)
+    def _place_acronym_book(self, scene_file):
+        if os.path.exists(scene_file):
+            xy_delta, yaw_delta, roll_delta = np.load(scene_file, allow_pickle=True)[()]
+            if "book_0" in scene_file or "book_1" in scene_file or "book_2" in scene_file:
+                np.save(scene_file, [xy_delta, yaw_delta, 0])
+            elif "book_3" in scene_file or "book_4" in scene_file:
+                np.save(scene_file, [xy_delta, 0, roll_delta])
+        else:
+            # Set book object at random position and save transform
+            np.random.seed(int(time.time()))
+            xy_delta = np.random.uniform(low=-0.1, high=0.1, size=2)
+            yaw_delta = np.random.uniform(low=0, high=90, size=1)[0]
+            roll_delta = np.random.uniform(low=0, high=90, size=1)[0]
+            np.save(scene_file, [xy_delta, yaw_delta, roll_delta])
+
+        world2obj_T = np.eye(4) 
+        world2obj_T[:3, 3] = (0.07345162518699465, -0.4098033797439253, -1.10)
+        obj2ctr_T = cfg.T_obj2ctr # object frame to centroid of object frame
+        
+        ctr2rot_T = np.eye(4)
+        ctr2rot_T[:2, 3] = xy_delta
+        yaw_R = pr.matrix_from_axis_angle([1, 0, 0, yaw_delta])  
+        roll_R = pr.matrix_from_axis_angle([0, 0, 1, roll_delta]) 
+        ctr2rot_T[:3, :3] = yaw_R @ roll_R
+        obj2rot_T = obj2ctr_T @ ctr2rot_T
+        world2rot_T = world2obj_T @ obj2rot_T @ np.linalg.inv(obj2ctr_T)
+        q = pr.quaternion_from_matrix(world2rot_T[:3, :3]) # w x y z 
+        q = pr.quaternion_xyzw_from_wxyz(q) # x y z w
+        t = world2rot_T[:3, 3]
+        print(t, q)
+
         p.resetBasePositionAndOrientation(
-            self._objectUids[self.target_idx],
-            pos, 
-            [0, 0, 0, 1] 
+            self._objectUids[self.target_idx], t, q
         )
         p.resetBaseVelocity(
             self._objectUids[self.target_idx], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)
         )
         
-        bot_pos, bot_orn = p.getBasePositionAndOrientation(self._panda.pandaUid)
-        mat = np.asarray(p.getMatrixFromQuaternion(bot_orn)).reshape(3, 3)
-        T_world2bot = np.eye(4)
-        T_world2bot[:3, :3] = mat
-        T_world2bot[:3, 3] = bot_pos
-
         self.cached_objects[self.target_idx] = True
-
-        # for i, name in enumerate(objectV_lists):
-        #     if 'Book' in name: 
-        #         book_worldpose = list(pos) + [1, 0, 0, 0]
-        #         object_poses[i] = pack_pose(np.linalg.inv(T_world2bot) @ unpack_pose(book_worldpose))
-        #         break
 
     def cache_reset(self, init_joints=None, scene_file=None):
         self._panda.reset(init_joints)
         self.reset_objects()
 
-        if scene_file == 'acronym_book':
-            self._place_acronym_book()
+        if 'acronym_book' in scene_file:
+            self._place_acronym_book(scene_file)
         elif scene_file is None or not os.path.exists(scene_file):
             self._randomly_place_objects(self._get_random_object(self._numObjects))
         else:

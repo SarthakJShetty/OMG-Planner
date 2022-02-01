@@ -71,13 +71,14 @@ def init_cfg(args):
     cfg.window_height = 200
     cfg.exp_dir = args.exp_dir
     mkdir_if_missing(cfg.exp_dir)
-    if args.scene_file:
-        cfg.scene_file = args.scene_file
+    if args.scene_files != []:
+        cfg.scene_file = args.scene_files[0]
     cfg.use_goal_grad = args.use_goal_grad
+    cfg.acronym_dir = args.acronym_dir
 
     if 'knowngrasps' in args.method: 
         if 'Fixed' in args.method:
-            cfg.goal_set_proj = False
+            cfg.goal_set_proj = True
             cfg.ol_alg = 'Baseline'
             cfg.goal_idx = -1
         elif 'Proj' in args.method:
@@ -87,11 +88,8 @@ def init_cfg(args):
     elif 'implicitgrasps' in args.method:
         cfg.use_standoff = False
         cfg.ol_alg = None
-        cfg.acronym_dir = args.acronym_dir
-        # cfg.goal_set_proj = False
-        # cfg.extra_smooth_steps = 0
+        cfg.goal_set_proj = False
         if 'novision' in args.method:
-            cfg.scene_file = 'acronym_book'
             cfg.grasp_prediction_weights = '/checkpoint/thomasweng/grasp_manifolds/runs/outputs/nopc_book_logmap_10kfree/2021-11-23_232102_dsetacronym_Book_train0.9_val0.1_free10.0k_sym_distlogmap/default_default/0_0/checkpoints/last.ckpt'
         else:
             raise NotImplementedError
@@ -106,21 +104,6 @@ def init_dirs():
     with open(f'{cfg.exp_dir}/{exp_name}/args.yml', 'w') as f:
         yaml.dump(cfg, f)
     return exp_name
-
-# def init_grasp_predictor():
-#     """
-#     Set up grasp prediction method
-#     """
-#     if 'knowngrasps' in cfg.method:
-#         return None
-#     elif cfg.method == 'implicitgrasps_novision':
-#         from implicit_infer import ImplicitGraspInference
-#         return ImplicitGraspInference()
-#     # elif 'contactgraspnet' in cfg.method:
-#     #     from contact_graspnet_infer import *
-#     #     grasp_inf_method = ContactGraspNetInference(args.visualize)
-#     else:
-#         raise NotImplementedError
 
 def init_video_writer(scene_file, exp_name):
     return cv2.VideoWriter(
@@ -201,10 +184,10 @@ if __name__ == "__main__":
     parser.add_argument("--method", help="which method to use", required=True, 
         choices=['knowngrasps_Fixed', 'knowngrasps_Proj', 'knowngrasps_OMG', 'implicitgrasps_novision', 'implicitgrasps'])
     parser.add_argument("--exp_dir", help="Output directory", type=str, default="./output_videos") 
-    parser.add_argument("--scene_file", help="Which scene to run", type=str)
+    parser.add_argument("--scene_files", help="Which scene to run", nargs="+")
     parser.add_argument("--experiment", help="run all scenes", action="store_true")
     parser.add_argument("--render", help="render", action="store_true")
-    # parser.add_argument("--vis", help="visualize usig YCBRenderer, not comparible with render flag", action="store_true")
+    # parser.add_argument("--vis", help="visualize usig YCBRenderer, not compatible with render flag", action="store_true")
     # parser.add_argument("--egl", help="use egl render", action="store_true")
     parser.add_argument("--acronym_dir", help="acronym dataset directory", type=str, default='')
     parser.add_argument("--write_video", help="write video", action="store_true")
@@ -214,21 +197,20 @@ if __name__ == "__main__":
 
     init_cfg(args)
     exp_name = init_dirs()
-    # grasp_predictor = init_grasp_predictor()
 
     scene = PlanningScene(cfg)
 
     if args.experiment:   
         scene_files = ['scene_{}'.format(i) for i in range(100)]
     else:
-        scene_files = [args.scene_file]
+        scene_files = args.scene_files
 
     # Set up env
     # root_dir = f'{args.acronym_dir}/meshes_omg' if cfg.scene_file == 'acronym_book' else None
-    gravity = cfg.scene_file != 'acronym_book'
+    gravity = 'acronym_book' not in scene_files[0]
     # env = PandaYCBEnv(renders=args.render, egl_render=True, root_dir=root_dir, gravity=gravity)
     env = PandaYCBEnv(renders=args.render, gravity=gravity)
-    env.reset() # TODO fix ycb env for acronym book
+    env.reset() 
 
     # Add objects to scene
     # Scene has separate Env class which is used for planning
@@ -247,7 +229,8 @@ if __name__ == "__main__":
         mkdir_if_missing(f'{cfg.exp_dir}/{exp_name}/{scene_file}')
         video_writer = init_video_writer(scene_file, exp_name) if args.write_video else None
 
-        full_name = os.path.join('data/scenes', scene_file + ".mat") if 'acronym_book' not in scene_file else 'acronym_book'
+        ext = ".mat" if 'acronym_book' not in scene_file else ".npy"
+        full_name = os.path.join('data/scenes', scene_file + ext)
         env.cache_reset(scene_file=full_name)
         obj_names, obj_poses = env.get_env_info()
         object_lists = [name.split("/")[-1].strip() for name in obj_names]
@@ -260,8 +243,10 @@ if __name__ == "__main__":
             path = "data/objects/" + name
             obj_idx = env.obj_path[:-2].index(path) 
             exists_ids.append(obj_idx)
-            trans, orn = env.cache_object_poses[obj_idx]
-            placed_poses.append(np.hstack([trans, ros_quat(orn)]))
+            # trans, orn = env.cache_object_poses[obj_idx]
+            trans, orn = p.getBasePositionAndOrientation(env._objectUids[env.target_idx]) # x y z w
+            # placed_poses.append(np.hstack([trans, ros_quat(orn)]))
+            placed_poses.append(np.hstack([trans, orn])) # TODO what about not acronym book?
 
         cfg.disable_collision_set = [
             name.split("/")[-2]
@@ -278,49 +263,6 @@ if __name__ == "__main__":
         scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
         scene.reset(lazy=True)
         
-        # if args.init_traj_end_at_start and args.scenes == ["acronym_book"]:
-        #     pc_cam = obs['points']
-        #     T_world2cam = get_world2cam_transform(env)
-        #     T_cam2obj = np.linalg.inv(T_world2cam) @ unpack_pose(book_worldpose)
-        #     pc_obj = (T_cam2obj @ pc_cam.T).T 
-        #     T_world2obj = T_world2cam @ T_cam2obj
-        # else:
-
-        # if args.init_traj_end_at_start:
-        #     pc_cam = obs['points']
-        #     T_world2cam = get_world2cam_transform(env)
-        #     T_world2bot = get_world2bot_transform(env)
-        #     T_cam2obj = np.linalg.inv(T_world2cam) @ T_world2bot @ unpack_pose(object_poses[env.target_idx])
-        #     pc_obj = (T_cam2obj @ pc_cam.T).T
-        #     T_bot2obj = np.linalg.inv(T_world2bot) @ T_world2cam @ T_cam2obj
-            
-        #     # Save for testing shape embeddings 
-        #     # print(f"saving scene {scene_idx}")
-        #     # np.save(f"scene{scene_idx}_targetpc.npy", {
-        #     #     "pc": pc_cam,
-        #     #     "obj_path": env.obj_path[env.target_idx],
-        #     #     "T_cam2obj": T_cam2obj,
-        #     #     "T_world2cam": T_world2cam,
-        #     #     "T_world2bot": T_world2bot,
-        #     #     "T_bot2obj": T_bot2obj
-        #     # })
-        #     # x, y, z = list(np.asarray(env._view_matrix).reshape(4, 4).T[:3, 3])
-        #     # sceneimg_save_path = f'dbg_data/scene_imgs/cam_x{x:.2f}_y{y:.2f}_z{z:.2f}'
-        #     # os.makedirs(sceneimg_save_path, exist_ok=True)
-        #     # np.save(f'{sceneimg_save_path}/{scene_idx}.npy', {
-        #     #     'rgb': obs['rgb'], 
-        #     #     'mask': obs['mask'], 
-        #     #     'view_matrix': env._view_matrix, 
-        #     #     'proj_matrix': env._proj_matrix,
-        #     #     'target_idx': env._objectUids[env.target_idx],
-        #     #     'obj_path': env.obj_path[env.target_idx]
-        #     # })
-        #     # continue
-        #     # draw_pose(T_bot2obj)
-        # else:
-        #     pc_obj = None
-        #     T_bot2obj = None
-
         # acronym book pose
         draw_pose(get_world2bot_transform(env) @ unpack_pose(object_poses[0]))
         draw_pose(get_world2bot_transform(env) @ unpack_pose(object_poses[0]) @ cfg.T_obj2ctr)
@@ -388,6 +330,49 @@ if __name__ == "__main__":
             os.system(f'ffmpeg -y -i {cfg.exp_dir}/{exp_name}/{cfg.scene_file}/bullet.avi -vf "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 {cfg.exp_dir}/{exp_name}/{cfg.scene_file}/scene.gif')
     env.disconnect()
 
+
+        # if args.init_traj_end_at_start and args.scenes == ["acronym_book"]:
+        #     pc_cam = obs['points']
+        #     T_world2cam = get_world2cam_transform(env)
+        #     T_cam2obj = np.linalg.inv(T_world2cam) @ unpack_pose(book_worldpose)
+        #     pc_obj = (T_cam2obj @ pc_cam.T).T 
+        #     T_world2obj = T_world2cam @ T_cam2obj
+        # else:
+
+        # if args.init_traj_end_at_start:
+        #     pc_cam = obs['points']
+        #     T_world2cam = get_world2cam_transform(env)
+        #     T_world2bot = get_world2bot_transform(env)
+        #     T_cam2obj = np.linalg.inv(T_world2cam) @ T_world2bot @ unpack_pose(object_poses[env.target_idx])
+        #     pc_obj = (T_cam2obj @ pc_cam.T).T
+        #     T_bot2obj = np.linalg.inv(T_world2bot) @ T_world2cam @ T_cam2obj
+            
+        #     # Save for testing shape embeddings 
+        #     # print(f"saving scene {scene_idx}")
+        #     # np.save(f"scene{scene_idx}_targetpc.npy", {
+        #     #     "pc": pc_cam,
+        #     #     "obj_path": env.obj_path[env.target_idx],
+        #     #     "T_cam2obj": T_cam2obj,
+        #     #     "T_world2cam": T_world2cam,
+        #     #     "T_world2bot": T_world2bot,
+        #     #     "T_bot2obj": T_bot2obj
+        #     # })
+        #     # x, y, z = list(np.asarray(env._view_matrix).reshape(4, 4).T[:3, 3])
+        #     # sceneimg_save_path = f'dbg_data/scene_imgs/cam_x{x:.2f}_y{y:.2f}_z{z:.2f}'
+        #     # os.makedirs(sceneimg_save_path, exist_ok=True)
+        #     # np.save(f'{sceneimg_save_path}/{scene_idx}.npy', {
+        #     #     'rgb': obs['rgb'], 
+        #     #     'mask': obs['mask'], 
+        #     #     'view_matrix': env._view_matrix, 
+        #     #     'proj_matrix': env._proj_matrix,
+        #     #     'target_idx': env._objectUids[env.target_idx],
+        #     #     'obj_path': env.obj_path[env.target_idx]
+        #     # })
+        #     # continue
+        #     # draw_pose(T_bot2obj)
+        # else:
+        #     pc_obj = None
+        #     T_bot2obj = None
 
 
 

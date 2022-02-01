@@ -125,7 +125,7 @@ cfg.render = True
 cfg.method = 'knowngrasps_OMG'
 cfg.grasp_predictor = None # grasp prediction method
 cfg.acronym_dir = None
-cfg.use_goal_grad = True
+cfg.goal_grad = True
 
 """ global function """
 def get_derivative(data, start, end, diff_rule=1):
