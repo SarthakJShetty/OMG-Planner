@@ -167,9 +167,8 @@ def get_diff_matrix(
             index = i + j
             if index >= 0 and index < n:
                 diff_matrix[i, index] = diff_rule[j + half_length]
-    # Below code should be removed due to boundary ed value for endpoint in cost.py
-    # if with_end == False:
-        # diff_matrix[-1, -1] = 0
+    if with_end == False:
+        diff_matrix[-1, -1] = 0
     return diff_matrix / (time_interval ** order)
 
 

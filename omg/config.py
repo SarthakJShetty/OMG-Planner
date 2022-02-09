@@ -125,7 +125,9 @@ cfg.render = True
 cfg.method = 'knowngrasps_OMG'
 cfg.grasp_predictor = None # grasp prediction method
 cfg.acronym_dir = None
-cfg.goal_grad = True
+cfg.use_goal_grad = False # whether to include the goal gradient and cost in the cost computation (already accounted for in goal_set_proj)
+exp_name = ''
+cfg.use_ik = False # use ik with output pose method
 
 """ global function """
 def get_derivative(data, start, end, diff_rule=1):
@@ -242,5 +244,5 @@ cfg.get_derivative_torch = get_derivative_torch
 cfg.make_video_writer = make_video_writer
 cfg.get_global_param = get_global_param
 cfg.get_global_path = get_global_path
-get_global_param()
+# get_global_param()
 

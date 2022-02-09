@@ -43,6 +43,8 @@ from moviepy.editor import ImageClip, TextClip, CompositeVideoClip, concatenate_
 import trimesh
 from acronym_tools import *
 
+from post_process.trimesh_viz import pkls_to_gif
+
 def bullet_execute_plan(env, plan, write_video, video_writer):
     print('executing...')
     for k in range(plan.shape[0]):
@@ -75,10 +77,11 @@ def init_cfg(args):
         cfg.scene_file = args.scene_files[0]
     cfg.use_goal_grad = args.use_goal_grad
     cfg.acronym_dir = args.acronym_dir
+    cfg.use_standoff = args.use_standoff
 
     if 'knowngrasps' in args.method: 
         if 'Fixed' in args.method:
-            cfg.goal_set_proj = True
+            cfg.goal_set_proj = False
             cfg.ol_alg = 'Baseline'
             cfg.goal_idx = -1
         elif 'Proj' in args.method:
@@ -88,49 +91,40 @@ def init_cfg(args):
     elif 'implicitgrasps' in args.method:
         cfg.use_standoff = False
         cfg.ol_alg = None
-        cfg.goal_set_proj = False
-        if 'novision' in args.method:
+        if 'outputposeIK' in args.method:
+            cfg.use_ik = True
+            cfg.grasp_prediction_weights = '/checkpoint/thomasweng/grasp_manifolds/runs/outputs/nopc_book_logmap_10kfree/2021-11-23_232102_dsetacronym_Book_train0.9_val0.1_free10.0k_sym_distlogmap/default_default/0_0/checkpoints/last.ckpt'
+        elif 'outputposegrad' in args.method:
+            cfg.use_ik = False
             cfg.grasp_prediction_weights = '/checkpoint/thomasweng/grasp_manifolds/runs/outputs/nopc_book_logmap_10kfree/2021-11-23_232102_dsetacronym_Book_train0.9_val0.1_free10.0k_sym_distlogmap/default_default/0_0/checkpoints/last.ckpt'
         else:
             raise NotImplementedError
+
+        if 'fixed' in args.method: # debug method using fixed grasp
+            cfg.ol_alg = 'Baseline'
+            cfg.goal_idx = -1
+
+    cfg.get_global_param()
 
 def init_dirs():
     """
     Create output directory and save cfg in directory
     """
-    exp_name = f"{time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())}" + \
+    cfg.exp_name = f"{time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())}" + \
                 f"_{cfg.method}"
-    mkdir_if_missing(f'{cfg.exp_dir}/{exp_name}')
-    with open(f'{cfg.exp_dir}/{exp_name}/args.yml', 'w') as f:
+    mkdir_if_missing(f'{cfg.exp_dir}/{cfg.exp_name}')
+    with open(f'{cfg.exp_dir}/{cfg.exp_name}/args.yml', 'w') as f:
         yaml.dump(cfg, f)
-    return exp_name
 
-def init_video_writer(scene_file, exp_name):
+def init_video_writer():
     return cv2.VideoWriter(
-        f"{cfg.exp_dir}/{exp_name}/{scene_file}/bullet.avi",
+        f"{cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}/bullet.avi",
         cv2.VideoWriter_fourcc(*"MJPG"),
         10.0,
         (640, 480),
     )
 
-# # def get_clip(scene, traj, i, comps, exp_name, duration, fps):
-# def get_clip(fast_debug_vis, traj, i, comps, exp_name, duration, fps):
-#     print(i)
-#     # traj_im = scene.fast_debug_vis(traj=traj, interact=0, write_video=False,
-#     traj_im = fast_debug_vis(traj=traj, interact=0, write_video=False,
-#                                     nonstop=False, collision_pt=False, goal_set=False, traj_idx=i)
-#     traj_im = cv2.cvtColor(traj_im, cv2.COLOR_RGB2BGR)
-#     clip = ImageClip(traj_im).set_duration(duration).set_fps(fps)
-#     # TextClip not working for some reason
-#     # txt_clip = (TextClip(f"iter {i}", fontsize=50, color='black')
-#         # .set_position('bottom')
-#         # .set_duration(duration))
-#     # comp = CompositeVideoClip([clip, txt_clip]).set_fps(fps).set_duration(duration)
-#     comp = CompositeVideoClip([clip]).set_fps(fps).set_duration(duration)
-#     comps[i] = comp
-#     cv2.imwrite(f"{cfg.exp_dir}/{exp_name}/{cfg.scene_file}/traj_{i+1}.png", traj_im)
-
-def save_all_trajectories(exp_name, scene):
+def save_all_trajectories(scene):
     """
     Save history of trajectories over the course of the optimization loop.
     """
@@ -152,6 +146,9 @@ def save_all_trajectories(exp_name, scene):
         trajs = scene.planner.history_trajectories[::skip]
         ids = range(0, len(trajs), skip)
 
+    if not os.path.exists(f"{cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}/traj_pngs"):
+        os.mkdir(f"{cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}/traj_pngs")
+
     # trajs = scene.planner.history_trajectories if len(scene.planner.history_trajectories) < 10 else scene.planner.history_trajectories[::skip]
     for i, traj in zip(ids, trajs):
         print(i)
@@ -166,7 +163,7 @@ def save_all_trajectories(exp_name, scene):
         comp = CompositeVideoClip([clip, txt_clip]).set_fps(fps).set_duration(duration)
         # comp = CompositeVideoClip([clip]).set_fps(fps).set_duration(duration)
         comps.append(comp)
-        cv2.imwrite(f"{cfg.exp_dir}/{exp_name}/{cfg.scene_file}/traj_{i+1}.png", cv2.cvtColor(traj_im, cv2.COLOR_RGB2BGR))
+        cv2.imwrite(f"{cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}/traj_pngs/traj_{i+1}.png", cv2.cvtColor(traj_im, cv2.COLOR_RGB2BGR))
 
     for _ in range(3): # add more frames to the end
         # txt_clip = (TextClip(f"iter {i}*", fontsize=50, color='black')
@@ -176,13 +173,13 @@ def save_all_trajectories(exp_name, scene):
         comp = CompositeVideoClip([clip]).set_fps(fps).set_duration(duration)
         comps.append(comp)
     result = concatenate_videoclips(comps)
-    result.write_gif(f"{cfg.exp_dir}/{exp_name}/{cfg.scene_file}/traj.gif")
+    result.write_gif(f"{cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}/traj.gif")
     result.close()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--method", help="which method to use", required=True, 
-        choices=['knowngrasps_Fixed', 'knowngrasps_Proj', 'knowngrasps_OMG', 'implicitgrasps_novision', 'implicitgrasps'])
+    parser.add_argument("--method", help="which method to use", required=True), 
+        # choices=['knowngrasps_Fixed', 'knowngrasps_Proj', 'knowngrasps_OMG', 'implicitgrasps_outputposegrad', 'implicitgrasps_outputposeIK'])
     parser.add_argument("--exp_dir", help="Output directory", type=str, default="./output_videos") 
     parser.add_argument("--scene_files", help="Which scene to run", nargs="+")
     parser.add_argument("--experiment", help="run all scenes", action="store_true")
@@ -190,13 +187,14 @@ if __name__ == "__main__":
     # parser.add_argument("--vis", help="visualize usig YCBRenderer, not compatible with render flag", action="store_true")
     # parser.add_argument("--egl", help="use egl render", action="store_true")
     parser.add_argument("--acronym_dir", help="acronym dataset directory", type=str, default='')
+    parser.add_argument("--use_standoff", help="use standoff", action="store_true")
     parser.add_argument("--write_video", help="write video", action="store_true")
     parser.add_argument("--save_all_trajectories", help="Save intermediate trajectories", action="store_true")
     parser.add_argument("--use_goal_grad", help="Use goal gradient with implicit method", action="store_true")
     args = parser.parse_args()
 
     init_cfg(args)
-    exp_name = init_dirs()
+    init_dirs()
 
     scene = PlanningScene(cfg)
 
@@ -226,8 +224,8 @@ if __name__ == "__main__":
     for scene_idx, scene_file in enumerate(scene_files):
         print(scene_file)
         cfg.scene_file = scene_file
-        mkdir_if_missing(f'{cfg.exp_dir}/{exp_name}/{scene_file}')
-        video_writer = init_video_writer(scene_file, exp_name) if args.write_video else None
+        mkdir_if_missing(f'{cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}')
+        video_writer = init_video_writer() if args.write_video else None
 
         ext = ".mat" if 'acronym_book' not in scene_file else ".npy"
         full_name = os.path.join('data/scenes', scene_file + ext)
@@ -310,7 +308,7 @@ if __name__ == "__main__":
                 # self.info[-1]["transforms"] = [T_bot2ee, T_bot2objfrm, T_objfrm2obj, T_obj2goal, T_obj2ee]
 
         if args.save_all_trajectories:
-            save_all_trajectories(exp_name, scene)
+            save_all_trajectories(scene)
 
         rew = bullet_execute_plan(env, plan, args.write_video, video_writer) if info != [] else 0 
 
@@ -323,12 +321,38 @@ if __name__ == "__main__":
         # Save data
         # data = [rew, info, plan, inference_duration]
         data = [rew, info, plan]
-        np.save(f'{cfg.exp_dir}/{exp_name}/{cfg.scene_file}/data.npy', data)
+        np.save(f'{cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}/data.npy', data)
 
         # Convert avi to high quality gif 
         if args.write_video and info != []:
-            os.system(f'ffmpeg -y -i {cfg.exp_dir}/{exp_name}/{cfg.scene_file}/bullet.avi -vf "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 {cfg.exp_dir}/{exp_name}/{cfg.scene_file}/scene.gif')
+            os.system(f'ffmpeg -y -i {cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}/bullet.avi -vf "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 {cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}/scene.gif')
+
+        # Create gifs of predictions
+        if os.path.exists(f'{cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}/pred_pkls'):
+            # if using conda requires deps to be installed on base env
+            os.system(f'python3 ./bullet/post_process/trimesh_viz.py --dir {cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}')
+
     env.disconnect()
+
+# # def get_clip(scene, traj, i, comps, exp_name, duration, fps):
+# def get_clip(fast_debug_vis, traj, i, comps, exp_name, duration, fps):
+#     print(i)
+#     # traj_im = scene.fast_debug_vis(traj=traj, interact=0, write_video=False,
+#     traj_im = fast_debug_vis(traj=traj, interact=0, write_video=False,
+#                                     nonstop=False, collision_pt=False, goal_set=False, traj_idx=i)
+#     traj_im = cv2.cvtColor(traj_im, cv2.COLOR_RGB2BGR)
+#     clip = ImageClip(traj_im).set_duration(duration).set_fps(fps)
+#     # TextClip not working for some reason
+#     # txt_clip = (TextClip(f"iter {i}", fontsize=50, color='black')
+#         # .set_position('bottom')
+#         # .set_duration(duration))
+#     # comp = CompositeVideoClip([clip, txt_clip]).set_fps(fps).set_duration(duration)
+#     comp = CompositeVideoClip([clip]).set_fps(fps).set_duration(duration)
+#     comps[i] = comp
+#     cv2.imwrite(f"{cfg.exp_dir}/{exp_name}/{cfg.scene_file}/traj_{i+1}.png", traj_im)
+
+    # for scene_idx, scene_file in enumerate(scene_files):
+    #     pkls_to_gif(f'{cfg.exp_dir}/{cfg.exp_name}/{scene_file}')
 
 
         # if args.init_traj_end_at_start and args.scenes == ["acronym_book"]:

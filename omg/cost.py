@@ -497,6 +497,8 @@ class Cost(object):
                 self.cfg.obstacle_weight * obstacle_loss.sum(-1)
                 + self.cfg.smoothness_weight * smoothness_loss[:-1]
             )
+
+        print(f"obstacle_cost {weighted_obs}, smoothness_cost {weighted_smooth}, goal_cost {weighted_goal_cost}")
    
         if ('Proj' in self.cfg.method or 'OMG' in self.cfg.method) and self.cfg.goal_set_proj:
         # if self.cfg.goal_set_proj:
@@ -504,14 +506,16 @@ class Cost(object):
             goal_dist_thresh = 0.01
         elif 'implicitgrasps' in self.cfg.method:
         #  and traj.goal_cost is not None:
-            goal_dist = traj.goal_cost if self.cfg.use_goal_grad else np.linalg.norm(traj.data[-1] - traj.goal_joints)
-            goal_dist_thresh = 0.03 
+            goal_dist = traj.goal_cost if self.cfg.use_goal_grad else np.linalg.norm(traj.data[-1, :] - traj.goal_joints)
+            # goal_dist = traj.goal_cost if self.cfg.use_goal_grad else np.linalg.norm(traj.data[-1] - traj.goal_joints)
+            goal_dist_thresh = 0.01 
         elif 'Fixed' in self.cfg.method:
             goal_dist = 0
             goal_dist_thresh = 0.01
         else:
             raise NotImplementedError
          
+        print(f"goal_dist {goal_dist}, goal_thresh {goal_dist_thresh}")
         terminate = (
             (collide <= self.cfg.allow_collision_point)
             and self.cfg.pre_terminate
