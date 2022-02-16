@@ -7,6 +7,9 @@ from ycb_render.ycb_renderer import YCBRenderer
 from ycb_render.robotPose.robot_pykdl import *
 from . import config
 
+from .obj_model import Model
+from .traj import Trajectory
+
 from .planner import Planner
 from scipy.spatial import cKDTree
 import time
@@ -16,136 +19,6 @@ from .sdf_tools import *
 import torch
 
 torch.no_grad()
-import IPython
-
-
-class Trajectory(object):
-    """
-    Trajectory class that wraps an object or an obstacle
-    """
-
-    def __init__(self, timesteps=100, dof=9, start_end_equal=False):
-        """
-        Initialize fixed endpoint trajectory.
-        """
-        self.timesteps = config.cfg.timesteps
-        self.dof = dof
-        self.data = np.zeros([self.timesteps, dof])  # fixed start and end
-        self.goal_set = []
-        self.goal_quality = []
-
-        self.start = np.array([0.0, -1.285, 0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04])
-        if start_end_equal:
-            self.end = self.start.copy()
-            # When trajectory end does not match goal
-            # TODO check that these are necessary
-            # self.selected_goal = None 
-            # self.end_pose = None
-            self.goal_pose = None
-            self.goal_joints = None
-            self.goal_cost = None
-            self.goal_grad = None
-        else:
-            self.end = np.array([-0.99, -1.74, -0.61, -3.04, 0.88, 1.21, -1.12, 0.04, 0.04])
-        self.interpolate_waypoints(mode=config.cfg.traj_interpolate)
-
-    def update(self, grad):
-        """
-        Update trajectory based on functional gradient.
-        """
-        if config.cfg.consider_finger:
-            self.data += grad
-        else:
-            self.data[:, :-2] += grad[:, :-2]
-        self.data[:, -2:] = np.minimum(np.maximum(self.data[:, -2:], 0), 0.04)
-
-    def set(self, new_traj):
-        """
-        Set trajectory by given data.
-        """
-        self.data = new_traj
-
-    def interpolate_waypoints(self, waypoints=None, mode="cubic"):  # linear
-        """
-        Interpolate the waypoints using interpolation.
-        """
-        timesteps = config.cfg.timesteps
-        if config.cfg.dynamic_timestep:
-            timesteps = min(
-                max(
-                    int(np.linalg.norm(self.start - self.end) / config.cfg.traj_delta),
-                    config.cfg.traj_min_step,
-                ),
-                config.cfg.traj_max_step,
-            )
-            config.cfg.timesteps = timesteps
-            self.data = np.zeros([timesteps, self.dof])  # fixed start and end
-            config.cfg.get_global_param(timesteps)
-            self.timesteps = timesteps
-        self.data = interpolate_waypoints(
-            np.stack([self.start, self.end]), timesteps, self.start.shape[0], mode=mode
-        )
-
-
-class Model(object):
-    """
-    Model class that wraps an object or an obstacle
-    """
-
-    def __init__(
-        self, path=None, id=0, target=True, pose=None, compute_grasp=True, name=None
-    ):
-        path = config.cfg.root_dir + path
-        self.mesh_path = path + "model_normalized.obj"
-        self.pose_mat = np.eye(4)
-        self.pose_mat[:3, 3] = [0.1, 0.04, 0.15]  # 0.15  [0.3, 0.04, 0.55]
-        self.pose_mat[:3, :3] = euler2mat(-np.pi / 2, np.pi, np.pi)
-        if pose is not None:
-            self.pose_mat = pose
-
-        self.pose = pack_pose(self.pose_mat)
-        self.type = target
-        self.model_name = path.split("/")[-2]
-        if name is None:
-            self.name = self.model_name
-        else:
-            self.name = name
-        self.id = id
-        self.extents = np.loadtxt(path + "model_normalized.extent.txt").astype(
-            np.float32
-        )
-        self.resize = (
-            config.cfg.target_size if target else config.cfg.obstacle_size
-        )
-
-        self.sdf = SignedDensityField.from_pth(path + "model_normalized_chomp.pth")  #
-        self.sdf.resize(config.cfg.target_size)
-        self.sdf.data[self.sdf.data < 0] *= config.cfg.penalize_constant
-        self.compute_grasp = compute_grasp
-        self.grasps = []
-        self.reach_grasps = []
-        self.grasps_scores = []
-        self.seeds = []
-        self.grasp_potentials = []
-        self.grasp_vis_points = []
-        self.attached = False
-        self.rel_hand_pose = None
-        self.grasps_poses = []
-        if self.name.startswith("0"):
-            self.points = np.loadtxt(path + "model_normalized.xyz")
-            self.points = self.points[random.sample(range(self.points.shape[0]), 500)]
-
-    def world_to_obj(self, points):
-        return np.swapaxes(
-            (np.matmul(
-                    self.pose_mat[:3, :3].T,
-                    (np.swapaxes(points, -1, -2) - self.pose_mat[:3, [3]]),
-                )), -1, -2, )
-
-    def update_pose(self, pose):
-        self.pose = pose
-        self.pose_mat = unpack_pose(pose)
-
 
 class Robot(object):
     """
@@ -247,7 +120,6 @@ class Robot(object):
         resset the collision points of end effector
         """
         self.collision_points[-3:] = self.hand_col_points.copy()
-
 
 class Env(object):
     """
@@ -420,7 +292,6 @@ class Env(object):
         if self.cfg.report_time:
             print("combine sdf time {:.3f}".format(time.time() - s))
         self.sdf_limits = torch.from_numpy(self.sdf_limits).cuda()
-
 
 class PlanningScene(object):
     """
