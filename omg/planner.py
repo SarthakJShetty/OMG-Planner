@@ -195,8 +195,9 @@ class Planner(object):
             if self.cfg.ol_alg == "Proj":  #
                 self.traj.goal_idx = np.argmin(proj_dist)
 
-            self.traj.end = self.traj.goal_set[self.traj.goal_idx]  #
-            self.traj.interpolate_waypoints()
+            if 'outputposegrad' not in self.cfg.method:
+                self.traj.end = self.traj.goal_set[self.traj.goal_idx]  #
+                self.traj.interpolate_waypoints()
 
     def flip_grasp(self, old_grasps):
         """
@@ -721,9 +722,6 @@ class Planner(object):
                     T_objfrm2obj = self.cfg.T_obj2ctr
 
                     # Fixed goal joints for debugging
-                    # for goal in self.traj.goal_set:
-                    #     if np.allclose(goal, np.array([ 0.2118, -0.3085,  0.0597, -2.5309,  0.2207,  2.3577,  0.5107, 0.04  ,  0.04  ])):
-                    #         print(goal)
                     if 'fixed' in self.cfg.method:
                         # goal_joints = wrap_value(np.array([ 0.2118, -0.3085,  0.0597, -2.5309,  0.2207,  2.3577,  0.5107, 0.04  ,  0.04  ]))
                         goal_joints = wrap_value(self.traj.goal_set[self.traj.goal_idx])
@@ -797,11 +795,13 @@ class Planner(object):
                         J_pinv = J.T @ np.linalg.inv(J @ J.T)
                         q_dot = J_pinv @ Sthetadot_spatial
 
-                        traj.goal_joints = np.concatenate([traj.end[:7] - 0.1 * q_dot, [0.04, 0.04]])
+                        # traj.goal_joints = np.concatenate([traj.end[:7] - 1e-3 * q_dot, [0.04, 0.04]]) # only used if using goal_set_proj
+                        traj.goal_joints = np.concatenate([traj.end[:7] - 0.1 * q_dot, [0.04, 0.04]]) # only used if using goal_set_proj
 
-                        # traj.goal_cost = loss.item()
-                        # traj.goal_grad = q_dot
-                        # print(f"cost: {traj.goal_cost}, grad: {traj.goal_grad}")
+                        if self.cfg.use_goal_grad:
+                            traj.goal_cost = loss.item()
+                            traj.goal_grad = q_dot
+                            print(f"cost: {traj.goal_cost}, grad: {traj.goal_grad}")
 
                 self.info.append(self.optim.optimize(traj, force_update=True))  
                 self.history_trajectories.append(np.copy(traj.data))

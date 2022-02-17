@@ -22,8 +22,6 @@ class Trajectory(object):
             self.end = self.start.copy()
             # When trajectory end does not match goal
             # TODO check that these are necessary
-            # self.selected_goal = None 
-            # self.end_pose = None
             self.goal_pose = None
             self.goal_joints = None
             self.goal_cost = None

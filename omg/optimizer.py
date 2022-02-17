@@ -72,7 +72,8 @@ class Optimizer(object):
             self.cfg.smoothness_base_weight * self.cfg.cost_schedule_boost ** self.step
         )
         self.cfg.grasp_weight = (
-            self.cfg.base_grasp_weight * self.cfg.cost_schedule_decay ** self.step
+            # self.cfg.base_grasp_weight * self.cfg.cost_schedule_decay ** self.step
+            self.cfg.base_grasp_weight * self.cfg.cost_schedule_boost ** self.step
         )
         self.cfg.step_size = (
             self.cfg.step_decay_rate ** self.step * self.cfg.base_step_size

@@ -125,7 +125,8 @@ cfg.render = True
 cfg.method = 'knowngrasps_OMG'
 cfg.grasp_predictor = None # grasp prediction method
 cfg.acronym_dir = None
-cfg.use_goal_grad = False # whether to include the goal gradient and cost in the cost computation (already accounted for in goal_set_proj)
+cfg.use_goal_grad = False # whether to include the goal gradient and cost in the cost computation 
+cfg.fixed_endpoint = False # whether endpoint of trajectory is fixed or not
 exp_name = ''
 cfg.use_ik = False # use ik with output pose method
 
@@ -211,7 +212,8 @@ def get_global_param(steps=cfg.timesteps):
             cfg.time_interval,
             cfg.diff_rule_length,
             i + 1,
-            not cfg.goal_set_proj,
+            # not cfg.goal_set_proj,
+            cfg.fixed_endpoint
         )
         for i in range(cfg.diff_rule.shape[0])
     ]

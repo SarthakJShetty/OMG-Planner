@@ -167,7 +167,7 @@ def get_diff_matrix(
             index = i + j
             if index >= 0 and index < n:
                 diff_matrix[i, index] = diff_rule[j + half_length]
-    if with_end == False:
+    if not with_end:
         diff_matrix[-1, -1] = 0
     return diff_matrix / (time_interval ** order)
 

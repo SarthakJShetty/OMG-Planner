@@ -82,19 +82,29 @@ def init_cfg(args):
     if 'knowngrasps' in args.method: 
         if 'Fixed' in args.method:
             cfg.goal_set_proj = False
+            cfg.fixed_endpoint = True
             cfg.ol_alg = 'Baseline'
             cfg.goal_idx = -1
         elif 'Proj' in args.method:
+            cfg.goal_set_proj = True
+            cfg.fixed_endpoint = False
             cfg.ol_alg = 'Proj'
         elif 'OMG' in args.method:
+            cfg.goal_set_proj = True
+            cfg.fixed_endpoint = False
             cfg.ol_alg = 'MD'
     elif 'implicitgrasps' in args.method:
         cfg.use_standoff = False
         cfg.ol_alg = None
+        cfg.fixed_endpoint = False
         if 'outputposeIK' in args.method:
+            if cfg.use_goal_grad:
+                cfg.goal_set_proj = False
             cfg.use_ik = True
             cfg.grasp_prediction_weights = '/checkpoint/thomasweng/grasp_manifolds/runs/outputs/nopc_book_logmap_10kfree/2021-11-23_232102_dsetacronym_Book_train0.9_val0.1_free10.0k_sym_distlogmap/default_default/0_0/checkpoints/last.ckpt'
         elif 'outputposegrad' in args.method:
+            if cfg.use_goal_grad:
+                cfg.goal_set_proj = False
             cfg.use_ik = False
             cfg.grasp_prediction_weights = '/checkpoint/thomasweng/grasp_manifolds/runs/outputs/nopc_book_logmap_10kfree/2021-11-23_232102_dsetacronym_Book_train0.9_val0.1_free10.0k_sym_distlogmap/default_default/0_0/checkpoints/last.ckpt'
         else:
@@ -114,7 +124,7 @@ def init_dirs():
                 f"_{cfg.method}"
     mkdir_if_missing(f'{cfg.exp_dir}/{cfg.exp_name}')
     with open(f'{cfg.exp_dir}/{cfg.exp_name}/args.yml', 'w') as f:
-        yaml.dump(cfg, f)
+        yaml.dump(dict(cfg), f)
 
 def init_video_writer():
     return cv2.VideoWriter(

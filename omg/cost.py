@@ -430,7 +430,8 @@ class Cost(object):
             * start
             / self.cfg.time_interval
         )
-        if not self.cfg.goal_set_proj:
+        # if not self.cfg.goal_set_proj:
+        if self.cfg.fixed_endpoint:
             ed[-1] = (
                 self.cfg.diff_rule[0][self.cfg.diff_rule_length // 2]
                 * end
@@ -473,9 +474,12 @@ class Cost(object):
         if 'implicitgrasps' in self.cfg.method and self.cfg.use_goal_grad:
             assert traj.goal_cost is not None
             assert traj.goal_grad is not None
-            weighted_goal_cost = 1 * traj.goal_cost
+            weighted_goal_cost = self.cfg.grasp_weight * traj.goal_cost
+            # weighted_goal_cost = 1.0 * traj.goal_cost
+            print(f"grasp weight: {self.cfg.grasp_weight}")
             weighted_goal_grad = np.zeros_like(weighted_obs_grad)
-            weighted_goal_grad[-1, :7] = 1 * traj.goal_grad
+            weighted_goal_grad[-1, :7] = self.cfg.grasp_weight * traj.goal_grad
+            # weighted_goal_grad[-1, :7] = 1.0 * traj.goal_grad
             print(f"w_obs_cost: {weighted_obs}, w_smooth: {weighted_smooth}, w_goal: {weighted_goal_cost}")
             cost = weighted_obs + weighted_smooth + weighted_goal_cost
             grad = weighted_obs_grad + weighted_smooth_grad + weighted_goal_grad
@@ -500,15 +504,15 @@ class Cost(object):
 
         print(f"obstacle_cost {weighted_obs}, smoothness_cost {weighted_smooth}, goal_cost {weighted_goal_cost}")
    
-        if ('Proj' in self.cfg.method or 'OMG' in self.cfg.method) and self.cfg.goal_set_proj:
-        # if self.cfg.goal_set_proj:
+        # if ('Proj' in self.cfg.method or 'OMG' in self.cfg.method) and self.cfg.goal_set_proj:
+        if self.cfg.goal_set_proj:
             goal_dist = np.linalg.norm(traj.data[-1] - traj.goal_set[traj.goal_idx])
             goal_dist_thresh = 0.01
         elif 'implicitgrasps' in self.cfg.method:
         #  and traj.goal_cost is not None:
             goal_dist = traj.goal_cost if self.cfg.use_goal_grad else np.linalg.norm(traj.data[-1, :] - traj.goal_joints)
             # goal_dist = traj.goal_cost if self.cfg.use_goal_grad else np.linalg.norm(traj.data[-1] - traj.goal_joints)
-            goal_dist_thresh = 0.01 
+            goal_dist_thresh = 0.01
         elif 'Fixed' in self.cfg.method:
             goal_dist = 0
             goal_dist_thresh = 0.01
@@ -540,10 +544,8 @@ class Cost(object):
             "weighted_smooth": weighted_smooth,
             "weighted_smooth_grad": np.linalg.norm(weighted_smooth_grad),
             "weighted_obs_grad": np.linalg.norm(weighted_obs_grad),
-            "weighted_goal_grad": weighted_goal_grad, #
-            "weighted_goal": weighted_goal_cost, #
-            # "weighted_grasp_grad": 0, # 
-            # "weighted_grasp": 0, #
+            "weighted_grasp_grad": np.linalg.norm(weighted_goal_grad),  
+            "weighted_grasp": weighted_goal_cost, 
             "gradient": grad,
             "cost": cost,
             "grad": np.linalg.norm(grad),
