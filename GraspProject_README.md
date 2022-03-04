@@ -15,6 +15,8 @@ https://docs.google.com/document/d/1x1PZMdiyG4Ub5JhEP6zYPAnVxBQYJYjMYePLq-Qki9U/
 * Install [modified pytransform3d](https://github.com/thomasweng15/pytransform3d) to get around approximation error for logmap
     * `pip install -e .`
 * Install acronym (helpful for debugging)
+    * `pip install -e .`
+* install hydra-core, trimesh, shapely, torch_geometric, liegroups
 
 ## Evaluation
 * Run grasping using 100-scene test set from OMG-Planner in PyBullet

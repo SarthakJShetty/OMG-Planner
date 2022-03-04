@@ -20,6 +20,7 @@ __GraspManifolds__: also install contactgraspnet repo
     pip install -r requirements.txt
     ```  
     __GraspManifolds__: also install conda env with tensorflow 2.5 (for GTC 30 series). used the name `gm_pipeline`. We are using 3.7.9 due to contact_graspnet. Also had to run `sudo apt install libx11-dev mesa-common-dev`
+    Use the name `gmanifolds` 
 
 
 2. Install [ycb_render](ycb_render)  
@@ -50,6 +51,7 @@ __GraspManifolds__: also install contactgraspnet repo
     ```
 
     __GraspManifolds__: had to install torch first: `conda install pytorch==1.8.0 cudatoolkit=11.1 -c pytorch -c conda-forge`
+    or `pip install torch==1.8.1+cu111 torchvision==0.9.1+cu111 torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html`
 6. Install the submodule PyKDL. Check this tutorial [here](https://git.ias.informatik.tu-darmstadt.de/lutter/ias_pykdl/blob/8b864ccf81763439ba5d45a359e1993208c2247c/pykdl.md) if there is any issue with installing PyKDL.
 
     ```bash
