@@ -27,16 +27,17 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 cfg = edict()
 
 """ hyperparameter """
-cfg.smoothness_base_weight = 0.1  # 0.1 weight for smoothness cost in total cost
-cfg.base_obstacle_weight = 1.0  # 1.0 weight for obstacle cost in total cost
+cfg.smoothness_base_weight = 0.0# 0.1  # 0.1 weight for smoothness cost in total cost
+cfg.base_obstacle_weight = 0.0 #1.0  # 1.0 weight for obstacle cost in total cost
 cfg.base_grasp_weight = 1.0  # weight for grasp cost in total cost
 cfg.cost_schedule_decay = 1  # cost schedule decay for obstacle cost weight wrt base
 cfg.cost_schedule_boost = 1.02  # cost schedule boost for smoothness cost weight  
+cfg.grasp_schedule_boost = 1.0 # 1.02 # 1.05  # cost schedule boost for grasp cost weight  
  
 cfg.base_step_size = 0.1  # initial step size in gradient descent
 cfg.step_decay_rate = 1.0  # decay rate for step size in gradient descent
 cfg.joint_limit_max_steps = 10  # maximum smooth projection steps for joint limit
-cfg.optim_steps = 50  # optimization steps for each planner call
+cfg.optim_steps = 500 # optimization steps for each planner call
  
 """ planner parameters """
 cfg.epsilon = 0.2  # the obstacle padding distance that has gradient
@@ -129,6 +130,7 @@ cfg.use_goal_grad = False # whether to include the goal gradient and cost in the
 cfg.fixed_endpoint = False # whether endpoint of trajectory is fixed or not
 exp_name = ''
 cfg.use_ik = False # use ik with output pose method
+cfg.use_min_goal_cost_traj = False # use trajectory with minimum goal cost (use_goal_grad = True, method='implicigrasps')
 
 """ global function """
 def get_derivative(data, start, end, diff_rule=1):

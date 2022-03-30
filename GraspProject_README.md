@@ -71,6 +71,9 @@ https://docs.google.com/document/d/1x1PZMdiyG4Ub5JhEP6zYPAnVxBQYJYjMYePLq-Qki9U/
         * (Log map, other distances)
     * Run training
 
+    * Evaluate on acronym_book
+        `python -m omg.trimesh_viz --dir=/data/manifolds/pybullet_eval/saved_results/outputpose_improvegrasp/predgrasps_grad_goalgrad_bullet_lowestcosttraj_graspsched1.05/2022-03-04-17-19-41_implicitgrasps_outputposegrad/acronym_book_1`
+
 ### Testing out VN-OccNets
     * Generate partial point cloud views for each object (in manifold_grasping_torch)
         ```

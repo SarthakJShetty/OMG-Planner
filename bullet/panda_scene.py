@@ -78,6 +78,8 @@ def init_cfg(args):
     cfg.use_goal_grad = args.use_goal_grad
     cfg.acronym_dir = args.acronym_dir
     cfg.use_standoff = args.use_standoff
+    cfg.grasp_schedule_boost = args.grasp_cost_schedule_boost 
+    cfg.cost_schedule_boost = args.smooth_cost_schedule_boost 
 
     if 'knowngrasps' in args.method: 
         if 'Fixed' in args.method:
@@ -100,13 +102,28 @@ def init_cfg(args):
         if 'outputposeIK' in args.method:
             if cfg.use_goal_grad:
                 cfg.goal_set_proj = False
+                cfg.use_min_goal_cost_traj = args.use_min_goal_cost_traj
             cfg.use_ik = True
             cfg.grasp_prediction_weights = '/checkpoint/thomasweng/grasp_manifolds/runs/outputs/nopc_book_logmap_10kfree/2021-11-23_232102_dsetacronym_Book_train0.9_val0.1_free10.0k_sym_distlogmap/default_default/0_0/checkpoints/last.ckpt'
         elif 'outputposegrad' in args.method:
             if cfg.use_goal_grad:
                 cfg.goal_set_proj = False
+                cfg.use_min_goal_cost_traj = args.use_min_goal_cost_traj
             cfg.use_ik = False
             cfg.grasp_prediction_weights = '/checkpoint/thomasweng/grasp_manifolds/runs/outputs/nopc_book_logmap_10kfree/2021-11-23_232102_dsetacronym_Book_train0.9_val0.1_free10.0k_sym_distlogmap/default_default/0_0/checkpoints/last.ckpt'
+            # cfg.grasp_prediction_weights = '/checkpoint/thomasweng/grasp_manifolds/runs/outputs/nopc_book_logmap_10kfree_bullet/2022-02-22_112219_dsetacronym_Book_train0.9_val0.1_free10.0k_sym_bullet_distlogmap/default_default/0_0/checkpoints/last.ckpt'
+        elif 'outputlmgrad' in args.method:
+            if cfg.use_goal_grad:
+                cfg.goal_set_proj = False
+                cfg.use_min_goal_cost_traj = args.use_min_goal_cost_traj
+            cfg.use_ik = False
+            cfg.grasp_prediction_weights = '/checkpoint/thomasweng/grasp_manifolds/runs/outputs/nopc_book_10kfree_inlm_obj2ee_outlm_flex/2022-03-09_182809_latent0_dsetacronym_Book_train0.9_val0.1_free10.0k_sym_distlogmap/default_default/0_0/checkpoints/last.ckpt'
+        elif 'outputdistgrad' in args.method:
+            if cfg.use_goal_grad:
+                cfg.goal_set_proj = False
+                cfg.use_min_goal_cost_traj = args.use_min_goal_cost_traj
+            cfg.use_ik = False
+            cfg.grasp_prediction_weights = '/checkpoint/thomasweng/grasp_manifolds/runs/outputs/nopc_book_10kfree_inlm_outlmnorm_flex/2022-03-08_011951_latent0_dsetacronym_Book_train0.9_val0.1_free10.0k_sym_distlogmap/default_default/0_0/checkpoints/epoch=99-step=499.ckpt'
         else:
             raise NotImplementedError
 
@@ -189,7 +206,7 @@ def save_all_trajectories(scene):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--method", help="which method to use", required=True), 
-        # choices=['knowngrasps_Fixed', 'knowngrasps_Proj', 'knowngrasps_OMG', 'implicitgrasps_outputposegrad', 'implicitgrasps_outputposeIK'])
+        # choices=['knowngrasps_Fixed', 'knowngrasps_Proj', 'knowngrasps_OMG', 'implicitgrasps_outputposegrad', 'implicitgrasps_outputposeIK', implicitgrasps_outputdistgrad'])
     parser.add_argument("--exp_dir", help="Output directory", type=str, default="./output_videos") 
     parser.add_argument("--scene_files", help="Which scene to run", nargs="+")
     parser.add_argument("--experiment", help="run all scenes", action="store_true")
@@ -201,6 +218,9 @@ if __name__ == "__main__":
     parser.add_argument("--write_video", help="write video", action="store_true")
     parser.add_argument("--save_all_trajectories", help="Save intermediate trajectories", action="store_true")
     parser.add_argument("--use_goal_grad", help="Use goal gradient with implicit method", action="store_true")
+    parser.add_argument("--use_min_goal_cost_traj", help="Use trajectory with minimum goal cost", action="store_true")
+    parser.add_argument("--grasp_cost_schedule_boost", help="grasp cost schedule", type=float, default=1.002)
+    parser.add_argument("--smooth_cost_schedule_boost", help="smooth cost schedule", type=float, default=1.001)
     args = parser.parse_args()
 
     init_cfg(args)

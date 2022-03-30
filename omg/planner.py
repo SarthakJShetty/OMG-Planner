@@ -18,36 +18,46 @@ import pytransform3d.rotations as pr
 import pytransform3d.transformations as pt
 
 from bullet.utils import draw_pose
+from .viz_trimesh import visualize_predicted_grasp, trajT_to_grasppredT, grasppredT_to_trajT
+import pytorch3d.transforms as ptf
+import pybullet as p
+from manifold_grasping.control_pts import *
 
-def trajT_to_grasppredT(T):
-    offset_T = np.array(rotZ(np.pi / 2)) # transform to correct wrist rotation 
-    return T @ offset_T
-    
-def grasppredT_to_trajT(T):
-    offset_T = np.array(rotZ(np.pi / 2)) # transform to correct wrist rotation 
-    return T @ np.linalg.inv(offset_T)
+# def visualize_predicted_grad(iter, cfg, T_obj2ee, out_lm, T_objfrm2obj, show=False, rotate_wrist=False):
+#     grasp_root = f"/checkpoint/thomasweng/acronym/grasps"
+#     obj_name = 'Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836'
+#     obj_mesh = load_mesh(f"{grasp_root}/{obj_name}.h5", mesh_root_dir=cfg.acronym_dir)
 
-def visualize_predicted_grasp(iter, cfg, T_obj2ee, T_obj2goal, T_objfrm2obj):
-    import trimesh
-    from acronym_tools import load_mesh, create_gripper_marker
-    import pickle
+#     obj_mesh = obj_mesh.apply_transform(np.linalg.inv(T_objfrm2obj))
 
-    grasp_root = f"/checkpoint/thomasweng/acronym/grasps"
-    obj_name = 'Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836'
-    obj_mesh = load_mesh(f"{grasp_root}/{obj_name}.h5", mesh_root_dir=cfg.acronym_dir)
+#     # if rotate_wrist:
+#     #     T_obj2ee = trajT_to_grasppredT(T_obj2ee)
+#     #     T_obj2goal = trajT_to_grasppredT(T_obj2goal)
 
-    obj_mesh = obj_mesh.apply_transform(np.linalg.inv(T_objfrm2obj))
+#     ee_pose = [create_gripper_marker(color=[0, 0, 255]).apply_transform(T_obj2ee)]
 
-    ee_pose = [create_gripper_marker(color=[0, 0, 255]).apply_transform(T_obj2ee)]
-    goal_pose = [create_gripper_marker(color=[255, 0, 0]).apply_transform(T_obj2goal)]
+#     # Visualize grad
+#     # goal_pose = [create_gripper_marker(color=[255, 0, 0]).apply_transform(T_obj2goal)]
+#     grad_pose = ee_pose
 
-    scene = trimesh.Scene([obj_mesh] + ee_pose + goal_pose)
+#     Stheta_ee2goal = out_lm.cpu()
 
-    if not os.path.exists(f'{cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}/pred_pkls'):
-        os.mkdir(f'{cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}/pred_pkls')
-    fname = f'{cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}/pred_pkls/pred_{iter}.pkl'
-    export = trimesh.exchange.export.export_scene(scene, file_obj=None, file_type='dict')
-    pickle.dump(export, open(fname, 'wb'))
+#     # loss = torch.linalg.norm(out_lm)
+#     loss = torch.linalg.norm(Stheta_ee2goal)
+#     loss.backward()
+#     Sthetadot_body = -batch_x.grad.squeeze().cpu().numpy()
+
+#     scene = trimesh.Scene([obj_mesh] + ee_pose + grad_pose)
+#     if not show:
+#         if not os.path.exists(f'{cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}/pred_pkls'):
+#             os.mkdir(f'{cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}/pred_pkls')
+#         fname = f'{cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}/pred_pkls/pred_{iter}.pkl'
+#         export = trimesh.exchange.export.export_scene(scene, file_obj=None, file_type='dict')
+#         pickle.dump(export, open(fname, 'wb'))
+#     else:
+#         scene.show()
+#     import IPython; IPython.embed()
+
 
 def solve_one_pose_ik(input):
     """
@@ -120,7 +130,6 @@ def solve_one_pose_ik(input):
                 any_ik = True
     return reach_goal_set, standoff_goal_set, any_ik
 
-
 class Planner(object):
     """
     Planner class that plans a grasp trajectory 
@@ -146,7 +155,7 @@ class Planner(object):
                 self.load_grasp_set(env)
                 self.setup_goal_set(env)
                 self.grasp_init(env)
-            from methods.implicit import ImplicitGrasp_OutputPose
+            from bullet.methods.implicit import ImplicitGrasp_OutputPose
             self.grasp_predictor = ImplicitGrasp_OutputPose(ckpt_path=self.cfg.grasp_prediction_weights) 
         else:
             raise NotImplementedError
@@ -568,7 +577,7 @@ class Planner(object):
             goal_set = target_obj.grasps
             reach_goal_set = target_obj.reach_grasps
 
-            if True:
+            if False:
                 for T_obj2grasp in target_obj.grasps_poses[:30]:
                     import pybullet as p
                     pos, orn = p.getBasePositionAndOrientation(0)
@@ -682,6 +691,221 @@ class Planner(object):
                     target_obj.grasp_vis_points = []
             target_obj.compute_grasp = False
 
+    def get_T_bot2ee(self, traj, idx=-1):
+        """
+        Returns: numpy matrix
+        """
+        angles = traj.data[idx]
+        end_joints = wrap_value(angles) # rad2deg
+        end_poses = self.cfg.ROBOT.forward_kinematics_parallel(
+            joint_values=end_joints[np.newaxis, :], base_link=self.cfg.base_link)[0]
+        T_bot2ee = end_poses[-3]
+        return T_bot2ee
+
+    def get_T_obj2bot(self):
+        """
+        Returns: numpy matrix
+        """
+        T_bot2objfrm = pt.transform_from_pq(self.env.objects[self.env.target_idx].pose) 
+        T_objfrm2obj = self.cfg.T_obj2ctr
+        T_obj2bot = np.linalg.inv(T_bot2objfrm @ T_objfrm2obj)
+        return T_obj2bot
+    
+    def get_T_obj2goal(self, fixed_goal=False):
+        """
+        Get transform from robot frame to desired grasp frame
+        Returns: numpy matrix
+        """
+        if fixed_goal: # use goal from pre-existing grasp set
+            if self.traj.goal_set == []:
+                self.load_grasp_set(self.env)
+                self.setup_goal_set(self.env)
+                self.grasp_init(self.env)
+
+            goal_joints = wrap_value(self.traj.goal_set[self.traj.goal_idx]) # degrees
+            goal_poses = self.cfg.ROBOT.forward_kinematics_parallel(
+                joint_values=goal_joints[np.newaxis, :], base_link=self.cfg.base_link)[0]
+            T_bot2goal = goal_poses[-3]
+
+            if True:
+                import pybullet as p
+                pos, orn = p.getBasePositionAndOrientation(0)
+                T_world2bot = np.eye(4)
+                T_world2bot[:3, :3] = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
+                T_world2bot[:3, 3] = pos
+                draw_pose(T_world2bot @ T_bot2goal)
+
+            T_obj2bot = self.get_T_obj2bot()
+            T_obj2goal = T_obj2bot @ T_bot2goal
+
+        else: # predict grasp
+            pass
+
+        return T_obj2goal
+
+    def get_joint_angle_grad(self, traj, fixed_goal=False, T_bot2ee_np=None):
+        """
+        Get joint angle grad from network prediction
+        For outputpose grad only
+        """
+        # Get transform from object to end effector via robot base frame
+        T_obj2bot_np = self.get_T_obj2bot()
+        T_bot2ee_np = self.get_T_bot2ee(traj)
+        T_obj2ee_np = T_obj2bot_np @ T_bot2ee_np 
+        T_obj2ee_nograd = torch.tensor(T_obj2ee_np, device='cuda', dtype=torch.float64)
+
+        # Get log map representation of T_ee2obj so we can get gradient for the manipulator Jacobian
+        Stheta_ee2obj = pytorch3d.transforms.se3_log_map(torch.linalg.inv(T_obj2ee_nograd).T.unsqueeze(0)).squeeze(0) # [nu omega]
+        Stheta_ee2obj.requires_grad = True
+
+        # # Get log map representation of T_obj2ee so we can get the gradient for the manipulator Jacobian
+        # Stheta_obj2ee = pytorch3d.transforms.se3_log_map(T_obj2ee_nograd.T.unsqueeze(0)).squeeze(0) # [nu omega], nu = trans, omega = rot
+        # Stheta_obj2ee.requires_grad = True
+
+        # Turn Stheta_o2e back into T_obj2ee for backprop gradient flow
+        # T_obj2ee = pytorch3d.transforms.se3_exp_map(Stheta_obj2ee.unsqueeze(0)).squeeze().T
+        T_obj2ee = torch.linalg.inv(pytorch3d.transforms.se3_exp_map(Stheta_ee2obj.unsqueeze(0)).squeeze().T)
+        if not torch.all(torch.isclose(T_obj2ee_nograd, T_obj2ee)):
+            print("Warning: transform is not close")
+        # assert torch.all(torch.isclose(T_obj2ee_nograd, T_obj2ee))
+
+        # Get transform from object frame to goal grasp
+        # Fixed goal (offset from start position)
+        T_bot2goal_np = self.get_T_bot2ee(traj, idx=0)
+        T_bot2goal_np[:3, 3] += [0.1, 0.1, -0.1]
+        T_obj2goal_np = deepcopy(T_obj2bot_np) @ T_bot2goal_np
+        # T_obj2goal_np = self.get_T_obj2goal(fixed_goal=fixed_goal)
+        T_obj2goal = torch.tensor(T_obj2goal_np, device='cuda', dtype=torch.float64)
+
+        T_ee2goal = torch.linalg.inv(T_obj2ee) @ T_obj2goal
+        # Try pose quaternion L2 loss instead of loss in exp coords
+        # pq_ee2goal = torch.zeros((7,), device='cuda', dtype=torch.float64)
+        # pq_ee2goal[:3] = T_ee2goal[:3, 3]
+        # pq_ee2goal[3:] = pytorch3d.transforms.matrix_to_quaternion(T_ee2goal[:3, :3].unsqueeze(0)).squeeze(0) # qw qx qy qz
+        # Norm the whole pq vector
+        # loss = torch.linalg.norm(pq_ee2goal - torch.tensor([0, 0, 0, 1, 0, 0, 0], device='cuda', dtype=torch.float64))
+        
+        Stheta_ee2goal = pytorch3d.transforms.se3_log_map(T_ee2goal.T.unsqueeze(0)).squeeze(0) # [nu omega]
+        # Compute cost as norm of log map, backprop to get log map velocity
+        loss = torch.linalg.norm(Stheta_ee2goal[:3]) + torch.linalg.norm(Stheta_ee2goal[3:])
+
+        loss.backward()
+        # Sthetadot_ee = Stheta_obj2ee.grad.cpu().numpy()
+        Sthetadot_ee = -Stheta_ee2obj.grad.cpu().numpy()
+        # [[3, 4, 5, 0, 1, 2]] # [omega nu]
+
+        # Use adjoint to go from ee frame log map velocity to base frame log map velocity
+        # adjoint in pytransform3d is 
+        # [  R    0 ]
+        # [ [t]_x R ]
+        # But for exponential coordinates and our jacobian we need 
+        # [ R   [t]_x ]
+        # [ 0    R    ]
+        adj_ee2bot = pt.adjoint_from_transform(T_bot2ee_np)
+        adj_ee2bot[:3, 3:] = adj_ee2bot[3:, :3]
+        adj_ee2bot[3:, :3] = np.zeros(3)
+        Sthetadot_bot = adj_ee2bot @ Sthetadot_ee # ee is body frame, bot is spatial frame
+
+        # Compute jacobian inverse to get joint angle velocity from log map velocity 
+        J = self.cfg.ROBOT.jacobian(traj.end[:7])
+        J_pinv = J.T @ np.linalg.inv(J @ J.T)
+        q_dot = J_pinv @ Sthetadot_bot
+
+        if self.cfg.use_goal_grad:
+            traj.goal_cost = loss.item()
+            traj.goal_grad = q_dot
+            print(f"cost: {traj.goal_cost}, grad: {traj.goal_grad}")
+
+        if True: # debug viz
+            pos, orn = p.getBasePositionAndOrientation(0)
+            T_world2bot = np.eye(4)
+            T_world2bot[:3, :3] = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
+            T_world2bot[:3, 3] = pos
+            draw_pose(T_world2bot @ T_bot2ee_np) # ee in world frame
+            draw_pose(T_world2bot @ np.linalg.inv(T_obj2bot_np)) # obj in world frame
+
+            draw_pose(T_world2bot @ T_bot2goal_np)
+
+        # if True: # debug viz
+            # These should be the same
+            # draw_pose(T_world2bot @ np.linalg.inv(T_obj2bot_np) @ T_obj2goal_np)
+            # draw_pose(T_world2bot @ T_bot2ee_np @ T_ee2goal.detach().cpu().numpy())
+
+        return T_bot2ee_np
+
+    def pq_from_tau(self, tau):
+        pq = torch.zeros((7,), device='cuda', dtype=torch.float64)
+        T = ptf.se3_exp_map(tau.unsqueeze(0), eps=1e-10).squeeze().T
+        pq[:3] = T[:3, 3]
+        pq[3:] = ptf.matrix_to_quaternion(T[:3, :3].unsqueeze(0)).squeeze(0) # qw qx qy qz
+        return pq
+
+    def pq_from_T(self, T):
+        pq = torch.zeros((7,), device='cuda', dtype=torch.float64)
+        pq[:3] = T[:3, 3]
+        pq[3:] = ptf.matrix_to_quaternion(T[:3, :3].unsqueeze(0)).squeeze(0) # qw qx qy qz
+        return pq
+
+    def grad_update(self, tau_b2e, tau_b2g, loss='logmap'):
+        """
+        update the input transform to move toward goal pose, agnostic to traj opt loop. 
+        """
+        tau_b2e.requires_grad = True
+        # import IPython; IPython.embed()
+
+        if loss == 'logmap_split':
+            # nu := translational component of the exp. coords
+            # omega := rotational component of the exp. coords 
+            alpha = 0.01
+            nu_diff = tau_b2e[:3] - tau_b2g[:3]
+            omega_diff = tau_b2e[3:] - tau_b2g[3:]
+            loss = torch.linalg.norm(nu_diff) + torch.linalg.norm(omega_diff)
+        elif loss == 'logmap':
+            alpha = 0.01
+            loss = torch.linalg.norm(tau_b2e - tau_b2g)
+        elif loss == 'pq':
+            alpha = 0.05
+            pq_b2e = self.pq_from_tau(tau_b2e)
+            pq_b2g = self.pq_from_tau(tau_b2g)
+            loss = torch.linalg.norm(pq_b2e - pq_b2g)
+        elif loss == 'control_points':
+            alpha = 0.02
+            T_b2e = ptf.se3_exp_map(tau_b2e.unsqueeze(0), eps=1e-10).squeeze().T 
+            T_b2g = ptf.se3_exp_map(tau_b2g.unsqueeze(0), eps=1e-10).squeeze().T 
+            cp_b2e = transform_control_points(T_b2e.unsqueeze(0).float(), 1, mode='rt', device='cuda', rotate=True)
+            cp_b2g = transform_control_points(T_b2g.unsqueeze(0).float(), 1, mode='rt', device='cuda', rotate=True)
+            # loss = control_point_l1_loss(cp_b2e, cp_b2g)
+            loss = control_point_l2_loss(cp_b2e, cp_b2g)
+            if True:
+                pos, orn = p.getBasePositionAndOrientation(0)
+                T_world2bot = np.eye(4)
+                T_world2bot[:3, :3] = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
+                T_world2bot[:3, 3] = pos
+                T_b2e_np = T_b2e.detach().cpu().numpy()
+                for cp in cp_b2e[0]:
+                    T = np.eye(4)
+                    T[:3, :3] = T_b2e_np[:3, :3]
+                    T[:, 3] = cp.detach().cpu().numpy()
+                    draw_pose(T_world2bot @ T)
+
+        # Backprop the loss and update the query pose
+        loss.backward()
+        tau_b2e_grad = tau_b2e.grad.detach()
+        tau_b2e = (tau_b2e - alpha * tau_b2e_grad).detach()
+
+        if True: # visualize
+            pos, orn = p.getBasePositionAndOrientation(0)
+            T_world2bot = np.eye(4)
+            T_world2bot[:3, :3] = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
+            T_world2bot[:3, 3] = pos
+
+            T_bot2ee = ptf.se3_exp_map(tau_b2e.unsqueeze(0)).squeeze().T
+            T_bot2ee_np = T_bot2ee.detach().cpu().numpy()
+
+            draw_pose(T_world2bot @ T_bot2ee_np) # ee in world frame
+
+        return tau_b2e
+
     def plan(self, traj):
         """
         Run chomp optimizer to do trajectory optmization
@@ -694,8 +918,54 @@ class Planner(object):
         alg_switch = self.cfg.ol_alg != "Baseline" and 'implicitgrasps' not in self.cfg.method
         # and self.cfg.ol_alg != "Proj"
 
+        best_traj_idx = -1
+        best_traj = None # Save lowest cost trajectory
+        best_cost = 1000        
         if (not self.cfg.goal_set_proj) or len(self.traj.goal_set) > 0 \
             or 'implicitgrasps' in self.cfg.method:
+
+            # TODO TEMPORARY get the starting pose in exp coords and use it for optimization
+            # Get a query pose that will update every iteration: object to ee pose
+            # T_b2e := transform from bot to end effector frame
+            # tau_b2e := exponential coordinates of T_b2e, i.e. Log(T_b2e)
+            T_b2e_np = self.get_T_bot2ee(traj, idx=-1)
+            T_b2e = torch.tensor(T_b2e_np, device='cuda', dtype=torch.float64)
+            tau_b2e = ptf.se3_log_map(T_b2e.T.unsqueeze(0), eps=1e-10, cos_bound=1e-10).squeeze(0)
+
+            # Get fixed goal that the query pose should move towards every iteration
+            #   T_b2g := transform from bot to goal pose frame
+            #   tau_b2g := exponential coordinates of T_b2g
+            # # Goal as fixed offset from end effector
+            # T_b2g = T_b2e.clone()
+            # T_b2g[:3, 3] -= torch.tensor([0.1, 0.1, 0.1], device='cuda', dtype=torch.float64)
+            # Goal from known good grasp set
+            T_o2g = self.get_T_obj2goal(fixed_goal=True)
+            T_b2o = np.linalg.inv(self.get_T_obj2bot())
+            T_b2g = torch.tensor(T_b2o @ T_o2g, device='cuda', dtype=torch.float64)
+            tau_b2g = ptf.se3_log_map(T_b2g.T.unsqueeze(0)).squeeze(0)
+            if True: # visualize goal
+                pos, orn = p.getBasePositionAndOrientation(0)
+                T_world2bot = np.eye(4)
+                T_world2bot[:3, :3] = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
+                T_world2bot[:3, 3] = pos
+
+                # T_bot2ee = ptf.se3_exp_map(tau_b2g.unsqueeze(0)).squeeze().T
+                # Avoid combining se3_log_map and se3_exp_map due to singularity 
+                # import IPython; IPython.embed()
+                # T_bot2ee = ptf.se3_exp_map(tau_b2e.unsqueeze(0)).squeeze().T
+                # T_bot2ee_np = T_bot2ee.detach().cpu().numpy()
+
+                draw_pose(T_world2bot @ T_b2e_np) # ee in world frame
+                # draw_pose(T_world2bot @ T_bot2ee_np) # ee in world frame
+
+                T_b2g = ptf.se3_exp_map(tau_b2g.unsqueeze(0), eps=1e-10).squeeze().T 
+                cp_b2g = transform_control_points(T_b2g.unsqueeze(0).float(), 1, mode='rt', device='cuda', rotate=True)
+                T_b2g_np = T_b2g.detach().cpu().numpy()
+                for cp in cp_b2g[0]:
+                    T = np.eye(4)
+                    T[:3, :3] = T_b2g_np[:3, :3]
+                    T[:, 3] = cp.detach().cpu().numpy()
+                    draw_pose(T_world2bot @ T)
 
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
                 start_time = time.time()
@@ -707,107 +977,213 @@ class Planner(object):
                     self.learner.update_goal()
                     self.selected_goals.append(self.traj.goal_idx)
 
-                # compute and store in traj
-                # https://robotics.stackexchange.com/questions/6382/can-a-jacobian-be-used-to-determine-required-joint-angles-for-end-effector-veloc
                 if 'implicitgrasps' in self.cfg.method:
-                    # Get current ee pose
-                    traj.end = traj.data[-1]
-                    end_joints = wrap_value(traj.end) # rad2deg
-                    end_poses = self.cfg.ROBOT.forward_kinematics_parallel(
-                        joint_values=end_joints[np.newaxis, :], base_link=self.cfg.base_link)[0]
-                    T_bot2ee = end_poses[-3]
+                    # T_bot2ee_np = self.get_joint_angle_grad(traj, fixed_goal=True, T_bot2ee_np=T_bot2ee_np)
+                    tau_b2e = self.grad_update(tau_b2e, tau_b2g)
+                    traj.goal_cost = 1
+                    traj.goal_grad = np.zeros((7,))
 
-                    # Get desired goal pose - Run implicit grasp network that outputs pose                    
-                    T_bot2objfrm = pt.transform_from_pq(self.env.objects[self.env.target_idx].pose) 
-                    T_objfrm2obj = self.cfg.T_obj2ctr
+                # # compute and store in traj
+                # # https://robotics.stackexchange.com/questions/6382/can-a-jacobian-be-used-to-determine-required-joint-angles-for-end-effector-veloc
+                # if 'implicitgrasps' in self.cfg.method:
+                #     # Get current ee pose
+                #     traj.end = traj.data[-1]
+                #     end_joints = wrap_value(traj.end) # rad2deg
+                #     end_poses = self.cfg.ROBOT.forward_kinematics_parallel(
+                #         joint_values=end_joints[np.newaxis, :], base_link=self.cfg.base_link)[0]
+                #     T_bot2ee = end_poses[-3]
 
-                    # Fixed goal joints for debugging
-                    if 'fixed' in self.cfg.method:
-                        # goal_joints = wrap_value(np.array([ 0.2118, -0.3085,  0.0597, -2.5309,  0.2207,  2.3577,  0.5107, 0.04  ,  0.04  ]))
-                        goal_joints = wrap_value(self.traj.goal_set[self.traj.goal_idx])
-                        goal_poses = self.cfg.ROBOT.forward_kinematics_parallel(
-                            joint_values=goal_joints[np.newaxis, :], base_link=self.cfg.base_link)[0]
-                        T_bot2goal = goal_poses[-3]
-                        T_obj2goal = np.linalg.inv(T_bot2objfrm @ T_objfrm2obj) @ T_bot2goal
-                        T_obj2goal_wristrot = trajT_to_grasppredT(T_obj2goal)
-                        T_obj2ee = np.linalg.inv(T_bot2objfrm @ T_objfrm2obj) @ T_bot2ee 
-                        T_obj2ee_wristrot = trajT_to_grasppredT(T_obj2ee)
-                    else:
-                        T_obj2ee = np.linalg.inv(T_bot2objfrm @ T_objfrm2obj) @ T_bot2ee 
-                        T_obj2ee_wristrot = trajT_to_grasppredT(T_obj2ee)
+                #     # Get desired goal pose - Run implicit grasp network that outputs pose                    
+                #     T_bot2objfrm = pt.transform_from_pq(self.env.objects[self.env.target_idx].pose) 
+                #     T_objfrm2obj = self.cfg.T_obj2ctr
 
-                        ee_pq = pt.pq_from_transform(T_obj2ee_wristrot)[[0, 1, 2, 4, 5, 6, 3]] # x y z qx qy qz qw
-                        ee = torch.tensor(ee_pq, device='cuda', dtype=torch.float32).unsqueeze(0)                    
-                        out = self.grasp_predictor.forward(ee) # x y z qx qy qz qw
-                        goal_pq = out.cpu().numpy()[[0, 1, 2, 6, 3, 4, 5]] # x y z qw qx qy qz
-                        T_obj2goal_wristrot = pt.transform_from_pq(goal_pq)
-                        T_obj2goal = grasppredT_to_trajT(T_obj2goal_wristrot)
+                #     # Fixed goal joints for debugging
+                #     if 'fixed' in self.cfg.method:
+                #         # goal_joints = wrap_value(np.array([ 0.2118, -0.3085,  0.0597, -2.5309,  0.2207,  2.3577,  0.5107, 0.04  ,  0.04  ]))
+                #         goal_joints = wrap_value(self.traj.goal_set[self.traj.goal_idx])
+                #         goal_poses = self.cfg.ROBOT.forward_kinematics_parallel(
+                #             joint_values=goal_joints[np.newaxis, :], base_link=self.cfg.base_link)[0]
+                #         T_bot2goal = goal_poses[-3]
+                #         T_obj2goal = np.linalg.inv(T_bot2objfrm @ T_objfrm2obj) @ T_bot2goal
+                #         T_obj2goal_wristrot = trajT_to_grasppredT(T_obj2goal)
+                #         T_obj2ee = np.linalg.inv(T_bot2objfrm @ T_objfrm2obj) @ T_bot2ee 
+                #         T_obj2ee_wristrot = trajT_to_grasppredT(T_obj2ee)
+                #     elif self.cfg.method == 'implicitgrasps_outputdistgrad':
+                #         T_ee2obj = trajT_to_grasppredT(np.linalg.inv(T_bot2ee) @ (T_bot2objfrm @ T_objfrm2obj))
+                #         SE3_ee2obj = SE3.from_matrix(torch.tensor(T_ee2obj, dtype=torch.float32))
+                #         Stheta_ee2obj = SE3_ee2obj.log()
 
-                    if True:
-                        visualize_predicted_grasp(t, self.cfg, T_obj2ee_wristrot, T_obj2goal_wristrot, T_objfrm2obj)
+                #         batch_x = Stheta_ee2obj.cuda().unsqueeze(0)
+                #         batch_x.requires_grad = True
+                #         out_dist = self.grasp_predictor.forward(batch_x)
+                #     elif self.cfg.method == 'implicitgrasps_outputlmgrad':
+                #         T_obj2ee = trajT_to_grasppredT(np.linalg.inv(T_bot2objfrm @ T_objfrm2obj) @ T_bot2ee)
+                #         SE3_obj2ee = SE3.from_matrix(torch.tensor(T_obj2ee, dtype=torch.float32))
+                #         Stheta_obj2ee = SE3_obj2ee.log() 
+                #         batch_x = Stheta_obj2ee.cuda().unsqueeze(0)
 
-                    if self.cfg.use_ik: # IK to get goal joints
-                        # Un-rotate wrist for traj  
-                        T_bot2goal_r = T_bot2objfrm @ T_objfrm2obj @ T_obj2goal 
-                        traj.goal_pose = pt.pq_from_transform(T_bot2goal_r) # x y z qw qx qy qz
-                        init_seed = traj.end[np.newaxis, :7]
-                        goal_joints, _, _ = solve_one_pose_ik(
-                            [
-                                traj.goal_pose,
-                                None, # standoff pose
-                                False, # one trial
-                                init_seed, # init seed
-                                False, # target object attached
-                                self.cfg.reach_tail_length,
-                                self.cfg.ik_seed_num,
-                                self.cfg.use_standoff,
-                                np.concatenate([init_seed, util_anchor_seeds[: self.cfg.ik_seed_num, :7].copy()]),
-                            ]
-                        )
-                        if goal_joints == []:
-                            print("WARNING: no IK solution found, keeping previous goal_joints")
-                        else:
-                            traj.goal_joints = goal_joints[0] # select first of multiple candidates (may be closest to seed)
-                    else: # get delta joints using jacobian
-                        # Get log map transform of end effector to goal
-                        T_ee2goal = np.linalg.inv(T_obj2ee) @ T_obj2goal 
-                        SE3_ee2goal = SE3.from_matrix(torch.tensor(T_ee2goal, dtype=torch.float32))
-                        Stheta_ee2goal = SE3_ee2goal.log()
+                #         # T_ee2obj = trajT_to_grasppredT(np.linalg.inv(T_bot2ee) @ (T_bot2objfrm @ T_objfrm2obj))
+                #         # SE3_ee2obj = SE3.from_matrix(torch.tensor(T_ee2obj, dtype=torch.float32))
+                #         # Stheta_ee2obj = SE3_ee2obj.log()
+                #         # T_eye = torch.eye(4)
+                #         # SE3_eye = SE3.from_matrix(T_eye)
+                #         # Stheta_eye = SE3_eye.log()
+                #         # Stheta_eye.requires_grad = True
+                #         # Stheta_ee2obj += Stheta_eye
+                #         # batch_x = Stheta_ee2obj.cuda().unsqueeze(0)
 
-                        # Use an identity transform to backprop velocity diff
-                        T_eye = torch.eye(4)
-                        SE3_eye = SE3.from_matrix(T_eye)
-                        Stheta_eye = SE3_eye.log()
-                        Stheta_eye.requires_grad = True
-                        Stheta_ee2goal += Stheta_eye
+                #         batch_x.requires_grad = True
+                #         out_lm = self.grasp_predictor.forward(batch_x)
+                #         # import IPython; IPython.embed()
+                #     elif self.cfg.method == 'implicitgrasps_outputposegrad':
+                #         T_obj2ee_np = np.linalg.inv(T_bot2objfrm @ T_objfrm2obj) @ T_bot2ee
+                #         T_obj2ee = torch.tensor(T_obj2ee_np, device='cuda', dtype=torch.float64)
 
-                        # Compute cost as norm of log map, backprop to get log map velocity
-                        loss = torch.linalg.norm(Stheta_ee2goal)
-                        loss.backward()
-                        Sthetadot_body = -Stheta_eye.grad.numpy()
+                #         # Get log map representation of input with requires grad so we can backprop
+                #         Stheta_o2e = pytorch3d.transforms.se3_log_map(T_obj2ee.T.unsqueeze(0)).squeeze(0) # [nu omega]
+                #         Stheta_o2e.requires_grad = True
 
-                        # Use adjoint to go from ee frame log map velocity to base frame log map velocity
-                        adjoint = pt.adjoint_from_transform(T_bot2ee)
-                        Sthetadot_spatial = adjoint @ Sthetadot_body
+                #         # Have to turn tau_o2e back into T_obj2ee for gradients to flow
+                #         T_obj2ee = pytorch3d.transforms.se3_exp_map(Stheta_o2e.unsqueeze(0)).squeeze().T
 
-                        # Compute jacobian inverse to get joint angle velocity from log map velocity 
-                        J = self.cfg.ROBOT.jacobian(traj.end[:7])
-                        J_pinv = J.T @ np.linalg.inv(J @ J.T)
-                        q_dot = J_pinv @ Sthetadot_spatial
+                #         # pq_obj2ee = torch.tensor(pt.pq_from_transform(T_obj2ee_np), device='cuda', dtype=torch.float64, requires_grad=True) # qw qx qy qz
+                        
+                #         # # Get transform of obj2ee
+                #         # T_obj2ee = torch.eye(4, device='cuda', dtype=torch.float64)
+                #         # T_obj2ee[:3, 3] = pq_obj2ee[:3]
+                #         # T_obj2ee[:3, :3] = pytorch3d.transforms.quaternion_to_matrix(pq_obj2ee[3:])
+                        
+                #         # rotate wrist to input to network
+                #         T_offset = torch.tensor(rotZ(np.pi / 2), device='cuda', dtype=torch.float64)
+                #         T_obj2ee_rot = T_obj2ee @ T_offset
+                #         # T_obj2ee_wristrot = trajT_to_grasppredT(T_obj2ee)
 
-                        # traj.goal_joints = np.concatenate([traj.end[:7] - 1e-3 * q_dot, [0.04, 0.04]]) # only used if using goal_set_proj
-                        traj.goal_joints = np.concatenate([traj.end[:7] - 0.1 * q_dot, [0.04, 0.04]]) # only used if using goal_set_proj
+                #         pq_obj2ee_rot = torch.zeros((7,), device='cuda', dtype=torch.float64)
+                #         pq_obj2ee_rot[:3] = T_obj2ee_rot[:3, 3]
+                #         pq_obj2ee_rot[3:] = pytorch3d.transforms.matrix_to_quaternion(T_obj2ee_rot[:3, :3]) # qw qx qy qz
+                #         pq_obj2ee_rot[3:] = pq_obj2ee_rot[3:].clone()[[1, 2, 3, 0]] # qx qy qz qw
 
-                        if self.cfg.use_goal_grad:
-                            traj.goal_cost = loss.item()
-                            traj.goal_grad = q_dot
-                            print(f"cost: {traj.goal_cost}, grad: {traj.goal_grad}")
+                #         # pq_obj2ee_wristrot = pt.pq_from_transform(T_obj2ee_wristrot)[[0, 1, 2, 4, 5, 6, 3]] # x y z qx qy qz qw
+                #         # pq_obj2ee_wristrot = torch.tensor(pq_obj2ee_wristrot, device='cuda', dtype=torch.float32).unsqueeze(0)                    
+                #         pq_obj2goal_rot = self.grasp_predictor.forward(pq_obj2ee_rot.unsqueeze(0)).squeeze(0) # qx qy qz qw
+                #         pq_obj2goal_rot[3:] = pq_obj2goal_rot[3:].clone()[[3, 0, 1, 2]] # qw qx qy qz
+                #         T_obj2goal_rot = torch.eye(4, device='cuda', dtype=torch.float64)
+                #         T_obj2goal_rot[:3, :3] = pytorch3d.transforms.quaternion_to_matrix(pq_obj2goal_rot[3:])
+                #         T_obj2goal_rot[:3, 3] = pq_obj2goal_rot[:3]
+
+                #         # unrotate wrist
+                #         T_obj2goal = T_obj2goal_rot @ torch.linalg.inv(T_offset)
+
+                #         # pq_obj2goal_wristrot = pq_obj2goal_wristrot.clone()[[0, 1, 2, 6, 3, 4, 5]] # qw qx qy qz
+                #         # T_obj2goal_wristrot = pt.transform_from_pq(pq_obj2goal_wristrot.detach().cpu().numpy())
+                #         # T_obj2goal = grasppredT_to_trajT(T_obj2goal_wristrot)
+                #     else: 
+                #         raise NotImplementedError
+
+                #     if not self.cfg.method == 'implicitgrasps_outputdistgrad' and not self.cfg.method == 'implicitgrasps_outputlmgrad':
+                #         visualize_predicted_grasp(t, self.cfg, T_obj2ee_rot.detach().cpu().numpy(), T_obj2goal_rot.detach().cpu().numpy(), T_objfrm2obj)
+                #     # else:
+                #         # visualize_predicted_grad(t, self.cfg, T_obj2ee, out_lm, T_objfrm2obj, show=True)
+
+                #     if self.cfg.use_ik: # IK to get goal joints
+                #         # Un-rotate wrist for traj  
+                #         T_bot2goal_r = T_bot2objfrm @ T_objfrm2obj @ T_obj2goal 
+                #         traj.goal_pose = pt.pq_from_transform(T_bot2goal_r) # x y z qw qx qy qz
+                #         init_seed = traj.end[np.newaxis, :7]
+                #         goal_joints, _, _ = solve_one_pose_ik(
+                #             [
+                #                 traj.goal_pose,
+                #                 None, # standoff pose
+                #                 False, # one trial
+                #                 init_seed, # init seed
+                #                 False, # target object attached
+                #                 self.cfg.reach_tail_length,
+                #                 self.cfg.ik_seed_num,
+                #                 self.cfg.use_standoff,
+                #                 np.concatenate([init_seed, util_anchor_seeds[: self.cfg.ik_seed_num, :7].copy()]),
+                #             ]
+                #         )
+                #         if goal_joints == []:
+                #             print("WARNING: no IK solution found, keeping previous goal_joints")
+                #         else:
+                #             traj.goal_joints = goal_joints[0] # select first of multiple candidates (may be closest to seed)
+                #     elif 'grad' in self.cfg.method: # get delta joints using jacobian
+                #         if self.cfg.method == 'implicitgrasps_outputdistgrad':
+                #             loss = out_dist
+                #             loss.backward()
+                #             Sthetadot_body = batch_x.grad.squeeze().cpu().numpy()
+                #         elif self.cfg.method == 'implicitgrasps_outputlmgrad':
+                #             Stheta_ee2goal = out_lm.cpu()
+                            
+                #             # Use an identity transform to backprop velocity diff
+                #             # T_eye = torch.eye(4)
+                #             # SE3_eye = SE3.from_matrix(T_eye)
+                #             # Stheta_eye = SE3_eye.log()
+                #             # Stheta_eye.requires_grad = True
+                #             # Stheta_ee2goal += Stheta_eye
+
+                #             # loss = torch.linalg.norm(out_lm)
+                #             loss = torch.linalg.norm(Stheta_ee2goal)
+                #             loss.backward()
+                #             Sthetadot_body = batch_x.grad.squeeze().cpu().numpy()
+                #             # Sthetadot_body = -batch_x.grad.squeeze().cpu().numpy()
+                #             # Sthetadot_body = -Stheta_eye.grad.numpy()
+                #         elif self.cfg.method == 'implicitgrasps_outputposegrad': 
+                #             # Get log map transform of end effector to goal
+                #             T_ee2goal = torch.linalg.inv(T_obj2ee) @ T_obj2goal
+                #             Stheta_e2g = pytorch3d.transforms.se3_log_map(T_ee2goal.T.unsqueeze(0)) # [nu omega]
+                            
+                #             # SE3_ee2goal = SE3.from_matrix(torch.tensor(T_ee2goal, dtype=torch.float32))
+                #             # Stheta_ee2goal = SE3_ee2goal.log()
+
+                #             # # Use an identity transform to backprop velocity diff
+                #             # T_eye = torch.eye(4)
+                #             # SE3_eye = SE3.from_matrix(T_eye)
+                #             # Stheta_eye = SE3_eye.log()
+                #             # Stheta_eye.requires_grad = True
+                #             # Stheta_ee2goal += Stheta_eye
+
+                #             # Compute cost as norm of log map, backprop to get log map velocity
+                #             # loss = torch.linalg.norm(Stheta_ee2goal)
+                #             loss = torch.linalg.norm(Stheta_e2g)
+                #             loss.backward()
+                #             Sthetadot_body = -Stheta_o2e.grad.cpu().numpy()
+                #             # Sthetadot_body = -Stheta_eye.grad.numpy()
+                #         else:
+                #             raise NotImplementedError
+
+                #         # Use adjoint to go from ee frame log map velocity to base frame log map velocity
+                #         adjoint = pt.adjoint_from_transform(T_bot2ee)
+                #         Sthetadot_spatial = adjoint @ Sthetadot_body
+
+                #         # Compute jacobian inverse to get joint angle velocity from log map velocity 
+                #         J = self.cfg.ROBOT.jacobian(traj.end[:7])
+                #         J_pinv = J.T @ np.linalg.inv(J @ J.T)
+                #         q_dot = J_pinv @ Sthetadot_spatial
+
+                #         # Only used for goal_set_proj
+                #         # traj.goal_joints = np.concatenate([traj.end[:7] - 1e-2 * q_dot, [0.04, 0.04]]) 
+                #         traj.goal_joints = np.concatenate([traj.end[:7] - 0.1 * q_dot, [0.04, 0.04]]) 
+
+                #         if self.cfg.use_goal_grad:
+                #             traj.goal_cost = loss.item()
+                #             traj.goal_grad = q_dot
+                #             # traj.goal_grad = 0.1*q_dot
+                #             print(f"cost: {traj.goal_cost}, grad: {traj.goal_grad}")
 
                 self.info.append(self.optim.optimize(traj, force_update=True))  
                 self.history_trajectories.append(np.copy(traj.data))
+                if self.cfg.use_min_goal_cost_traj:
+                    if traj.goal_cost < best_cost:
+                        best_cost = traj.goal_cost
+                        best_traj = np.copy(traj.data)
+                        best_traj_idx = t
 
-                if 'implicitgrasps' in self.cfg.method:
-                    self.info[-1]["transforms"] = [T_bot2ee, T_bot2objfrm, T_objfrm2obj, T_obj2goal, T_obj2ee]
+                # TODO save transforms
+                # if self.cfg.method == 'implicitgrasps_outputdistgrad' or self.cfg.method == 'implicitgrasps_outputlmgrad':
+                    # self.info[-1]["transforms"] = [T_bot2ee, T_bot2objfrm, T_objfrm2obj, None, T_obj2ee]
+                # elif 'implicitgrasps' in self.cfg.method:
+                    # self.info[-1]["transforms"] = [T_bot2ee, T_bot2objfrm, T_objfrm2obj, T_obj2goal, T_obj2ee]
 
                 if self.cfg.report_time:
                     print("plan optimize:", time.time() - start_time)
@@ -817,7 +1193,15 @@ class Planner(object):
  
             # compute information for the final
             if not self.info[-1]["terminate"]:
-                self.info.append(self.optim.optimize(traj, info_only=True))  
+                if self.cfg.use_min_goal_cost_traj:
+                    print("Replacing final traj with lowest cost traj")
+                    traj.data = best_traj
+                    self.info.append(self.optim.optimize(traj, info_only=True))
+                    self.history_trajectories.append(best_traj)
+                    with open(f'{self.cfg.exp_dir}/{self.cfg.exp_name}/{self.cfg.scene_file}/{best_traj_idx}.txt', 'w') as f:
+                        f.write('')
+                else:
+                    self.info.append(self.optim.optimize(traj, info_only=True))
             else:
                 del self.history_trajectories[-1]
 
@@ -840,20 +1224,6 @@ class Planner(object):
         return self.info
 
 # # for traj init end at start
-# from manifold_grasping.control_pts import *
-
-# def get_control_pts_goal_cost(gt_T, query_T):
-#     gt_T = torch.tensor(gt_T[np.newaxis, ...], dtype=torch.float32)
-#     query_T = torch.tensor(query_T[np.newaxis, ...], dtype=torch.float32, requires_grad=True)
-
-#     # Control points losses
-#     gt_control_points = transform_control_points(gt_T, len(gt_T), mode='rt')
-#     pred_control_points = transform_control_points(query_T, len(query_T), mode='rt')
-#     cp_l1_loss = control_point_l1_loss(pred_control_points, gt_control_points)
-
-#     cp_l1_loss.backward()
-#     cp_l1_grad = query_T.grad.sum()
-#     return cp_l1_loss.item(), cp_l1_grad.item()
 
                     # # from copy import deepcopy
                     # # traj.selected_goal = deepcopy(traj.end)
