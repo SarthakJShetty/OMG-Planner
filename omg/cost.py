@@ -475,11 +475,9 @@ class Cost(object):
             assert traj.goal_cost is not None
             assert traj.goal_grad is not None
             weighted_goal_cost = self.cfg.grasp_weight * traj.goal_cost
-            # weighted_goal_cost = 1.0 * traj.goal_cost
             print(f"grasp weight: {self.cfg.grasp_weight}")
             weighted_goal_grad = np.zeros_like(weighted_obs_grad)
             weighted_goal_grad[-1, :7] = self.cfg.grasp_weight * traj.goal_grad
-            # weighted_goal_grad[-1, :7] = 1.0 * traj.goal_grad
             print(f"obs wt: {self.cfg.obstacle_weight}, smooth wt: {self.cfg.smoothness_weight}, goal wt: {self.cfg.grasp_weight}")
             cost = weighted_obs + weighted_smooth + weighted_goal_cost
             grad = weighted_obs_grad + weighted_smooth_grad + weighted_goal_grad
@@ -495,7 +493,6 @@ class Cost(object):
 
             cost = weighted_obs + weighted_smooth
             grad = weighted_obs_grad + weighted_smooth_grad
-            # print(f"w_obs_cost: {weighted_obs}, w_smooth: {weighted_smooth}")
 
             cost_traj = (
                 self.cfg.obstacle_weight * obstacle_loss.sum(-1)
