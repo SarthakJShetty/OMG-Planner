@@ -14,6 +14,7 @@ import scipy.io as sio
 import IPython
 import time
 import cv2
+import torch
 
 np.random.seed(233)
 util_anchor_seeds = np.array(
@@ -34,6 +35,28 @@ util_anchor_seeds = np.array(
     ]
 )
 
+def jacobian(f, initial, delta=1e-6):
+    """
+    https://rh8liuqy.github.io/Finite_Difference.html
+    https://discuss.pytorch.org/t/how-to-compute-the-finite-difference-jacobian-matrix/112713 
+    It makes a big difference whether the model and inputs are floats vs. doubles
+    """
+    with torch.no_grad():
+        # out_init = f(initial.unsqueeze(0)).squeeze(0) # add and remove batch dim
+        out_init = f(initial) # add and remove batch dim
+        nrow = len(out_init) 
+        ncol = len(initial)
+        output = torch.zeros(nrow*ncol, dtype=torch.float64, device='cuda')
+        output = output.reshape(nrow,ncol)
+        for i in range(nrow):
+            for j in range(ncol):
+                ej = torch.zeros(ncol, dtype=torch.float64, device='cuda')
+                ej[j] = 1
+                pos_delta = initial + delta * ej
+                neg_delta = initial - delta * ej
+                dij = (f(pos_delta)[i] - f(neg_delta)[i])/(2*delta)
+                output[i,j] = dij
+    return output
 
 def rotZ(rotz):
     RotZ = np.array(

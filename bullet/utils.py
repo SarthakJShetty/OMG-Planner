@@ -16,7 +16,7 @@ def add_line(start, end, color=BLACK, width=1, lifetime=0, parent=NULL_ID, paren
                             lifeTime=lifetime, parentObjectUniqueId=parent, parentLinkIndex=parent_link,
                             physicsClientId=CLIENT)
 
-def draw_pose(T, length=0.1, d=3, **kwargs):
+def draw_pose(T, length=0.1, d=3, alt_color=False, **kwargs):
     origin_world = T @ np.array((0., 0., 0., 1.))
     for k in range(d):
         axis = np.array((0., 0., 0., 1.))
@@ -25,7 +25,11 @@ def draw_pose(T, length=0.1, d=3, **kwargs):
         origin_pt = origin_world[:3] 
         axis_pt = axis_world[:3] 
         color = np.zeros(3)
-        color[k] = 1
+        if alt_color:
+            color[k] = 1
+            color[(k+1)%(d)] = 1
+        else:
+            color[k] = 1
         add_line(origin_pt, axis_pt, color=color, **kwargs)
  
 def depth2pc(depth, K, rgb=None):

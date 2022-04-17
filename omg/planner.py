@@ -846,29 +846,23 @@ class Planner(object):
         pq[3:] = ptf.matrix_to_quaternion(T[:3, :3].unsqueeze(0)).squeeze(0) # qw qx qy qz
         return pq
 
-    def grad_update(self, tau_b2e, tau_b2g, loss='logmap'):
-        """
-        update the input transform to move toward goal pose, agnostic to traj opt loop. 
-        """
-        tau_b2e.requires_grad = True
-
-        # Compute loss
-        if loss == 'logmap_split':
+    def compute_loss(self, tau_b2e, tau_b2g, loss_fn='logmap'):
+        if loss_fn == 'logmap_split':
             # nu := translational component of the exp. coords
             # omega := rotational component of the exp. coords 
             alpha = 0.01
             nu_diff = tau_b2e[:3] - tau_b2g[:3]
             omega_diff = tau_b2e[3:] - tau_b2g[3:]
-            loss = torch.linalg.norm(nu_diff) + torch.linalg.norm(omega_diff)
-        elif loss == 'logmap':
+            loss = 0.5*torch.linalg.norm(nu_diff)**2 + 0.5*torch.linalg.norm(omega_diff)**2
+        elif loss_fn == 'logmap':
             alpha = 0.01
-            loss = torch.linalg.norm(tau_b2e - tau_b2g)
-        elif loss == 'pq':
+            loss = 0.5*torch.linalg.norm(tau_b2e - tau_b2g)**2
+        elif loss_fn == 'pq':
             alpha = 0.05
             pq_b2e = self.pq_from_tau(tau_b2e)
             pq_b2g = self.pq_from_tau(tau_b2g)
-            loss = torch.linalg.norm(pq_b2e - pq_b2g)
-        elif loss == 'control_points':
+            loss = 0.5*torch.linalg.norm(pq_b2e - pq_b2g)**2
+        elif loss_fn == 'control_points':
             alpha = 0.02
             T_b2e = ptf.se3_exp_map(tau_b2e.unsqueeze(0), eps=1e-10).squeeze().T 
             T_b2g = ptf.se3_exp_map(tau_b2g.unsqueeze(0), eps=1e-10).squeeze().T 
@@ -883,27 +877,162 @@ class Planner(object):
                     T[:3, :3] = T_b2e_np[:3, :3]
                     T[:, 3] = cp.detach().cpu().numpy()
                     draw_pose(self.T_world2bot @ T)
+        return loss
+
+    def grad_pose_update(self, tau_b2e, tau_b2g, loss_fn='logmap'):
+        """
+        Update gradient in pose space
+        """
+        tau_b2e.requires_grad = True
+
+        # Compute loss
+        loss = self.compute_loss(tau_b2e, tau_b2g, loss_fn=loss_fn)
 
         # Backprop the loss and update the query pose
         loss.backward()
         tau_b2e_grad = tau_b2e.grad.detach()
+
+        # Finite difference check
+        if True:
+            fn = lambda x: (0.5*torch.linalg.norm(x - tau_b2g)**2).unsqueeze(0)
+            jac = jacobian(f=fn, initial=tau_b2e)
+
+        # Gradient descent in pose space
+        #   Get step size for pose space gradient
+        if loss_fn == 'logmap_split' or loss_fn == 'logmap':
+            alpha = 0.05
+        elif loss_fn == 'pq':
+            alpha = 0.05
+        elif loss_fn == 'control_points':
+            alpha = 0.02
         tau_b2e = (tau_b2e - alpha * tau_b2e_grad).detach()
-
         if True: # visualize
-            T_bot2ee = ptf.se3_exp_map(tau_b2e.unsqueeze(0)).squeeze().T
-            T_bot2ee_np = T_bot2ee.detach().cpu().numpy()
-
-            draw_pose(self.T_world2bot @ T_bot2ee_np) # ee in world frame
-
+            T_b2e = ptf.se3_exp_map(tau_b2e.unsqueeze(0)).squeeze().T
+            T_b2e_np = T_b2e.detach().cpu().numpy()
+            draw_pose(self.T_world2bot @ T_b2e_np, alt_color=True) # ee in world frame
         return tau_b2e
 
-    def CHOMP_update(self, traj, tau_b2g, loss='logmap'):
+    def grad_joints_update(self, tau_b2e, tau_b2g, q_curr, loss_fn='logmap'):
+        """
+        update the input transform to move toward goal pose, agnostic to traj opt loop. 
+        """
+        tau_b2e.requires_grad = True
+
+        # Compute loss
+        loss = self.compute_loss(tau_b2e, tau_b2g, loss_fn=loss_fn)
+        loss.backward()
+        tau_b2e_grad = tau_b2e.grad.detach()
+
+        # Finite difference check
+        if True:
+            def fn(q):
+                '''return loss in exponential coordinates from joint angles'''
+                T_b2e_np = self.cfg.ROBOT.forward_kinematics_parallel(
+                    joint_values=wrap_value(q.unsqueeze(0).cpu().numpy()), base_link=self.cfg.base_link)[0][-3]
+                T_b2e_fd = torch.tensor(T_b2e_np, device='cuda', dtype=torch.float64)
+                tau_b2e_fd = ptf.se3_log_map(T_b2e_fd.T.unsqueeze(0), eps=1e-10, cos_bound=1e-10).squeeze(0) # [nu omega]
+                return (0.5*torch.linalg.norm(tau_b2e_fd - tau_b2g)**2).unsqueeze(0)
+            jac = jacobian(f=fn, initial=torch.tensor(q_curr[0], device='cuda', dtype=torch.float64))
+
+            def fn_e(q):
+                '''return exponential coordinates from joint angles'''
+                T_b2e_np = self.cfg.ROBOT.forward_kinematics_parallel(
+                    joint_values=wrap_value(q.unsqueeze(0).cpu().numpy()), base_link=self.cfg.base_link)[0][-3]
+                T_b2e_fd = torch.tensor(T_b2e_np, device='cuda', dtype=torch.float64)
+                tau_b2e_fd = ptf.se3_log_map(T_b2e_fd.T.unsqueeze(0), eps=1e-10, cos_bound=1e-10).squeeze(0) # [nu omega]
+                return tau_b2e_fd
+            jac_e = jacobian(f=fn_e, initial=torch.tensor(q_curr[0], device='cuda', dtype=torch.float64))
+
+        # Gradient descent in joint space using the manipulator Jacobian
+        J = self.cfg.ROBOT.jacobian(q_curr.squeeze(0)) # radians
+        tau_b2e_np = tau_b2e.detach().unsqueeze(1).cpu().numpy() # 6 x 1
+        tau_b2g_np = tau_b2g.detach().unsqueeze(1).cpu().numpy() # 6 x 1
+        # tau_b2e_grad = tau_b2e_grad.detach().unsqueeze(1).cpu().numpy() # 6 x 1
+        T_b2e_np = self.cfg.ROBOT.forward_kinematics_parallel(
+            joint_values=wrap_value(q_curr), base_link=self.cfg.base_link)[0][-3]
+        
+        # Geometric jacobian
+        transforms = self.cfg.ROBOT.forward_kinematics_parallel(
+            joint_values=wrap_value(q_curr), base_link=self.cfg.base_link)[0]
+
+        joints_pos = transforms[1:7 + 1, :3, 3]
+        ee_pos = transforms[-1, :3, 3]
+        axes = transforms[1:7 + 1, :3, 2]
+        joints_pos = transforms[:7, :3, 3]
+        ee_pos = transforms[3, :3, 3]
+        axes = transforms[:7, :3, 2]
+
+        J = np.r_[np.cross(axes, ee_pos - joints_pos).T, axes.T]
+
+        # # Option 1a
+        # # With adjoint matrix to transform gradient from body (ee) to spatial (bot) frame
+        # #   adjoint matix in pytransform3d is 
+        # #   [  R    0 ]
+        # #   [ [t]_x R ]
+        # #   But for exponential coordinates and our jacobian we need 
+        # #   [ R   [t]_x ]
+        # #   [ 0    R    ]
+        # adj_e2b = pt.adjoint_from_transform(T_b2e_np) # 6 x 6 
+        # adj_e2b[:3, 3:] = adj_e2b[3:, :3]
+        # adj_e2b[3:, :3] = np.zeros(3)
+        # tau_b2e_grad_s = adj_e2b @ tau_b2e_grad # pose gradient in spatial frame
+
+        # # Option 1b
+        # # Without adjoint matrix (assume gradient is already in spatial frame?)
+        # # tau_b2e_grad_s = tau_b2e_grad # pose gradient in spatial frame
+
+        # # # Use J inv to convert pose gradient joint angle gradient
+        # J_pinv = J.T @ np.linalg.inv(J @ J.T) # 7 x 6
+        # q_b2e_grad = J_pinv @ tau_b2e_grad_s # 7 x 1 joint angle gradient
+
+        # Option 2
+        # Use J from manual backprop calculation instead of J inv 
+        # q_b2e_grad = (tau_b2e_np - tau_b2g_np).T @ J # 1 x 7
+        q_b2e_grad = (tau_b2e_np - tau_b2g_np).T @ jac_e.cpu().numpy() # 1 x 7
+
+        q_next = deepcopy(q_curr) # 1 x 7
+        # q_next = q_curr - 0.1*jac.cpu().numpy()# 1 x 7
+        q_next = q_curr - 0.1*q_b2e_grad # 1 x 7
+
+        # q_next = q_curr - 0.01*q_b2e_grad.T # 1 x 7
+        # # q_next = q_curr - 0.01*grad_F.T # 1 x 7
+        # # q_next = q_curr - 0.01*grad_F_s.T # 1 x 7
+        # # # q_next[:, :2] -= 0.01*grad_F[:, :2] 
+
+        T_b2e_np = self.cfg.ROBOT.forward_kinematics_parallel(
+            joint_values=wrap_value(q_next), base_link=self.cfg.base_link)[0][-3]
+        T_b2e = torch.tensor(T_b2e_np, device='cuda', dtype=torch.float64)
+        tau_b2e = ptf.se3_log_map(T_b2e.T.unsqueeze(0), eps=1e-10, cos_bound=1e-10).squeeze(0) # [nu omega]
+        draw_pose(self.T_world2bot @ T_b2e_np) # ee in world frame
+
+        # print("joint vs. ee update")
+        # print(tau_b2e)
+        # print(tau_b2e1)
+
+        return tau_b2e, q_next
+
+    def CHOMP_update(self, traj, tau_b2g, loss='pq'):
+        q_curr = traj.data[-1][np.newaxis, :7] 
+
         # Get current end effector pose in exp coordinates
         T_b2e_np = self.get_T_bot2ee(traj, idx=-1)
         T_b2e = torch.tensor(T_b2e_np, device='cuda', dtype=torch.float64)
         tau_b2e = ptf.se3_log_map(T_b2e.T.unsqueeze(0), eps=1e-10, cos_bound=1e-10).squeeze(0)
-        tau_b2e.requires_grad = True
+        # tau_b2e.requires_grad = True
         draw_pose(self.T_world2bot @ T_b2e_np) # ee in world frame
+
+        # Finite difference gradient with L2 loss on end effector pose
+        def fn(q):
+            '''return loss in exponential coordinates from joint angles'''
+            T_b2e_np = self.cfg.ROBOT.forward_kinematics_parallel(
+                joint_values=wrap_value(q.unsqueeze(0).cpu().numpy()), base_link=self.cfg.base_link)[0][-3]
+            T_b2e_fd = torch.tensor(T_b2e_np, device='cuda', dtype=torch.float64)
+            tau_b2e_fd = ptf.se3_log_map(T_b2e_fd.T.unsqueeze(0), eps=1e-10, cos_bound=1e-10).squeeze(0) # [nu omega]
+            pq_b2e_fd = self.pq_from_tau(tau_b2e_fd)
+            pq_b2g_fd = self.pq_from_tau(tau_b2g)
+            # return (0.5*torch.linalg.norm(tau_b2e_fd - tau_b2g)**2).unsqueeze(0)
+            return (0.5*torch.linalg.norm(pq_b2e_fd - pq_b2g_fd)**2).unsqueeze(0)
+        jac = jacobian(f=fn, initial=torch.tensor(q_curr[0], device='cuda', dtype=torch.float64))
 
         # Compute loss
         if loss == 'logmap_split':
@@ -915,62 +1044,46 @@ class Planner(object):
             loss = torch.linalg.norm(nu_diff) + torch.linalg.norm(omega_diff)
         elif loss == 'logmap':
             # alpha = 0.01
-            loss = torch.linalg.norm(tau_b2e - tau_b2g)
+            loss = 0.5*torch.linalg.norm(tau_b2e - tau_b2g)**2
         elif loss == 'pq':
             # alpha = 0.05
             pq_b2e = self.pq_from_tau(tau_b2e)
             pq_b2g = self.pq_from_tau(tau_b2g)
-            loss = torch.linalg.norm(pq_b2e - pq_b2g)
-        elif loss == 'control_points':
-            # alpha = 0.02
-            T_b2e = ptf.se3_exp_map(tau_b2e.unsqueeze(0), eps=1e-10).squeeze().T 
-            T_b2g = ptf.se3_exp_map(tau_b2g.unsqueeze(0), eps=1e-10).squeeze().T 
-            cp_b2e = transform_control_points(T_b2e.unsqueeze(0).float(), 1, mode='rt', device='cuda', rotate=True)
-            cp_b2g = transform_control_points(T_b2g.unsqueeze(0).float(), 1, mode='rt', device='cuda', rotate=True)
-            # loss = control_point_l1_loss(cp_b2e, cp_b2g)
-            loss = control_point_l2_loss(cp_b2e, cp_b2g)
-            if True:
-                T_b2e_np = T_b2e.detach().cpu().numpy()
-                for cp in cp_b2e[0]:
-                    T = np.eye(4)
-                    T[:3, :3] = T_b2e_np[:3, :3]
-                    T[:, 3] = cp.detach().cpu().numpy()
-                    draw_pose(self.T_world2bot @ T)
+            loss = 0.5*torch.linalg.norm(pq_b2e - pq_b2g)**2
+        # elif loss == 'control_points':
+        #     # alpha = 0.02
+        #     T_b2e = ptf.se3_exp_map(tau_b2e.unsqueeze(0), eps=1e-10).squeeze().T 
+        #     T_b2g = ptf.se3_exp_map(tau_b2g.unsqueeze(0), eps=1e-10).squeeze().T 
+        #     cp_b2e = transform_control_points(T_b2e.unsqueeze(0).float(), 1, mode='rt', device='cuda', rotate=True)
+        #     cp_b2g = transform_control_points(T_b2g.unsqueeze(0).float(), 1, mode='rt', device='cuda', rotate=True)
+        #     # loss = control_point_l1_loss(cp_b2e, cp_b2g)
+        #     loss = control_point_l2_loss(cp_b2e, cp_b2g)
+        #     if True:
+        #         T_b2e_np = T_b2e.detach().cpu().numpy()
+        #         for cp in cp_b2e[0]:
+        #             T = np.eye(4)
+        #             T[:3, :3] = T_b2e_np[:3, :3]
+        #             T[:, 3] = cp.detach().cpu().numpy()
+        #             draw_pose(self.T_world2bot @ T)
 
-        # Backprop the loss and update the query pose
-        loss.backward()
-        tau_b2e_grad = tau_b2e.grad
-        tau_grad = tau_b2e_grad.detach().cpu().numpy() # in spatial frame
+        # # Backprop the loss and update the query pose
+        # loss.backward()
+        # tau_b2e_grad = tau_b2e.grad
+        # tau_grad = tau_b2e_grad.detach().cpu().numpy() # in spatial frame
 
-        # Visualize Euclidean gradient
-        tau_b2e = (tau_b2e - 0.01*tau_b2e_grad).detach()
-        T_b2e = ptf.se3_exp_map(tau_b2e.unsqueeze(0), eps=1e-10).squeeze().T
-        draw_pose(self.T_world2bot @ T_b2e.cpu().numpy(), alt_color=True)
+        # # Visualize Euclidean gradient
+        # tau_b2e = (tau_b2e - 0.01*tau_b2e_grad).detach()
+        # T_b2e = ptf.se3_exp_map(tau_b2e.unsqueeze(0), eps=1e-10).squeeze().T
+        # draw_pose(self.T_world2bot @ T_b2e.cpu().numpy(), alt_color=True)
 
-        # # Use adjoint to go from ee frame log map velocity to base frame log map velocity
-        # # adjoint in pytransform3d is 
-        # # [  R    0 ]
-        # # [ [t]_x R ]
-        # # But for exponential coordinates and our jacobian we need 
-        # # [ R   [t]_x ]
-        # # [ 0    R    ]
-        # adj_ee2bot = pt.adjoint_from_transform(T_b2e_np)
-        # adj_ee2bot[:3, 3:] = adj_ee2bot[3:, :3]
-        # adj_ee2bot[3:, :3] = np.zeros(3)
-        # tau_b_grad = adj_ee2bot @ tau_b2e_grad # ee is body frame, bot is spatial frame
-        # adj_b2e = pt.adjoint_from_transform(np.linalg.inv(T_b2e_np))
-        # adj_b2e[:3, 3:] = adj_b2e[3:, :3]
-        # adj_b2e[3:, :3] = np.zeros(3)
-        # tau_grad = adj_b2e @ tau_b2e_grad # in body frame
-
-        # Calculate the jacobian expressed in the robot base frame, 
-        # with reference point at the end effector
-        J = self.cfg.ROBOT.jacobian(traj.data[-1][:7]) # radians
-        J_pinv = J.T @ np.linalg.inv(J @ J.T)
-        q_dot = J_pinv @ tau_grad
+        # # Calculate the jacobian expressed in the robot base frame, 
+        # # with reference point at the end effector
+        # J = self.cfg.ROBOT.jacobian(traj.data[-1][:7]) # radians
+        # J_pinv = J.T @ np.linalg.inv(J @ J.T)
+        # q_dot = J_pinv @ tau_grad
 
         traj.goal_cost = loss.item()
-        traj.goal_grad = q_dot
+        traj.goal_grad = jac.cpu().numpy()
         print(f"cost: {traj.goal_cost}, grad: {traj.goal_grad}")
 
     def plan(self, traj):
@@ -997,15 +1110,6 @@ class Planner(object):
             self.T_world2bot[:3, :3] = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
             self.T_world2bot[:3, 3] = pos
 
-            # # Fixed initial pose for gradient descent without CHOMP
-            # # Get a query pose that will update every iteration: object to ee pose
-            # #   T_b2e := transform from bot to end effector frame
-            # #   tau_b2e := exponential coordinates of T_b2e, i.e. Log(T_b2e)
-            # T_b2e_np = self.get_T_bot2ee(traj, idx=-1)
-            # T_b2e = torch.tensor(T_b2e_np, device='cuda', dtype=torch.float64)
-            # tau_b2e = ptf.se3_log_map(T_b2e.T.unsqueeze(0), eps=1e-10, cos_bound=1e-10).squeeze(0)
-            # draw_pose(self.T_world2bot @ T_b2e_np) # ee in world frame
-
             # Get fixed goal that the query pose should move towards every iteration
             #   T_b2g := transform from bot to goal pose frame
             #   tau_b2g := exponential coordinates of T_b2g
@@ -1015,6 +1119,18 @@ class Planner(object):
             T_b2g = torch.tensor(T_b2o @ T_o2g, device='cuda', dtype=torch.float64)
             tau_b2g = ptf.se3_log_map(T_b2g.T.unsqueeze(0)).squeeze(0)
             draw_pose(self.T_world2bot @ T_b2o @ T_o2g) # goal in world frame
+
+            # Gradient descent without CHOMP
+            # Get a query pose that will update every iteration: object to ee pose
+            #   T_b2e := transform from bot to end effector frame
+            #   tau_b2e := exponential coordinates of T_b2e, i.e. Log(T_b2e)
+            T_b2e_np = self.get_T_bot2ee(traj, idx=-1)
+            T_b2e = torch.tensor(T_b2e_np, device='cuda', dtype=torch.float64)
+            #   In pose space
+            tau_b2e = ptf.se3_log_map(T_b2e.T.unsqueeze(0), eps=1e-10, cos_bound=1e-10).squeeze(0)
+            #   In joint space
+            q_curr = traj.data[-1][np.newaxis, :7] 
+            draw_pose(self.T_world2bot @ T_b2e_np) # ee in world frame
 
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
                 start_time = time.time()
@@ -1029,13 +1145,16 @@ class Planner(object):
                 if 'implicitgrasps' in self.cfg.method:
                     # T_bot2ee_np = self.get_joint_angle_grad(traj, fixed_goal=True, T_bot2ee_np=T_bot2ee_np)
 
-                    # # fixed goal tau_b2g, grad descent without CHOMP
-                    # tau_b2e = self.grad_update(tau_b2e, tau_b2g)
+                    # fixed goal tau_b2g, grad descent in pose space without CHOMP
+                    # tau_b2e = self.grad_pose_update(tau_b2e, tau_b2g)
+
+                    # fixed goal tau_b2g, grad descent in joint space without CHOMP
+                    # tau_b2e, q_curr = self.grad_joints_update(tau_b2e, tau_b2g, q_curr=q_curr)
                     # traj.goal_cost = 1
                     # traj.goal_grad = np.zeros((7,))
 
                     # fixed goal tau_b2g, grad descent with CHOMP
-                    self.CHOMP_update(traj, tau_b2g)
+                    # self.CHOMP_update(traj, tau_b2g)
 
                 # # compute and store in traj
                 # # https://robotics.stackexchange.com/questions/6382/can-a-jacobian-be-used-to-determine-required-joint-angles-for-end-effector-veloc
