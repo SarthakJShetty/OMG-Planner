@@ -509,7 +509,7 @@ class Cost(object):
         #  and traj.goal_cost is not None:
             goal_dist = traj.goal_cost if self.cfg.use_goal_grad else np.linalg.norm(traj.data[-1, :] - traj.goal_joints)
             # goal_dist = traj.goal_cost if self.cfg.use_goal_grad else np.linalg.norm(traj.data[-1] - traj.goal_joints)
-            goal_dist_thresh = 0.01
+            goal_dist_thresh = 0.003
         elif 'Fixed' in self.cfg.method:
             goal_dist = 0
             goal_dist_thresh = 0.01

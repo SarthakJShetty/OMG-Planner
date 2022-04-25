@@ -11,3 +11,7 @@ data
 output_videos
 .ninja*
 *.ipynb_checkpoints
+_bak/*
+bullet_bak/*
+dbg_data/*
+omg_bak/*

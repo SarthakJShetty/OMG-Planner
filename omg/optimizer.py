@@ -3,8 +3,6 @@
 # --------------------------------------------------------
 
 from .util import *
-import IPython
-
 
 class Optimizer(object):
     """
@@ -117,7 +115,23 @@ class Optimizer(object):
         )
         return update
 
-    def optimize(self, traj, force_update=False, info_only=False):
+    def init(self, traj):
+        # SGD with momentum
+        # self.alpha = 0.05
+        # self.momentum = 0.9
+        # self.v_curr = 0.0
+        # self.v_next = 0.0
+
+        # Adam
+        self.alpha = 0.03
+        self.alpha_decay = 0.999
+        self.b1 = 0.9
+        self.b2 = 0.999
+        self.eps = 1e-8
+        self.m = 0 # first moment vector
+        self.v = 0 # second moment vector
+
+    def optimize(self, traj, force_update=False, info_only=False, tstep=None):
         """
         Run one step of chomp optimization
         """
@@ -132,7 +146,24 @@ class Optimizer(object):
         if self.cfg.goal_set_proj:
             update = self.goal_set_projection(traj, grad)
         else:
-            update = -self.cfg.step_size * self.cfg.Ainv.dot(grad)
+            # SGD
+            # update = -self.cfg.step_size * self.cfg.Ainv.dot(grad)
+
+            # SGD with Momentum
+            # Agrad = self.cfg.Ainv.dot(grad)
+            # self.v_next = self.momentum*self.v_curr + Agrad
+            # update = -self.alpha * self.v_next
+            # self.v_curr = self.v_next
+
+            # Adam
+            Agrad = self.cfg.Ainv.dot(grad)
+            self.m = self.b1*self.m + (1 - self.b1)*Agrad
+            self.v = self.b2*self.v + (1 - self.b2)*np.square(Agrad)
+            hat_m = self.m / (1 - np.power(self.b1, tstep))
+            hat_v = self.v / (1 - np.power(self.b2, tstep))
+            print(f"alpha: {self.alpha * (self.alpha_decay**tstep)}")
+            update = -self.alpha * (self.alpha_decay**tstep) * hat_m / (np.sqrt(hat_v) + self.eps)
+
         traj.update(update)
         traj.set(self.handle_joint_limit(traj.data))
         return info

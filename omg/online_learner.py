@@ -99,8 +99,9 @@ class Learner(object):
             costs = self.cost_vector()
             sorted_idx = np.argsort(costs)
             self.traj.goal_idx = np.argmin(costs)  
-            self.traj.end = self.traj.goal_set[self.traj.goal_idx]  #
-            self.traj.interpolate_waypoints()
+            if self.alg_name is not None: # implicit grasps
+                self.traj.end = self.traj.goal_set[self.traj.goal_idx]  #
+                self.traj.interpolate_waypoints()
 
     def cost_vector(self):
         """
@@ -178,7 +179,8 @@ class Learner(object):
         """
         if self.alg_name == "Proj":
             self.Proj()
-
+        elif self.alg_name is None: # for implicit grasps
+            self.Proj()
         else:
             cv = self.cost_vector()
             if self.alg_name == "FTL":

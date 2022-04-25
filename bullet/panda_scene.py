@@ -219,8 +219,8 @@ if __name__ == "__main__":
     parser.add_argument("--save_all_trajectories", help="Save intermediate trajectories", action="store_true")
     parser.add_argument("--use_goal_grad", help="Use goal gradient with implicit method", action="store_true")
     parser.add_argument("--use_min_goal_cost_traj", help="Use trajectory with minimum goal cost", action="store_true")
-    parser.add_argument("--grasp_cost_schedule_boost", help="grasp cost schedule", type=float, default=1.002)
-    parser.add_argument("--smooth_cost_schedule_boost", help="smooth cost schedule", type=float, default=1.001)
+    parser.add_argument("--grasp_cost_schedule_boost", help="grasp cost schedule", type=float, default=1.00)
+    parser.add_argument("--smooth_cost_schedule_boost", help="smooth cost schedule", type=float, default=1.00)
     args = parser.parse_args()
 
     init_cfg(args)
@@ -362,6 +362,7 @@ if __name__ == "__main__":
             # if using conda requires deps to be installed on base env
             os.system(f'python3 ./bullet/post_process/trimesh_viz.py --dir {cfg.exp_dir}/{cfg.exp_name}/{cfg.scene_file}')
 
+    import IPython; IPython.embed()
     env.disconnect()
 
 # # def get_clip(scene, traj, i, comps, exp_name, duration, fps):
