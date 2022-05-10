@@ -71,3 +71,9 @@ def get_world2bot_transform(env):
     T_world2bot[:3, :3] = mat
     T_world2bot[:3, 3] = pos
     return T_world2bot
+
+def get_random_transform(env):
+    """Currently this is not a random transform"""
+    T_rand = np.eye(4)
+    T_rand[:3, 3] = [0.5, 0.0, 0.5]
+    return T_rand
