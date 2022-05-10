@@ -64,16 +64,29 @@ def get_world2cam_transform(env):
     T_world2cam = T_world2camgl @ T_camgl2cam
     return T_world2cam
 
-def get_world2bot_transform(env):
-    pos, orn = p.getBasePositionAndOrientation(env._panda.pandaUid)
+def get_world2bot_transform():
+    pos, orn = p.getBasePositionAndOrientation(0)  # panda UID is 0
     mat = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
     T_world2bot = np.eye(4)
     T_world2bot[:3, :3] = mat
     T_world2bot[:3, 3] = pos
     return T_world2bot
 
-def get_random_transform(env):
+def get_random_transform():
     """Currently this is not a random transform"""
     T_rand = np.eye(4)
     T_rand[:3, 3] = [0.5, 0.0, 0.5]
     return T_rand
+
+def bullet_execute_plan(env, plan, write_video, video_writer):
+    print('executing...')
+    for k in range(plan.shape[0]):
+        obs, rew, done, _ = env.step(plan[k].tolist())
+        if write_video:
+            video_writer.write(obs['rgb'][:, :, [2, 1, 0]].astype(np.uint8))
+    (rew, ret_obs) = env.retract(record=True)
+    if write_video: 
+        for robs in ret_obs:
+            video_writer.write(robs['rgb'][:, :, [2, 1, 0]].astype(np.uint8))
+            video_writer.write(robs['rgb'][:, :, [2, 1, 0]].astype(np.uint8)) # to get enough frames to save
+    return rew

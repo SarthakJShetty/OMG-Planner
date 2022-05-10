@@ -2,6 +2,7 @@
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
 
+import numpy as np
 from .util import *
 
 class Optimizer(object):
@@ -91,7 +92,7 @@ class Optimizer(object):
         if self.cfg.use_standoff:
             chosen_goal = self.cost.target_obj.reach_grasps[int(traj.goal_idx)]
             constraint_num = chosen_goal.shape[0]
-        elif 'implicitgrasps' in self.cfg.method: # goal pose output
+        elif 'learnedgrasps' in self.cfg.method: # goal pose output
             chosen_goal = traj.goal_joints[np.newaxis, :] 
             # 1 x 7 if use_ik is false
             constraint_num = 1

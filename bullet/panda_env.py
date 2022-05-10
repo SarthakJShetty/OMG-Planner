@@ -213,51 +213,38 @@ class PandaEnv:
             0.707,
         )
 
+        self.objinfos = [objinfo]
         self._objectUids = self.load_object(objinfo=objinfo)
         self._objectUids += [self.plane_id, self.table_id]
 
         self._env_step = 0
         return self._get_observation()
 
-    # def _place_acronym_book(self, scene_file):
-    #     if os.path.exists(scene_file):
-    #         xy_delta, yaw_delta, roll_delta = np.load(scene_file, allow_pickle=True)[()]
-    #         if "book_0" in scene_file or "book_1" in scene_file or "book_2" in scene_file:
-    #             np.save(scene_file, [xy_delta, yaw_delta, 0])
-    #         elif "book_3" in scene_file or "book_4" in scene_file:
-    #             np.save(scene_file, [xy_delta, 0, roll_delta])
-    #     else:
-    #         # Set book object at random position and save transform
-    #         np.random.seed(int(time.time()))
-    #         xy_delta = np.random.uniform(low=-0.1, high=0.1, size=2)
-    #         yaw_delta = np.random.uniform(low=0, high=90, size=1)[0]
-    #         roll_delta = np.random.uniform(low=0, high=90, size=1)[0]
-    #         np.save(scene_file, [xy_delta, yaw_delta, roll_delta])
+    def retract(self, record=False):
+        """Retract step."""
+        cur_joint = np.array(self._panda.getJointStates()[0])
+        cur_joint[-2:] = 0
 
-    #     world2obj_T = np.eye(4)
-    #     world2obj_T[:3, 3] = (0.07345162518699465, -0.4098033797439253, -1.10)
-    #     obj2ctr_T = cfg.T_obj2ctr # object frame to centroid of object frame
+        self.step(cur_joint.tolist())  # grasp
+        pos, orn = p.getLinkState(
+            self._panda.pandaUid, self._panda.pandaEndEffectorIndex
+        )[:2]
+        observations = []
+        for i in range(10):
+            pos = (pos[0], pos[1], pos[2] + 0.03)
+            jointPoses = np.array(
+                p.calculateInverseKinematics(
+                    self._panda.pandaUid, self._panda.pandaEndEffectorIndex, pos
+                )
+            )
+            jointPoses[-2:] = 0.0
 
-    #     ctr2rot_T = np.eye(4)
-    #     ctr2rot_T[:2, 3] = xy_delta
-    #     yaw_R = pr.matrix_from_axis_angle([1, 0, 0, yaw_delta])
-    #     roll_R = pr.matrix_from_axis_angle([0, 0, 1, roll_delta])
-    #     ctr2rot_T[:3, :3] = yaw_R @ roll_R
-    #     obj2rot_T = obj2ctr_T @ ctr2rot_T
-    #     world2rot_T = world2obj_T @ obj2rot_T @ np.linalg.inv(obj2ctr_T)
-    #     q = pr.quaternion_from_matrix(world2rot_T[:3, :3]) # w x y z
-    #     q = pr.quaternion_xyzw_from_wxyz(q) # x y z w
-    #     t = world2rot_T[:3, 3]
-    #     print(t, q)
+            self.step(jointPoses.tolist())
+            observation = self._get_observation()
+            if record:
+                observations.append(observation)
 
-    #     p.resetBasePositionAndOrientation(
-    #         self._objectUids[self.target_idx], t, q
-    #     )
-    #     p.resetBaseVelocity(
-    #         self._objectUids[self.target_idx], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)
-    #     )
-
-    #     self.cached_objects[self.target_idx] = True
+        return (self._reward(), observations) if record else self._reward()
 
     def step(self, action, obs=True):
         """Environment step."""

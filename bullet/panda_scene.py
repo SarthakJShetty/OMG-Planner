@@ -10,7 +10,7 @@ from .panda_env import PandaEnv
 
 from acronym_tools import create_gripper_marker
 from manifold_grasping.utils import load_mesh
-from .utils import get_world2bot_transform, get_random_transform, draw_pose
+from .utils import get_world2bot_transform, get_random_transform, draw_pose, bullet_execute_plan
 
 import pytransform3d.rotations as pr
 import pytransform3d.transformations as pt
@@ -31,14 +31,14 @@ def init_cfg(args):
     cfg.cost_schedule_boost = 1.0
 
     # pq input -> pq output
-    cfg.method = ''
+    cfg.method = 'learnedgrasps'
     cfg.use_standoff = False
     cfg.fixed_endpoint = False
     if cfg.use_goal_grad:
         cfg.goal_set_proj = False
         cfg.use_min_goal_cost_traj = False
     cfg.use_ik = False
-    cfg.grasp_prediction_weights = '/data/manifolds/fb_runs/multirun/pq-pq_bookonly/2022-05-07_223943/lossl1_lr0.0001/default_default/13_13/checkpoints/last.ckpt'
+    cfg.learnedgrasp_weights = '/data/manifolds/fb_runs/multirun/pq-pq_bookonly/2022-05-07_223943/lossl1_lr0.0001/default_default/13_13/checkpoints/last.ckpt'
 
     cfg.ol_alg = None
     # cfg.root_dir = '/data/manifolds/acronym_mini_bookonly/meshes_bullet'
@@ -74,13 +74,16 @@ def reset_env_with_object(env, objname, grasp_root, mesh_root):
 
 def randomly_place_object(env):
     # place single object
-    T_w2b = get_world2bot_transform(env)
- 
+    T_w2b = get_world2bot_transform()
+
     # TODO make actually random
-    T_rand = get_random_transform(env)
- 
-    T_w2o = T_w2b @ T_rand
-    draw_pose(T_w2o)
+    T_rand = get_random_transform()
+
+    # Apply object to centroid transform
+    T_ctr2obj = env.objinfos[0]['T_ctr2obj']
+
+    T_w2o = T_w2b @ T_rand @ T_ctr2obj
+    # draw_pose(T_w2b @ T_rand)
     pq_w2o = pt.pq_from_transform(T_w2o)  # wxyz
 
     p.resetBasePositionAndOrientation(
@@ -94,7 +97,7 @@ def randomly_place_object(env):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-mr", "--mesh_root", help="mesh root", type=str, default="/data/manifolds/acronym_mini_bookonly")
-    parser.add_argument("-gr", "--grasp_root", help="grasp root", type=str, default="/data/manifolds/acronym_mini_bookonly/grasps") 
+    parser.add_argument("-gr", "--grasp_root", help="grasp root", type=str, default="/data/manifolds/acronym_mini_bookonly/grasps")
     args = parser.parse_args()
 
     init_cfg(args)
@@ -112,20 +115,37 @@ if __name__ == '__main__':
 
         # Scene has separate Env class which is used for planning
         # Add object to planning scene env
-        trans, orn = p.getBasePositionAndOrientation(env._objectUids[0])  # x y z w
+        # transform is object frame to world
+        trans_w2o, orn_w2o = p.getBasePositionAndOrientation(env._objectUids[0])  # xyzw
+        
+        # change to world to object centroid so planning scene env only sees objects in centroid frame
+        T_b2w = np.linalg.inv(get_world2bot_transform())
+        T_w2o = np.eye(4)
+        T_w2o[:3, :3] = pr.matrix_from_quaternion(tf_quat(orn_w2o))
+        T_w2o[:3, 3] = trans_w2o
+        T_o2c = np.linalg.inv(objinfo['T_ctr2obj'])
+        T_b2c = T_b2w @ T_w2o @ T_o2c
+        trans = T_b2c[:3, 3]
+        orn = pr.quaternion_from_matrix(T_b2c[:3, :3])  # wxyz
+        draw_pose(T_w2o @ T_o2c)
+
         obj_prefix = '/data/manifolds/acronym_mini_bookonly/meshes_bullet'
-        scene.env.add_object(objinfo['name'], trans, tf_quat(orn), obj_prefix=obj_prefix, abs_path=True)
+        scene.env.add_object(objinfo['name'], trans, orn, obj_prefix=obj_prefix, abs_path=True)
         scene.env.add_plane(np.array([0.05, 0, -0.17]), np.array([1, 0, 0, 0]))
         scene.env.combine_sdfs()
-        cfg.disable_collision_set = [objinfo['name']]
+        # cfg.disable_collision_set = [objinfo['name']]
 
         # Set grasp selection method for planner
         scene.env.set_target(objinfo['name'])
         scene.reset(lazy=True)
 
+        info = scene.step()
+        plan = scene.planner.history_trajectories[-1]
+
+        rew = bullet_execute_plan(env, plan, write_video=False, video_writer=None) 
 
         import IPython; IPython.embed()
         break
 
-    
+
 

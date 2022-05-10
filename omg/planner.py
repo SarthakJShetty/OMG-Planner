@@ -17,7 +17,7 @@ from liegroups.torch import SE3
 import pytransform3d.rotations as pr
 import pytransform3d.transformations as pt
 
-from bullet.utils import draw_pose
+from bullet.utils import draw_pose, get_world2bot_transform
 from .viz_trimesh import visualize_predicted_grasp, trajT_to_grasppredT, grasppredT_to_trajT
 import pytorch3d.transforms as ptf
 import pybullet as p
@@ -120,14 +120,9 @@ class Planner(object):
             self.setup_goal_set(env)
             self.grasp_init(env)
             self.learner = Learner(env, self.traj, self.cost)
-        elif 'implicitgrasps' in self.cfg.method:
-            # if 'fixed' in self.cfg.method:
-            self.load_grasp_set(env)
-            self.setup_goal_set(env)
-            self.grasp_init(env)
-            self.learner = Learner(env, self.traj, self.cost)
-            from bullet.methods.implicit import ImplicitGrasp_OutputPose
-            self.grasp_predictor = ImplicitGrasp_OutputPose(ckpt_path=self.cfg.grasp_prediction_weights)
+        elif 'learnedgrasps' in self.cfg.method:
+            from bullet.methods.learnedgrasp import LearnedGrasp
+            self.grasp_predictor = LearnedGrasp(ckpt_path=self.cfg.learnedgrasp_weights)
         else:
             raise NotImplementedError
 
@@ -666,9 +661,11 @@ class Planner(object):
         """
         Returns: numpy matrix
         """
-        T_bot2objfrm = pt.transform_from_pq(self.env.objects[self.env.target_idx].pose)
-        T_objfrm2obj = self.cfg.T_obj2ctr
-        T_obj2bot = np.linalg.inv(T_bot2objfrm @ T_objfrm2obj)
+        # T_bot2objfrm = pt.transform_from_pq(self.env.objects[self.env.target_idx].pose)
+        # T_objfrm2obj = self.cfg.T_obj2ctr
+        # T_obj2bot = np.linalg.inv(T_bot2objfrm @ T_objfrm2obj)
+        T_bot2obj = pt.transform_from_pq(self.env.objects[self.env.target_idx].pose)
+        T_obj2bot = np.linalg.inv(T_bot2obj)
         return T_obj2bot
 
     def get_T_obj2goal(self, fixed_goal=False):
@@ -698,34 +695,34 @@ class Planner(object):
 
         return T_obj2goal
 
-    def grad_pose_update(self, pose_ee, pose_goal):
-        """
-        Update gradient in pose space
-        """
-        pose_ee.data = pose_ee.data.detach().clone()
-        pose_ee.data.requires_grad = True
-        pose_err = torch.linalg.norm(pose_goal.local(pose_ee))
-        pose_err.backward()
-        pose_ee.data = pose_ee.data - 0.01*pose_ee.data.grad
-        if True: # visualize
-            T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
-            draw_pose(self.T_world2bot @ T_b2e_np) # ee in world frame
-        return pose_ee
+    # def grad_pose_update(self, pose_ee, pose_goal):
+    #     """
+    #     Update gradient in pose space
+    #     """
+    #     pose_ee.data = pose_ee.data.detach().clone()
+    #     pose_ee.data.requires_grad = True
+    #     pose_err = torch.linalg.norm(pose_goal.local(pose_ee))
+    #     pose_err.backward()
+    #     pose_ee.data = pose_ee.data - 0.01*pose_ee.data.grad
+    #     if True: # visualize
+    #         T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
+    #         draw_pose(self.T_world2bot @ T_b2e_np) # ee in world frame
+    #     return pose_ee
 
-    def grad_joints_update(self, q_curr, pose_goal, robot_model, opt):
-        opt.zero_grad()
-        # q_curr = q_curr.detach().clone()
-        # q_curr.requires_grad = True
-        pose_ee = robot_model.forward_kinematics(q_curr)['panda_hand']
-        if True: # visualize
-            T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
-            draw_pose(self.T_world2bot @ T_b2e_np) # ee in world frame
+    # def grad_joints_update(self, q_curr, pose_goal, robot_model, opt):
+    #     opt.zero_grad()
+    #     # q_curr = q_curr.detach().clone()
+    #     # q_curr.requires_grad = True
+    #     pose_ee = robot_model.forward_kinematics(q_curr)['panda_hand']
+    #     if True: # visualize
+    #         T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
+    #         draw_pose(self.T_world2bot @ T_b2e_np) # ee in world frame
 
-        pose_err = torch.linalg.norm(pose_goal.local(pose_ee))
-        pose_err.backward()
-        opt.step()
-        # q_curr = q_curr - 0.01*q_curr.grad
-        return q_curr
+    #     pose_err = torch.linalg.norm(pose_goal.local(pose_ee))
+    #     pose_err.backward()
+    #     opt.step()
+    #     # q_curr = q_curr - 0.01*q_curr.grad
+    #     return q_curr
 
     def CHOMP_update(self, traj, pose_goal, robot_model):
         q_curr = torch.tensor(traj.data[-1], device='cpu', dtype=torch.float32).unsqueeze(0)
@@ -735,7 +732,7 @@ class Planner(object):
             pose_ee = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
             if vis: # visualize
                 T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
-                draw_pose(self.T_world2bot @ T_b2e_np) # ee in world frame
+                draw_pose(self.T_w2b_np @ T_b2e_np) # ee in world frame
             residual = pose_goal.local(pose_ee) # SE(3) 1 x 6
             return residual
         residual = fn(q_curr, vis=True) # 1 x 6
@@ -758,39 +755,21 @@ class Planner(object):
         """
         Run chomp optimizer to do trajectory optmization
         """
-
         self.history_trajectories = [np.copy(traj.data)]
         self.info = []
         self.selected_goals = []
         start_time_ = time.time()
-        alg_switch = self.cfg.ol_alg != "Baseline"
-        #  and 'implicitgrasps' not in self.cfg.method
-        # and self.cfg.ol_alg != "Proj"
+        alg_switch = self.cfg.ol_alg != "Baseline" and 'learnedgrasps' not in self.cfg.method
 
         best_traj_idx = -1
         best_traj = None # Save lowest cost trajectory
         best_cost = 1000
         if (not self.cfg.goal_set_proj) or len(self.traj.goal_set) > 0 \
-            or 'implicitgrasps' in self.cfg.method:
-
-            # Get T_world2bot for debug viz
-            pos, orn = p.getBasePositionAndOrientation(0)
-            self.T_world2bot = np.eye(4)
-            self.T_world2bot[:3, :3] = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
-            self.T_world2bot[:3, 3] = pos
+            or 'learnedgrasps' in self.cfg.method:
+            self.T_w2b_np = get_world2bot_transform()
 
             urdf_path = DifferentiableFrankaPanda().urdf_path.replace('_no_gripper', '')
             robot_model = th.eb.UrdfRobotModel(urdf_path)
-
-            # q_curr = torch.tensor(traj.data[-1], device='cpu', dtype=torch.float32).unsqueeze(0)
-            # q_curr.requires_grad = True
-            # opt = torch.optim.Adam([q_curr], lr=0.01)
-
-            # pose_ee = robot_model.forward_kinematics(q_curr)['panda_hand']
-            # T_b2e_np = pose_ee.to_matrix().squeeze().numpy()
-            # draw_pose(self.T_world2bot @ T_b2e_np) # ee in world frame
-
-            # opt = torch.optim.Adam([q_curr], lr=0.01)
 
             self.optim.init(traj)
 
@@ -804,50 +783,34 @@ class Planner(object):
                     self.learner.update_goal()
                     self.selected_goals.append(self.traj.goal_idx)
 
-                if 'implicitgrasps' in self.cfg.method:
-                    # Get goal from known good grasp set that query pose should move towards every iteration
+                if 'learnedgrasps' in self.cfg.method:
+                    # Get input pose to network as position+quaternion in object frame 
+                    q = torch.tensor(traj.data[-1], device='cpu').unsqueeze(0)
+                    pose_b2e = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
+                    T_b2e_np = pose_b2e.to_matrix().detach().squeeze().numpy()
                     T_o2b_np = self.get_T_obj2bot()
-                    T_b2o_np = np.linalg.inv(T_o2b_np)
+                    T_o2e_np = T_o2b_np @ T_b2e_np
+                    pq_o2e_np = pt.pq_from_transform(T_o2e_np) # xyz wxyz
+                    input_pq = torch.tensor(pq_o2e_np, device='cuda', dtype=torch.float32)
+                    input_x = torch.cat([input_pq, torch.tensor([0], device=input_pq.device)])
 
-                    #   From known grasp set
-                    # T_o2g_np = self.get_T_obj2goal(fixed_goal=True)
-                    # T_b2g = torch.tensor(T_b2o_np @ T_o2g_np, device='cpu', dtype=torch.float32)
-                    # pose_goal = th.SE3(data=T_b2g[:3].unsqueeze(0))
-                    # draw_pose(self.T_world2bot @ T_b2o_np @ T_o2g_np, alt_color=True) # goal in world frame
+                    # Run network
+                    pq_o2g = self.grasp_predictor.forward(input_x.unsqueeze(0)).cpu()
+                    pq_o2g_np = pq_o2g.numpy()
 
-                    #   From network (ee in object frame, grasp in object frame)
-                    #     Get input as ee in object frame
-                    q = torch.tensor(traj.data[-1], device='cpu', dtype=torch.float32).unsqueeze(0)
-                    pose_ee = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
-                    T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
-                    T_o2e = T_o2b_np @ T_b2e_np @ rotZ(np.pi/2) # rotate wrist
+                    # Get predicted grasp in bot frame
+                    T_o2g_np = np.eye(4)
+                    T_o2g_np[:3, :3] = pr.matrix_from_quaternion(pq_o2g_np[3:8])
+                    T_o2g_np[:3, 3] = pq_o2g_np[:3]
+                    T_b2g_np = np.linalg.inv(T_o2b_np) @ T_o2g_np
+                    pose_b2g = th.SE3(data=torch.tensor(T_b2g_np[:3]).float().unsqueeze(0))
 
-                    pq_o2e_np = pt.pq_from_transform(T_o2e) # xyz wxyz
-                    pq_o2e_np = pq_o2e_np[[0, 1, 2, 4, 5, 6, 3]] # xyz xyzw
-                    input_pq = torch.tensor(pq_o2e_np, device='cuda', dtype=torch.float64) # xyz xyzw
-                    #     Run network to get goal in object frame
-                    pq_o2g = self.grasp_predictor.forward(input_pq.unsqueeze(0)).float().cpu() # xyz xyzw, 1 x 7
-                    pq_o2g = torch.index_select(pq_o2g, 0, torch.LongTensor([0, 1, 2, 6, 3, 4, 5])) # xyz wxyz
-                    pose_o2g = th.SE3(x_y_z_quaternion=pq_o2g)
-                    #     Get goal in bot frame
-                    T_b2o = torch.tensor(T_b2o_np, device='cpu', dtype=torch.float32) # 1 x 7
-                    pose_b2o = th.SE3(data=T_b2o[:3].unsqueeze(0))
-                    pose_rotZ = th.SE3(data=torch.tensor(rotZ(-np.pi/2), dtype=torch.float32)[:3].unsqueeze(0)) # unrotate wrist
-                    pose_goal = pose_b2o.compose(pose_o2g).compose(pose_rotZ)
-                    #     Visualization
-                    draw_pose(self.T_world2bot @ pose_goal.to_matrix().detach().squeeze().numpy(), alt_color=True) # goal in world frame
+                    # Visualization
+                    draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
 
-                    # Update EE pose
-                    #   Fixed goal tau_b2g, grad descent in pose space without CHOMP
-                    # pose_ee = self.grad_pose_update(pose_ee, pose_goal)
-
-                    #   Fixed goal tau_b2g, grad descent in joint space without CHOMP
-                    # q_curr = self.grad_joints_update(q_curr, pose_goal, robot_model, opt)
-                    # traj.goal_cost = 1
-                    # traj.goal_grad = np.zeros((7,))
-
-                    #   Fixed goal tau_b2g, grad descent with CHOMP
-                    self.CHOMP_update(traj, pose_goal, robot_model)
+                    self.CHOMP_update(traj, pose_b2g, robot_model)
+                else:
+                    raise NotImplementedError
 
                 self.info.append(self.optim.optimize(traj, force_update=True, tstep=t+1))
                 self.history_trajectories.append(np.copy(traj.data))

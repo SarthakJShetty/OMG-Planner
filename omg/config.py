@@ -28,8 +28,8 @@ cfg = edict()
 
 """ hyperparameter """
 cfg.smoothness_base_weight = 0.01  # 0.1 weight for smoothness cost in total cost
-cfg.base_obstacle_weight = 1.0  # 1.0 weight for obstacle cost in total cost
-cfg.base_grasp_weight = 1.0  # weight for grasp cost in total cost
+cfg.base_obstacle_weight = 0.1 # 1.0  # 1.0 weight for obstacle cost in total cost
+cfg.base_grasp_weight = 10.0  # weight for grasp cost in total cost
 cfg.cost_schedule_decay = 1  # cost schedule decay for obstacle cost weight wrt base
 cfg.cost_schedule_boost = 1.0  # cost schedule boost for smoothness cost weight  
 cfg.grasp_schedule_boost = 1.00 # 1.02 # 1.05  # cost schedule boost for grasp cost weight  
@@ -123,12 +123,12 @@ cfg.report_time = False  # verbose plan time check
 cfg.output_video_name = "test_video.avi"
 cfg.silent = False
 cfg.render = True
-cfg.method = 'knowngrasps_OMG'
-cfg.grasp_predictor = None # grasp prediction method
+cfg.method = ''
+# cfg.grasp_predictor = None # grasp prediction method
 cfg.acronym_dir = None
 cfg.use_goal_grad = False # whether to include the goal gradient and cost in the cost computation 
 cfg.fixed_endpoint = False # whether endpoint of trajectory is fixed or not
-exp_name = ''
+# exp_name = ''
 cfg.use_ik = False # use ik with output pose method
 cfg.use_min_goal_cost_traj = False # use trajectory with minimum goal cost (use_goal_grad = True, method='implicigrasps')
 
