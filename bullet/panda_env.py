@@ -49,7 +49,7 @@ class PandaEnv:
         egl_render=False,
         gui_debug=True,
         gravity=True,
-        # root_dir=None,
+        root_dir=None,
         cam_look=[-0.35, -0.58, -0.88],
     ):
         """Initializes the pandaYCBObjectEnv.
@@ -84,7 +84,7 @@ class PandaEnv:
         self._cam_yaw = 180
         self._cam_pitch = -41
         self._safeDistance = safeDistance
-        # self._root_dir = root_dir if root_dir is not None else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        self._root_dir = root_dir if root_dir is not None else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
         self._p = p
         self._window_width = width
         self._window_height = height
@@ -360,13 +360,13 @@ class PandaEnv:
         pos, orn = p.getBasePositionAndOrientation(self._panda.pandaUid)
         base_pose = list(pos) + [orn[3], orn[0], orn[1], orn[2]]
         poses = []
-        obj_dir = []
+        # obj_dir = []
 
-        for idx, uid in enumerate(self._objectUids):
-            if idx >= len(self.cached_objects)  or self.cached_objects[idx]:
-                pos, orn = p.getBasePositionAndOrientation(uid)  # center offset of base
-                obj_pose = list(pos) + [orn[3], orn[0], orn[1], orn[2]]
-                poses.append(inv_relative_pose(obj_pose, base_pose))
-                obj_dir.append(self.obj_path[idx])  # .encode("utf-8")
+        # Only one object loaded
+        uid = self._objectUids[0]
+        pos, orn = p.getBasePositionAndOrientation(uid)  # center offset of base
+        obj_pose = list(pos) + [orn[3], orn[0], orn[1], orn[2]]
+        poses.append(inv_relative_pose(obj_pose, base_pose))
 
-        return obj_dir, poses
+        # return obj_dir, poses
+        return [uid], poses

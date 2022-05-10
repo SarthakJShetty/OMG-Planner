@@ -21,7 +21,7 @@ from bullet.utils import draw_pose
 from .viz_trimesh import visualize_predicted_grasp, trajT_to_grasppredT, grasppredT_to_trajT
 import pytorch3d.transforms as ptf
 import pybullet as p
-from manifold_grasping.control_pts import *
+# from manifold_grasping.control_pts import *
 
 import theseus as th
 from typing import List
@@ -102,19 +102,19 @@ def solve_one_pose_ik(input):
 
 class Planner(object):
     """
-    Planner class that plans a grasp trajectory 
-    Tricks such as standoff pregrasp, flip grasps are for real world experiments. 
+    Planner class that plans a grasp trajectory
+    Tricks such as standoff pregrasp, flip grasps are for real world experiments.
     """
 
     def __init__(self, env, traj, lazy=False):
-        self.cfg = env.cfg  
+        self.cfg = env.cfg
         self.env = env
         self.traj = traj
         self.cost = Cost(env)
         self.optim = Optimizer(env, self.cost)
         self.lazy = lazy
 
-        # Planning methods 
+        # Planning methods
         if 'knowngrasps' in self.cfg.method:
             self.load_grasp_set(env)
             self.setup_goal_set(env)
@@ -127,7 +127,7 @@ class Planner(object):
             self.grasp_init(env)
             self.learner = Learner(env, self.traj, self.cost)
             from bullet.methods.implicit import ImplicitGrasp_OutputPose
-            self.grasp_predictor = ImplicitGrasp_OutputPose(ckpt_path=self.cfg.grasp_prediction_weights) 
+            self.grasp_predictor = ImplicitGrasp_OutputPose(ckpt_path=self.cfg.grasp_prediction_weights)
         else:
             raise NotImplementedError
 
@@ -168,7 +168,7 @@ class Planner(object):
                     self.traj.goal_potentials + self.cfg.dist_eps * proj_dist
                 )
                 self.traj.goal_idx = np.argmin(costs)
- 
+
             else:
                 self.traj.goal_idx = 0
 
@@ -234,20 +234,20 @@ class Planner(object):
             )  # translate to object origin
             pose_grasp_global = np.matmul(global_rot_z, pose_grasp_global)  # rotate
             pose_grasp_global[:, :3, 3] += translation  # translate back
- 
+
         if y_upsample:
-            # Added upsampling by local y rotation around finger antipodal contact 
+            # Added upsampling by local y rotation around finger antipodal contact
             bin_num = 10
             global_rot_y = np.linspace(-np.pi / 4, np.pi / 4, bin_num)
             global_rot_y = np.stack([rotY(y_ang) for y_ang in global_rot_y], axis=0)
             finger_translation = pose_grasp_global[:, :3, :3].dot(np.array([0, 0, 0.13])) + pose_grasp_global[:, :3, 3]
             local_rotation = np.matmul(pose_grasp_global[:, :3, :3], global_rot_y[:, None, :3, :3])
             delta_translation  = local_rotation.dot(np.array([0, 0, 0.13]))
-            pose_grasp_global = np.tile(pose_grasp_global[:,None], (1, bin_num, 1, 1)) 
+            pose_grasp_global = np.tile(pose_grasp_global[:,None], (1, bin_num, 1, 1))
             pose_grasp_global[:,:,:3,3]  = (finger_translation[None] - delta_translation).transpose((1,0,2))
-            pose_grasp_global[:,:,:3,:3] = local_rotation.transpose((1,0,2,3)) 
+            pose_grasp_global[:,:,:3,:3] = local_rotation.transpose((1,0,2,3))
             pose_grasp_global = pose_grasp_global.reshape(-1, 4, 4)
- 
+
         # standoff
         pose_standoff = np.tile(np.eye(4), (reach_tail_len, 1, 1, 1))
         if self.cfg.use_standoff:
@@ -322,8 +322,8 @@ class Planner(object):
             standoff_goal_set = np.zeros([0, 9])
             grasp_set = np.zeros([0, 7])
             any_ik, cnt = [], 0
-            p = multiprocessing.Pool(processes=processes)     
-             
+            p = multiprocessing.Pool(processes=processes)
+
             num = pose_grasp_global.shape[0]
             for i in range(0, num, processes):
                 param_list = [
@@ -426,7 +426,7 @@ class Planner(object):
                             pose_grasp, success = load_grasps(f"/checkpoint/thomasweng/acronym/grasps/Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836.h5")
                             pose_grasp = pose_grasp[success == 1]
 
-                            if False: 
+                            if False:
                                 import trimesh
                                 from acronym_tools import load_mesh, load_grasps, create_gripper_marker
                                 grasp_viz = []
@@ -457,7 +457,7 @@ class Planner(object):
                                 )
                                 pose_grasp = simulator_grasp.item()[b"transforms"]
 
-                        offset_pose = np.array(rotZ(np.pi / 2)) # rotate about z axis 
+                        offset_pose = np.array(rotZ(np.pi / 2)) # rotate about z axis
                         pose_grasp = np.matmul(pose_grasp, offset_pose)  # flip x, y
                         pose_grasp = ycb_special_case(pose_grasp, target_obj.name)
                         target_obj.grasps_poses = pose_grasp
@@ -531,7 +531,7 @@ class Planner(object):
                     # difference angle
                     R_diff = np.matmul(target_hand_pose[..., :3, :3], start_hand_pose[:3,:3].transpose(1,0))
                     angle = np.abs(np.arccos((np.trace(R_diff, axis1=2, axis2=3) - 1 ) /  2))
-                    angle = angle * 180 / np.pi 
+                    angle = angle * 180 / np.pi
                     rot_masks = angle > self.cfg.target_hand_filter_angle
                     z = target_hand_pose[..., :3, 0] / np.linalg.norm(target_hand_pose[..., :3, 0], axis=-1, keepdims=True)
                     downward_masks = z[:,:,-1] < -0.3
@@ -560,11 +560,11 @@ class Planner(object):
                     T_bot2obj = np.eye(4)
                     target_q = target_obj.pose[3:] # wxyz
                     R = p.getMatrixFromQuaternion(ros_quat(target_q))
-                    T_bot2obj[:3, :3] = np.asarray(R).reshape(3, 3)                    
+                    T_bot2obj[:3, :3] = np.asarray(R).reshape(3, 3)
                     T_bot2obj[:3, 3] = target_obj.pose[:3]
                     draw_pose(T_world2bot @ T_bot2obj)
 
-                    draw_pose(T_world2bot @ T_bot2obj @ T_obj2grasp)                    
+                    draw_pose(T_world2bot @ T_bot2obj @ T_obj2grasp)
 
             if len(goal_set) > 0 and target_obj.compute_grasp:  # goal_set
                 potentials, _, vis_points, collide = self.cost.batch_obstacle_cost(
@@ -666,11 +666,11 @@ class Planner(object):
         """
         Returns: numpy matrix
         """
-        T_bot2objfrm = pt.transform_from_pq(self.env.objects[self.env.target_idx].pose) 
+        T_bot2objfrm = pt.transform_from_pq(self.env.objects[self.env.target_idx].pose)
         T_objfrm2obj = self.cfg.T_obj2ctr
         T_obj2bot = np.linalg.inv(T_bot2objfrm @ T_objfrm2obj)
         return T_obj2bot
-    
+
     def get_T_obj2goal(self, fixed_goal=False):
         """
         Get transform from robot frame to desired grasp frame
@@ -731,14 +731,26 @@ class Planner(object):
         q_curr = torch.tensor(traj.data[-1], device='cpu', dtype=torch.float32).unsqueeze(0)
         q_curr.requires_grad = True
 
-        pose_ee = robot_model.forward_kinematics(q_curr)['panda_hand']
-        if True: # visualize
-            T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
-            draw_pose(self.T_world2bot @ T_b2e_np) # ee in world frame
-        pose_err = torch.linalg.norm(pose_goal.local(pose_ee))
-        pose_err.backward() 
+        def fn(q, vis=False):
+            pose_ee = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
+            if vis: # visualize
+                T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
+                draw_pose(self.T_world2bot @ T_b2e_np) # ee in world frame
+            residual = pose_goal.local(pose_ee) # SE(3) 1 x 6
+            return residual
+        residual = fn(q_curr, vis=True) # 1 x 6
+        mse = torch.linalg.norm(residual, ord='fro')
+        mse.backward()
 
-        traj.goal_cost = pose_err.item()
+        # # get jacobian for LM
+        # def fn_wrapper(q):
+        #     return fn(q).data.squeeze(0) # [6]
+        # jac = jacobian(f=fn_wrapper, initial=torch.tensor(q_curr[0], device='cpu', dtype=torch.float32)) # 6 x 9
+        # traj.residual = residual.data.permute(1, 0) # 6 x 1
+        # traj.jac = jac
+        # traj.last_goal_cost = traj.goal_cost
+
+        traj.goal_cost = mse.item()
         traj.goal_grad = q_curr.grad.cpu().numpy()[:, :7]
         print(f"cost: {traj.goal_cost}, grad: {traj.goal_grad}")
 
@@ -757,7 +769,7 @@ class Planner(object):
 
         best_traj_idx = -1
         best_traj = None # Save lowest cost trajectory
-        best_cost = 1000 
+        best_cost = 1000
         if (not self.cfg.goal_set_proj) or len(self.traj.goal_set) > 0 \
             or 'implicitgrasps' in self.cfg.method:
 
@@ -786,32 +798,58 @@ class Planner(object):
                 start_time = time.time()
 
                 if (
-                    # self.cfg.goal_set_proj and
-                    alg_switch and t < self.cfg.optim_steps 
+                    self.cfg.goal_set_proj and
+                    alg_switch and t < self.cfg.optim_steps
                 ):
                     self.learner.update_goal()
                     self.selected_goals.append(self.traj.goal_idx)
 
                 if 'implicitgrasps' in self.cfg.method:
                     # Get goal from known good grasp set that query pose should move towards every iteration
-                    T_o2g = self.get_T_obj2goal(fixed_goal=True)
-                    T_b2o = np.linalg.inv(self.get_T_obj2bot())
-                    T_b2g = torch.tensor(T_b2o @ T_o2g, device='cpu', dtype=torch.float32)
-                    pose_goal = th.SE3(data=T_b2g[:3].unsqueeze(0))
-                    draw_pose(self.T_world2bot @ T_b2o @ T_o2g, alt_color=True) # goal in world frame
+                    T_o2b_np = self.get_T_obj2bot()
+                    T_b2o_np = np.linalg.inv(T_o2b_np)
 
-                    # fixed goal tau_b2g, grad descent in pose space without CHOMP
+                    #   From known grasp set
+                    # T_o2g_np = self.get_T_obj2goal(fixed_goal=True)
+                    # T_b2g = torch.tensor(T_b2o_np @ T_o2g_np, device='cpu', dtype=torch.float32)
+                    # pose_goal = th.SE3(data=T_b2g[:3].unsqueeze(0))
+                    # draw_pose(self.T_world2bot @ T_b2o_np @ T_o2g_np, alt_color=True) # goal in world frame
+
+                    #   From network (ee in object frame, grasp in object frame)
+                    #     Get input as ee in object frame
+                    q = torch.tensor(traj.data[-1], device='cpu', dtype=torch.float32).unsqueeze(0)
+                    pose_ee = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
+                    T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
+                    T_o2e = T_o2b_np @ T_b2e_np @ rotZ(np.pi/2) # rotate wrist
+
+                    pq_o2e_np = pt.pq_from_transform(T_o2e) # xyz wxyz
+                    pq_o2e_np = pq_o2e_np[[0, 1, 2, 4, 5, 6, 3]] # xyz xyzw
+                    input_pq = torch.tensor(pq_o2e_np, device='cuda', dtype=torch.float64) # xyz xyzw
+                    #     Run network to get goal in object frame
+                    pq_o2g = self.grasp_predictor.forward(input_pq.unsqueeze(0)).float().cpu() # xyz xyzw, 1 x 7
+                    pq_o2g = torch.index_select(pq_o2g, 0, torch.LongTensor([0, 1, 2, 6, 3, 4, 5])) # xyz wxyz
+                    pose_o2g = th.SE3(x_y_z_quaternion=pq_o2g)
+                    #     Get goal in bot frame
+                    T_b2o = torch.tensor(T_b2o_np, device='cpu', dtype=torch.float32) # 1 x 7
+                    pose_b2o = th.SE3(data=T_b2o[:3].unsqueeze(0))
+                    pose_rotZ = th.SE3(data=torch.tensor(rotZ(-np.pi/2), dtype=torch.float32)[:3].unsqueeze(0)) # unrotate wrist
+                    pose_goal = pose_b2o.compose(pose_o2g).compose(pose_rotZ)
+                    #     Visualization
+                    draw_pose(self.T_world2bot @ pose_goal.to_matrix().detach().squeeze().numpy(), alt_color=True) # goal in world frame
+
+                    # Update EE pose
+                    #   Fixed goal tau_b2g, grad descent in pose space without CHOMP
                     # pose_ee = self.grad_pose_update(pose_ee, pose_goal)
 
-                    # fixed goal tau_b2g, grad descent in joint space without CHOMP
+                    #   Fixed goal tau_b2g, grad descent in joint space without CHOMP
                     # q_curr = self.grad_joints_update(q_curr, pose_goal, robot_model, opt)
                     # traj.goal_cost = 1
                     # traj.goal_grad = np.zeros((7,))
 
-                    # fixed goal tau_b2g, grad descent with CHOMP
+                    #   Fixed goal tau_b2g, grad descent with CHOMP
                     self.CHOMP_update(traj, pose_goal, robot_model)
 
-                self.info.append(self.optim.optimize(traj, force_update=True, tstep=t+1))  
+                self.info.append(self.optim.optimize(traj, force_update=True, tstep=t+1))
                 self.history_trajectories.append(np.copy(traj.data))
                 if self.cfg.use_min_goal_cost_traj:
                     if traj.goal_cost < best_cost:
@@ -824,7 +862,7 @@ class Planner(object):
 
                 if self.info[-1]["terminate"] and t > 0:
                     break
- 
+
             # compute information for the final
             if not self.info[-1]["terminate"]:
                 if self.cfg.use_min_goal_cost_traj:
@@ -885,7 +923,7 @@ class Planner(object):
     # def compute_loss(self, tau_b2e, tau_b2g, loss_fn='logmap'):
     #     if loss_fn == 'logmap_split':
     #         # nu := translational component of the exp. coords
-    #         # omega := rotational component of the exp. coords 
+    #         # omega := rotational component of the exp. coords
     #         alpha = 0.01
     #         nu_diff = tau_b2e[:3] - tau_b2g[:3]
     #         omega_diff = tau_b2e[3:] - tau_b2g[3:]
@@ -900,8 +938,8 @@ class Planner(object):
     #         loss = 0.5*torch.linalg.norm(pq_b2e - pq_b2g)**2
     #     elif loss_fn == 'control_points':
     #         alpha = 0.02
-    #         T_b2e = ptf.se3_exp_map(tau_b2e.unsqueeze(0), eps=1e-10).squeeze().T 
-    #         T_b2g = ptf.se3_exp_map(tau_b2g.unsqueeze(0), eps=1e-10).squeeze().T 
+    #         T_b2e = ptf.se3_exp_map(tau_b2e.unsqueeze(0), eps=1e-10).squeeze().T
+    #         T_b2g = ptf.se3_exp_map(tau_b2g.unsqueeze(0), eps=1e-10).squeeze().T
     #         cp_b2e = transform_control_points(T_b2e.unsqueeze(0).float(), 1, mode='rt', device='cuda', rotate=True)
     #         cp_b2g = transform_control_points(T_b2g.unsqueeze(0).float(), 1, mode='rt', device='cuda', rotate=True)
     #         # loss = control_point_l1_loss(cp_b2e, cp_b2g)
@@ -953,7 +991,7 @@ class Planner(object):
 
     # def grad_joints_update(self, tau_b2e, tau_b2g, q_curr, loss_fn='logmap'):
     #     """
-    #     update the input transform to move toward goal pose, agnostic to traj opt loop. 
+    #     update the input transform to move toward goal pose, agnostic to traj opt loop.
     #     """
     #     tau_b2e.requires_grad = True
 
@@ -989,7 +1027,7 @@ class Planner(object):
     #     # tau_b2e_grad = tau_b2e_grad.detach().unsqueeze(1).cpu().numpy() # 6 x 1
     #     T_b2e_np = self.cfg.ROBOT.forward_kinematics_parallel(
     #         joint_values=wrap_value(q_curr), base_link=self.cfg.base_link)[0][-3]
-        
+
     #     # Geometric jacobian
     #     transforms = self.cfg.ROBOT.forward_kinematics_parallel(
     #         joint_values=wrap_value(q_curr), base_link=self.cfg.base_link)[0]
@@ -1003,7 +1041,7 @@ class Planner(object):
 
     #     J = np.r_[np.cross(axes, ee_pos - joints_pos).T, axes.T]
 
-    #     # Use J from manual backprop calculation instead of J inv 
+    #     # Use J from manual backprop calculation instead of J inv
     #     # q_b2e_grad = (tau_b2e_np - tau_b2g_np).T @ J # 1 x 7
     #     q_b2e_grad = (tau_b2e_np - tau_b2g_np).T @ jac_e.cpu().numpy() # 1 x 7
 
@@ -1025,7 +1063,7 @@ class Planner(object):
 
 
     # def CHOMP_update(self, traj, tau_b2g, loss='pq'):
-    #     q_curr = traj.data[-1][np.newaxis, :7] 
+    #     q_curr = traj.data[-1][np.newaxis, :7]
 
     #     # Get current end effector pose in exp coordinates
     #     T_b2e_np = self.get_T_bot2ee(traj, idx=-1)
@@ -1049,7 +1087,7 @@ class Planner(object):
     #     # Compute loss
     #     if loss == 'logmap_split':
     #         # nu := translational component of the exp. coords
-    #         # omega := rotational component of the exp. coords 
+    #         # omega := rotational component of the exp. coords
     #         nu_diff = tau_b2e[:3] - tau_b2g[:3]
     #         omega_diff = tau_b2e[3:] - tau_b2g[3:]
     #         loss = torch.linalg.norm(nu_diff) + torch.linalg.norm(omega_diff)

@@ -121,6 +121,7 @@ class Robot(object):
         """
         self.collision_points[-3:] = self.hand_col_points.copy()
 
+
 class Env(object):
     """
     Environment class
@@ -136,7 +137,8 @@ class Env(object):
         self.sdf_limits = None
         self.target_idx = 0
 
-        if len(self.cfg.scene_file) > 0 and 'acronym_book' not in self.cfg.scene_file:
+        # and 'acronym_book' not in self.cfg.scene_file:
+        if len(self.cfg.scene_file) > 0:
             full_path = self.cfg.scene_path + self.cfg.scene_file + ".mat"
             print('load from scene:', full_path)
             scene = sio.loadmat(full_path)
@@ -187,14 +189,14 @@ class Env(object):
         self.indexes.append(len(self.indexes))
 
     def add_object(
-        self, name, trans, quat, insert=False, compute_grasp=True, model_name=None
+        self, name, trans, quat, insert=False, compute_grasp=True, model_name=None, obj_prefix='data/objects', abs_path=False
     ):
         """
         Add an object
         """
         if model_name is None:
             model_name = name
-        ycb_obj_path = os.path.join("data/objects", model_name + "/")
+        ycb_obj_path = os.path.join(obj_prefix, model_name + "/")
         pose = np.eye(4)
         pose[:3, 3] = trans
         pose[:3, :3] = quat2mat(quat)
@@ -207,6 +209,7 @@ class Env(object):
                 pose=pose,
                 compute_grasp=compute_grasp,
                 name=name,
+                abs_path=abs_path
             )
         )
         self.names.append(name)
@@ -293,6 +296,7 @@ class Env(object):
             print("combine sdf time {:.3f}".format(time.time() - s))
         self.sdf_limits = torch.from_numpy(self.sdf_limits).cuda()
 
+
 class PlanningScene(object):
     """
     Environment class
@@ -300,7 +304,7 @@ class PlanningScene(object):
 
     def __init__(self, cfg):
         self.cfg = cfg
-        self.traj = Trajectory(cfg.timesteps, start_end_equal=('implicitgrasps' in cfg.method))
+        self.traj = Trajectory(cfg.timesteps, start_end_equal=(not cfg.fixed_endpoint))
         print("Setting up env...")
         start_time = time.time()
         self.env = Env(cfg)
@@ -310,9 +314,6 @@ class PlanningScene(object):
         #     self.planner = Planner(self.env, self.traj, lazy=cfg.default_lazy)
         #     if cfg.vis:
         #         self.setup_renderer()
-
-    # def update_planner(self):
-        # self.planner.update(self.env, self.traj)
 
     def reset(self, lazy=False):
         """
@@ -522,11 +523,6 @@ class PlanningScene(object):
         """
         Run an optimization step
         """
-        # if self.planner.traj.selected_goal is not None: 
-        #     # rk = self.env.robot.robot_kinematics
-        #     # plan = self.planner.plan(self.traj, robot_fk=rk, pc=pc, T_bot2obj=T_bot2obj)
-        #     plan = self.planner.plan(self.traj, pc=pc, T_bot2obj=T_bot2obj)
-        # else:
         plan = self.planner.plan(self.traj)
         return plan
 

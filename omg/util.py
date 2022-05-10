@@ -43,14 +43,14 @@ def jacobian(f, initial, delta=1e-6):
     """
     with torch.no_grad():
         # out_init = f(initial.unsqueeze(0)).squeeze(0) # add and remove batch dim
-        out_init = f(initial) # add and remove batch dim
+        out_init = f(initial) # n x m output
         nrow = len(out_init) 
         ncol = len(initial)
-        output = torch.zeros(nrow*ncol, dtype=torch.float64, device='cuda')
+        output = torch.zeros(nrow*ncol, dtype=initial.dtype, device=initial.device)
         output = output.reshape(nrow,ncol)
         for i in range(nrow):
             for j in range(ncol):
-                ej = torch.zeros(ncol, dtype=torch.float64, device='cuda')
+                ej = torch.zeros(ncol, dtype=initial.dtype, device=initial.device)
                 ej[j] = 1
                 pos_delta = initial + delta * ej
                 neg_delta = initial - delta * ej

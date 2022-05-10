@@ -10,6 +10,10 @@ from .util import *
 import torch
 import time
 import IPython
+# import theseus as th
+# from differentiable_robot_model.robot_model import (
+#     DifferentiableFrankaPanda,
+# )
 
 np.set_printoptions(4)
 
@@ -216,8 +220,16 @@ class Learner(object):
         cur_end_point = self.traj.data[-1]
         diff = cur_end_point - np.array(self.traj.goal_set)
         dists = np.linalg.norm(diff, axis=-1)
-        sorted_idx = np.argsort(dists)  # closest neighbor
-        target_idx = sorted_idx[0]
+        target_idx = np.random.randint(0, len(dists))
+        # sorted_idx = np.argsort(dists)  # closest neighbor
+        # target_idx = sorted_idx[0]
+
+        # urdf_path = DifferentiableFrankaPanda().urdf_path.replace('_no_gripper', '')
+        # robot_model = th.eb.UrdfRobotModel(urdf_path)
+        # q_curr = torch.tensor(self.traj.data[-1], device='cpu', dtype=torch.float32).unsqueeze(0)
+        # pose_ee = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
+
+
         self.p = np.zeros(self.N)
         self.p[target_idx] = 1
 

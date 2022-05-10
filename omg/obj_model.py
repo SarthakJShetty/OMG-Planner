@@ -9,9 +9,10 @@ class Model(object):
     """
 
     def __init__(
-        self, path=None, id=0, target=True, pose=None, compute_grasp=True, name=None
+        self, path=None, id=0, target=True, pose=None, compute_grasp=True, name=None, abs_path=False
     ):
-        path = config.cfg.root_dir + path
+        if not abs_path:
+            path = config.cfg.root_dir + path
         self.mesh_path = path + "model_normalized.obj"
         self.pose_mat = np.eye(4)
         self.pose_mat[:3, 3] = [0.1, 0.04, 0.15]  # 0.15  [0.3, 0.04, 0.55]
