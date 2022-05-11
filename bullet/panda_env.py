@@ -80,7 +80,7 @@ class PandaEnv:
         self._gravity = gravity
 
         self._cam_look = cam_look
-        self._cam_dist = 0.9 # 1.3
+        self._cam_dist = 1.3  # 0.9
         self._cam_yaw = 180
         self._cam_pitch = -41
         self._safeDistance = safeDistance

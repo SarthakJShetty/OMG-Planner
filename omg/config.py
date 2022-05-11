@@ -27,7 +27,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 cfg = edict()
 
 """ hyperparameter """
-cfg.smoothness_base_weight = 0.01  # 0.1 weight for smoothness cost in total cost
+cfg.smoothness_base_weight = 0.1  # 0.1 weight for smoothness cost in total cost
 cfg.base_obstacle_weight = 0.1 # 1.0  # 1.0 weight for obstacle cost in total cost
 cfg.base_grasp_weight = 10.0  # weight for grasp cost in total cost
 cfg.cost_schedule_decay = 1  # cost schedule decay for obstacle cost weight wrt base

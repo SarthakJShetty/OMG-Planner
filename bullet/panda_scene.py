@@ -17,6 +17,7 @@ import pytransform3d.transformations as pt
 from pathlib import Path
 from datetime import datetime
 import csv
+import cv2
 
 
 def init_cfg(args):
@@ -123,12 +124,30 @@ def init_metrics_entry(object_name, scene_idx):
     }
 
 
+def init_video_writer(path, scene_idx):
+    return cv2.VideoWriter(
+        f"{path}/scene_{scene_idx}.avi",
+        cv2.VideoWriter_fourcc(*"MJPG"),
+        10.0,
+        (640, 480),
+    )
+
+
+def init_dirs(out_dir, method):
+    save_path = Path(f'{out_dir}/{method}_{datetime.now().strftime("%y-%m-%d-%H-%M-%S")}')
+    save_path.mkdir(parents=True)
+    (save_path / 'info').mkdir()
+    (save_path / 'videos').mkdir()
+    return str(save_path)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--method", help="which method to use", required=True, choices=['compOMG_known', 'origOMG_known', 'GF_learned'])
     parser.add_argument("-mr", "--mesh_root", help="mesh root", type=str, default="/data/manifolds/acronym_mini_bookonly")
     parser.add_argument("-gr", "--grasp_root", help="grasp root", type=str, default="/data/manifolds/acronym_mini_bookonly/grasps")
     parser.add_argument("-o", "--out_dir", help="Directory to save experiment to", type=str, default="/data/manifolds/pybullet_eval")
+    parser.add_argument("--write_video", help="write video", action="store_true")
     args = parser.parse_args()
     init_cfg(args)
 
@@ -136,9 +155,7 @@ if __name__ == '__main__':
     env = PandaEnv(renders=True, gravity=False)
 
     # Init save dir and csv
-    data_path = Path(f'{args.out_dir}/{args.method}_{datetime.now().strftime("%y-%m-%d-%H-%M-%S")}/info')
-    data_path.mkdir(parents=True)
-    save_path = str(data_path.parents[0])
+    save_path = init_dirs(args.out_dir, args.method)
     with open(f'{save_path}/metrics.csv', 'w', newline='') as csvfile:
         fieldnames = ['object_name', 'scene_idx', 'execution', 'planning', 'smoothness', 'collision', 'time']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -149,6 +166,7 @@ if __name__ == '__main__':
     for objname in os.listdir(f'{args.mesh_root}/meshes'):
         for scene_idx in range(1):
             metrics = init_metrics_entry(objname, scene_idx)
+            video_writer = init_video_writer(f"{save_path}/videos", scene_idx) if args.write_video else None
 
             env.reset(no_table=True)
             objinfo = reset_env_with_object(env, objname, args.grasp_root, args.mesh_root)
@@ -182,7 +200,7 @@ if __name__ == '__main__':
 
             info = scene.step()
             plan = scene.planner.history_trajectories[-1]
-            grasp_success = bullet_execute_plan(env, plan, write_video=False, video_writer=None)
+            grasp_success = bullet_execute_plan(env, plan, args.write_video, video_writer)
 
             # Save data
             np.savez(f'{save_path}/info/{objname}_{scene_idx}', info=info, plan=plan)
@@ -194,6 +212,10 @@ if __name__ == '__main__':
             with open(f'{save_path}/metrics.csv', 'a', newline='') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writerow(metrics)
+
+            # Convert avi to high quality gif 
+            if args.write_video and info != []:
+                os.system(f'ffmpeg -y -i {save_path}/videos/scene_{scene_idx}.avi -vf "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 {save_path}/scene_{scene_idx}.gif')
 
         import IPython; IPython.embed()
         break
