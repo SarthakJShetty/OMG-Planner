@@ -92,11 +92,11 @@ class Optimizer(object):
         if self.cfg.use_standoff:
             chosen_goal = self.cost.target_obj.reach_grasps[int(traj.goal_idx)]
             constraint_num = chosen_goal.shape[0]
-        elif 'learnedgrasps' in self.cfg.method: # goal pose output
-            chosen_goal = traj.goal_joints[np.newaxis, :] 
-            # 1 x 7 if use_ik is false
-            constraint_num = 1
-            # chosen_goal = np.concatenate([chosen_goal, traj.data[-constraint_num:, -2:]], axis=1) # 1 x 9
+        # elif 'GF' in self.cfg.method:  # goal pose output
+        #     chosen_goal = traj.goal_joints[np.newaxis, :] 
+        #     # 1 x 7 if use_ik is false
+        #     constraint_num = 1
+        #     # chosen_goal = np.concatenate([chosen_goal, traj.data[-constraint_num:, -2:]], axis=1) # 1 x 9
         else:
             chosen_goal = traj.goal_set[int(traj.goal_idx)]
             constraint_num = 1

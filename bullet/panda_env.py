@@ -243,7 +243,9 @@ class PandaEnv:
             observation = self._get_observation()
             if record:
                 observations.append(observation)
-
+        # wait in case gripper closes
+        for i in range(10):
+            self.step(jointPoses.tolist())
         return (self._reward(), observations) if record else self._reward()
 
     def step(self, action, obs=True):
@@ -311,20 +313,11 @@ class PandaEnv:
     def _reward(self):
         """Calculates the reward for the episode.
 
-        The reward is 1 if one of the objects is above height .2 at the end of the
-        episode.
+        The reward is 1 if the gripper has significant width at the end of the episode.
         """
         reward = 0
-        # hand_pos, _ = p.getLinkState(
-        #     self._panda.pandaUid, self._panda.pandaEndEffectorIndex
-        # )[:2]
-        # pos, _ = p.getBasePositionAndOrientation(
-        #     self._objectUids[self.target_idx]
-        # )  # target object
         grip_pos = self._panda.getJointStates()[0][-2:]
         if (
-            # np.linalg.norm(np.subtract(pos, hand_pos)) < 0.2
-            # and pos[2] > -0.35 - self._shift[2]
             min(grip_pos) > 0.001
         ):
             reward = 1

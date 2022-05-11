@@ -112,7 +112,7 @@ cfg.base_link = "panda_link0"  # the base of the robot
 cfg.report_cost = False  # print out cost in terminal
 cfg.vis = True # visualization option
 cfg.view_init = False  # visualize initial configuration to compare
-cfg.scene_file = "scene_35"  # the scene file to load
+cfg.scene_file = ""  # the scene file to load
 cfg.cam_pos = [
     0.63850115,
     0.5352779,
@@ -129,7 +129,7 @@ cfg.acronym_dir = None
 cfg.use_goal_grad = False # whether to include the goal gradient and cost in the cost computation 
 cfg.fixed_endpoint = False # whether endpoint of trajectory is fixed or not
 # exp_name = ''
-cfg.use_ik = False # use ik with output pose method
+# cfg.use_ik = False # use ik with output pose method
 cfg.use_min_goal_cost_traj = False # use trajectory with minimum goal cost (use_goal_grad = True, method='implicigrasps')
 
 """ global function """

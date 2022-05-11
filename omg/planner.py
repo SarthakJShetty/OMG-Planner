@@ -10,24 +10,29 @@ from .online_learner import Learner
 from . import config
 import time
 import multiprocessing
-from copy import deepcopy
+# from copy import deepcopy
 
 import torch
-from liegroups.torch import SE3
+# from liegroups.torch import SE3
 import pytransform3d.rotations as pr
 import pytransform3d.transformations as pt
 
 from bullet.utils import draw_pose, get_world2bot_transform
-from .viz_trimesh import visualize_predicted_grasp, trajT_to_grasppredT, grasppredT_to_trajT
-import pytorch3d.transforms as ptf
-import pybullet as p
+import numpy as np
+# from .viz_trimesh import visualize_predicted_grasp, trajT_to_grasppredT, grasppredT_to_trajT
+# import pytorch3d.transforms as ptf
+# import pybullet as p
 # from manifold_grasping.control_pts import *
 
+from manifold_grasping.utils import load_grasps, load_mesh
+
+import pathlib
+
 import theseus as th
-from typing import List
 from differentiable_robot_model.robot_model import (
     DifferentiableFrankaPanda,
 )
+
 
 def solve_one_pose_ik(input):
     """
@@ -100,6 +105,7 @@ def solve_one_pose_ik(input):
                 any_ik = True
     return reach_goal_set, standoff_goal_set, any_ik
 
+
 class Planner(object):
     """
     Planner class that plans a grasp trajectory
@@ -115,14 +121,17 @@ class Planner(object):
         self.lazy = lazy
 
         # Planning methods
-        if 'knowngrasps' in self.cfg.method:
+        if 'known' in self.cfg.method:
+            start_time_ = time.time()
             self.load_grasp_set(env)
             self.setup_goal_set(env)
             self.grasp_init(env)
+            self.setup_time = time.time() - start_time_
             self.learner = Learner(env, self.traj, self.cost)
-        elif 'learnedgrasps' in self.cfg.method:
+        elif 'learned' in self.cfg.method:
             from bullet.methods.learnedgrasp import LearnedGrasp
             self.grasp_predictor = LearnedGrasp(ckpt_path=self.cfg.learnedgrasp_weights)
+            self.setup_time = 0
         else:
             raise NotImplementedError
 
@@ -169,10 +178,6 @@ class Planner(object):
 
             if self.cfg.ol_alg == "Proj":  #
                 self.traj.goal_idx = np.argmin(proj_dist)
-
-            if 'outputposegrad' not in self.cfg.method:
-                self.traj.end = self.traj.goal_set[self.traj.goal_idx]  #
-                self.traj.interpolate_waypoints()
 
     def flip_grasp(self, old_grasps):
         """
@@ -415,24 +420,21 @@ class Planner(object):
 
                     """ simulator generated poses """
                     if len(target_obj.grasps_poses) == 0:
-                        """ acronym book poses """
-                        if target_obj.name == 'Book_5e90bf1bb411069c115aef9ae267d6b7':
-                            from acronym_tools import load_grasps
-                            pose_grasp, success = load_grasps(f"/checkpoint/thomasweng/acronym/grasps/Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836.h5")
-                            pose_grasp = pose_grasp[success == 1]
+                        """ acronym objects """
+                        if 'acronym' in target_obj.mesh_path:
+                            mesh_root = pathlib.Path(target_obj.mesh_path).parents[2]
+                            grasps_path = str(mesh_root / f"grasps/{target_obj.name}.h5")
+                            obj_mesh, T_ctr2obj = load_mesh(grasps_path, mesh_root_dir=mesh_root)
+                            Ts_obj2rotgrasp, _, success = load_grasps(grasps_path)
+                            Ts_obj2rotgrasp = Ts_obj2rotgrasp[success == 1]
+                            pose_grasp = T_ctr2obj @ Ts_obj2rotgrasp
 
-                            if False:
+                            if False:  # debug visualization
                                 import trimesh
-                                from acronym_tools import load_mesh, load_grasps, create_gripper_marker
-                                grasp_viz = []
-                                for T in pose_grasp[:50]: # visualize unrotated
-                                    grasp_viz.append(create_gripper_marker(color=[0, 0, 255]).apply_transform(T).apply_transform(unpack_pose(target_obj.pose)))
-                                mesh_root = "/data/manifolds/acronym"
-                                grasp_root = "/data/manifolds/acronym/grasps"
-                                grasp_path = 'Book_5e90bf1bb411069c115aef9ae267d6b7_0.0268818133810836.h5'
-                                obj_mesh = load_mesh(f"{grasp_root}/{grasp_path}", mesh_root_dir=mesh_root)
-                                m = obj_mesh.apply_transform(unpack_pose(target_obj.pose))
-                                trimesh.Scene([m] + grasp_viz).show()
+                                from acronym_tools import create_gripper_marker
+                                grasps_v = [create_gripper_marker(color=[0, 0, 255]).apply_transform(T) for T in (T_ctr2obj @ Ts_obj2rotgrasp)[:50]]
+                                m = obj_mesh.apply_transform(T_ctr2obj)
+                                trimesh.Scene([m] + grasps_v).show()
                         else:
                             simulator_path = (
                                 self.cfg.robot_model_path
@@ -543,24 +545,6 @@ class Planner(object):
             goal_set = target_obj.grasps
             reach_goal_set = target_obj.reach_grasps
 
-            if False:
-                for T_obj2grasp in target_obj.grasps_poses[:30]:
-                    import pybullet as p
-                    pos, orn = p.getBasePositionAndOrientation(0)
-                    T_world2bot = np.eye(4)
-                    T_world2bot[:3, :3] = np.asarray(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
-                    T_world2bot[:3, 3] = pos
-                    draw_pose(T_world2bot)
-
-                    T_bot2obj = np.eye(4)
-                    target_q = target_obj.pose[3:] # wxyz
-                    R = p.getMatrixFromQuaternion(ros_quat(target_q))
-                    T_bot2obj[:3, :3] = np.asarray(R).reshape(3, 3)
-                    T_bot2obj[:3, 3] = target_obj.pose[:3]
-                    draw_pose(T_world2bot @ T_bot2obj)
-
-                    draw_pose(T_world2bot @ T_bot2obj @ T_obj2grasp)
-
             if len(goal_set) > 0 and target_obj.compute_grasp:  # goal_set
                 potentials, _, vis_points, collide = self.cost.batch_obstacle_cost(
                     goal_set, special_check_id=i, uncheck_finger_collision=-1
@@ -656,6 +640,15 @@ class Planner(object):
                     target_obj.grasp_potentials = []
                     target_obj.grasp_vis_points = []
             target_obj.compute_grasp = False
+
+            if False:  # visualization
+                T_w2b = get_world2bot_transform()
+                draw_pose(T_w2b)
+                T_b2o = unpack_pose(target_obj.pose)
+                draw_pose(T_w2b @ T_b2o)
+                
+                for T_obj2grasp in target_obj.grasps_poses[:30]:
+                    draw_pose(T_w2b @ T_b2o @ T_obj2grasp)
 
     def get_T_obj2bot(self):
         """
@@ -759,13 +752,13 @@ class Planner(object):
         self.info = []
         self.selected_goals = []
         start_time_ = time.time()
-        alg_switch = self.cfg.ol_alg != "Baseline" and 'learnedgrasps' not in self.cfg.method
+        alg_switch = self.cfg.ol_alg != "Baseline" and 'GF' not in self.cfg.method
 
         best_traj_idx = -1
         best_traj = None # Save lowest cost trajectory
         best_cost = 1000
         if (not self.cfg.goal_set_proj) or len(self.traj.goal_set) > 0 \
-            or 'learnedgrasps' in self.cfg.method:
+            or 'GF' in self.cfg.method:
             self.T_w2b_np = get_world2bot_transform()
 
             urdf_path = DifferentiableFrankaPanda().urdf_path.replace('_no_gripper', '')
@@ -783,8 +776,8 @@ class Planner(object):
                     self.learner.update_goal()
                     self.selected_goals.append(self.traj.goal_idx)
 
-                if 'learnedgrasps' in self.cfg.method:
-                    # Get input pose to network as position+quaternion in object frame 
+                if 'learned' in self.cfg.method:
+                    # Get input pose to network as position+quaternion in object frame
                     q = torch.tensor(traj.data[-1], device='cpu').unsqueeze(0)
                     pose_b2e = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
                     T_b2e_np = pose_b2e.to_matrix().detach().squeeze().numpy()
@@ -809,8 +802,6 @@ class Planner(object):
                     draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
 
                     self.CHOMP_update(traj, pose_b2g, robot_model)
-                else:
-                    raise NotImplementedError
 
                 self.info.append(self.optim.optimize(traj, force_update=True, tstep=t+1))
                 self.history_trajectories.append(np.copy(traj.data))
@@ -852,7 +843,7 @@ class Planner(object):
                     plan_time, res, len(self.history_trajectories[-1])
                 )
             )
-            self.info[-1]["time"] = plan_time
+            self.info[-1]["time"] = plan_time + self.setup_time
 
         else:
             if not self.cfg.silent: print("planning not run...")
@@ -879,7 +870,7 @@ class Planner(object):
 
     # def pq_from_T(self, T):
     #     pq = torch.zeros((7,), device='cuda', dtype=torch.float64)
-    #     pq[:3] = T[:3, 3]
+    #     p[:3] = T[:3, 3]
     #     pq[3:] = ptf.matrix_to_quaternion(T[:3, :3].unsqueeze(0)).squeeze(0) # qw qx qy qz
     #     return pq
 
