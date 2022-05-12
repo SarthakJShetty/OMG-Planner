@@ -785,7 +785,13 @@ class Planner(object):
                     T_o2e_np = T_o2b_np @ T_b2e_np
                     pq_o2e_np = pt.pq_from_transform(T_o2e_np) # xyz wxyz
                     input_pq = torch.tensor(pq_o2e_np, device='cuda', dtype=torch.float32)
-                    input_x = torch.cat([input_pq, torch.tensor([0], device=input_pq.device)])
+                    objname = self.env.objects[0].name
+                    onehot = [
+                        'Book_b1611143b4da5c783143cfc9128d0843_0.023835858278933857', 
+                        'Bottle_244894af3ba967ccd957eaf7f4edb205_0.012953570261294404',
+                        'Bowl_9a52843cc89cd208362be90aaa182ec6_0.0008104428339208306', 
+                        'Mug_40f9a6cc6b2c3b3a78060a3a3a55e18f_0.0006670441940038386']
+                    input_x = torch.cat([input_pq, torch.tensor([onehot.index(objname)], device=input_pq.device)])
 
                     # Run network
                     pq_o2g = self.grasp_predictor.forward(input_x.unsqueeze(0)).cpu()

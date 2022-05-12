@@ -315,6 +315,12 @@ class PlanningScene(object):
         #     if cfg.vis:
         #         self.setup_renderer()
 
+    def reset_env(self):
+        """
+        Reset env for the next run
+        """
+        self.env = Env(self.cfg)
+
     def reset(self, lazy=False):
         """
         Reset the scene for next run

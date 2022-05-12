@@ -18,7 +18,7 @@ from pathlib import Path
 from datetime import datetime
 import csv
 import cv2
-
+import subprocess
 
 def init_cfg(args):
     """
@@ -35,7 +35,7 @@ def init_cfg(args):
         cfg.fixed_endpoint = False
         cfg.goal_set_proj = False
         cfg.use_min_goal_cost_traj = False
-        cfg.learnedgrasp_weights = '/data/manifolds/fb_runs/multirun/pq-pq_bookonly/2022-05-07_223943/lossl1_lr0.0001/default_default/13_13/checkpoints/last.ckpt'
+        cfg.learnedgrasp_weights = args.ckpt
         cfg.ol_alg = None
         cfg.smoothness_base_weight = 0.01  # 0.1 weight for smoothness cost in total cost
         cfg.base_obstacle_weight = 0.1  # 1.0 weight for obstacle cost in total cost
@@ -43,6 +43,7 @@ def init_cfg(args):
         cfg.cost_schedule_boost = 1.0  # cost schedule boost for smoothness cost weight
         cfg.base_step_size = 0.5  # initial step size in gradient descent
         cfg.optim_steps = 500 # optimization steps for each planner call
+        # cfg.initial_ik = True # Use IK to initialize optimization
     elif 'OMG' in cfg.method:       # OMG with apples to apples parameters
         cfg.goal_set_proj = True
         cfg.fixed_endpoint = False
@@ -56,6 +57,7 @@ def init_cfg(args):
             cfg.use_standoff = False
         elif 'orig' in cfg.method:      # original parameters
             cfg.use_standoff = True
+            cfg.disable_target_collision = True
     else:
         raise NotImplementedError
         # cfg.root_dir = '/data/manifolds/acronym_mini_bookonly/meshes_bullet'
@@ -66,10 +68,10 @@ def init_cfg(args):
     cfg.get_global_param()
 
 
-def reset_env_with_object(env, objname, grasp_root, mesh_root):
+def reset_env_with_object(env, objname, dset_root):
     # Load object urdf and grasps
-    objhash = os.listdir(f'{mesh_root}/meshes/{objname}')[0].replace('.obj', '')  # [HASH]
-    grasp_h5s = os.listdir(grasp_root)
+    objhash = os.listdir(f'{dset_root}/meshes/{objname}')[0].replace('.obj', '')  # [HASH]
+    grasp_h5s = os.listdir(f'{dset_root}/grasps')
     grasp_prefix = f'{objname}_{objhash}'  # for example: Book_[HASH]
     for grasp_h5 in grasp_h5s:  # Get file in grasps/ corresponding to this object, hash, and scale
         if grasp_prefix in grasp_h5:
@@ -77,12 +79,12 @@ def reset_env_with_object(env, objname, grasp_root, mesh_root):
             scale = graspfile.split('_')[-1].replace('.h5', '')
             break
 
-    obj_mesh, T_ctr2obj = load_mesh(f'{grasp_root}/{graspfile}', scale=scale, mesh_root_dir=mesh_root, load_for_bullet=True)
+    obj_mesh, T_ctr2obj = load_mesh(f'{dset_root}/grasps/{graspfile}', scale=scale, mesh_root_dir=dset_root, load_for_bullet=True)
 
     # Load env
     objinfo = {
         'name': f'{grasp_prefix}_{scale}',
-        'urdf_dir': f'{mesh_root}/meshes_bullet/{grasp_prefix}_{scale}/model_normalized.urdf',
+        'urdf_dir': f'{dset_root}/meshes_bullet/{grasp_prefix}_{scale}/model_normalized.urdf',
         'scale': float(scale),
         'T_ctr2obj': T_ctr2obj
     }
@@ -124,9 +126,9 @@ def init_metrics_entry(object_name, scene_idx):
     }
 
 
-def init_video_writer(path, scene_idx):
+def init_video_writer(path, obj_name, scene_idx):
     return cv2.VideoWriter(
-        f"{path}/scene_{scene_idx}.avi",
+        f"{path}/{objname}_{scene_idx}.avi",
         cv2.VideoWriter_fourcc(*"MJPG"),
         10.0,
         (640, 480),
@@ -138,15 +140,16 @@ def init_dirs(out_dir, method):
     save_path.mkdir(parents=True)
     (save_path / 'info').mkdir()
     (save_path / 'videos').mkdir()
+    (save_path / 'gifs').mkdir()
     return str(save_path)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--method", help="which method to use", required=True, choices=['compOMG_known', 'origOMG_known', 'GF_learned'])
-    parser.add_argument("-mr", "--mesh_root", help="mesh root", type=str, default="/data/manifolds/acronym_mini_bookonly")
-    parser.add_argument("-gr", "--grasp_root", help="grasp root", type=str, default="/data/manifolds/acronym_mini_bookonly/grasps")
-    parser.add_argument("-o", "--out_dir", help="Directory to save experiment to", type=str, default="/data/manifolds/pybullet_eval")
+    parser.add_argument("--ckpt", help="which weights to use for our method", default='/data/manifolds/fb_runs/multirun/pq-pq_mini/2022-05-10_221352/lossl1_lr0.0001/default_default/1_1/checkpoints/epoch=109-step=37605.ckpt')
+    parser.add_argument("--dset_root", help="mesh root", type=str, default="/data/manifolds/acronym_mini")
+    parser.add_argument("-o", "--out_dir", help="Directory to save experiment to", type=str, default="/data/manifolds/pybullet_eval/dbg")
     parser.add_argument("--write_video", help="write video", action="store_true")
     args = parser.parse_args()
     init_cfg(args)
@@ -162,14 +165,14 @@ if __name__ == '__main__':
         writer.writeheader()
 
     # Iterate over objects in folder
-    scene = PlanningScene(cfg)
-    for objname in os.listdir(f'{args.mesh_root}/meshes'):
+    for objname in os.listdir(f'{args.dset_root}/meshes'):
+        scene = PlanningScene(cfg)
         for scene_idx in range(1):
             metrics = init_metrics_entry(objname, scene_idx)
-            video_writer = init_video_writer(f"{save_path}/videos", scene_idx) if args.write_video else None
+            video_writer = init_video_writer(f"{save_path}/videos", objname, scene_idx) if args.write_video else None
 
             env.reset(no_table=True)
-            objinfo = reset_env_with_object(env, objname, args.grasp_root, args.mesh_root)
+            objinfo = reset_env_with_object(env, objname, args.dset_root)
             randomly_place_object(env)  # Note: currently not random
 
             # Scene has separate Env class which is used for planning
@@ -187,11 +190,12 @@ if __name__ == '__main__':
             orn = pr.quaternion_from_matrix(T_b2c[:3, :3])  # wxyz
             draw_pose(T_w2o @ T_o2c)
 
-            obj_prefix = '/data/manifolds/acronym_mini_bookonly/meshes_bullet'
+            obj_prefix = f'{args.dset_root}/meshes_bullet'
+            scene.reset_env()
             scene.env.add_object(objinfo['name'], trans, orn, obj_prefix=obj_prefix, abs_path=True)
             scene.env.add_plane(np.array([0.05, 0, -0.17]), np.array([1, 0, 0, 0]))
             scene.env.combine_sdfs()
-            if 'origOMG' in cfg.method:  # disable collision for target object
+            if cfg.disable_target_collision:
                 cfg.disable_collision_set = [objinfo['name']]
 
             # Set grasp selection method for planner
@@ -203,7 +207,6 @@ if __name__ == '__main__':
             grasp_success = bullet_execute_plan(env, plan, args.write_video, video_writer)
 
             # Save data
-            np.savez(f'{save_path}/info/{objname}_{scene_idx}', info=info, plan=plan)
             metrics['execution'] = grasp_success
             metrics['planning'] = info[-1]['execute']
             metrics['smoothness'] = info[-1]['smooth']
@@ -213,12 +216,13 @@ if __name__ == '__main__':
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writerow(metrics)
 
+            np.savez(f'{save_path}/info/{objname}_{scene_idx}', info=info, trajs=scene.planner.history_trajectories)
+
             # Convert avi to high quality gif 
             if args.write_video and info != []:
-                os.system(f'ffmpeg -y -i {save_path}/videos/scene_{scene_idx}.avi -vf "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 {save_path}/scene_{scene_idx}.gif')
+                # os.system(f'ffmpeg -y -i {save_path}/videos/{objname}_{scene_idx}.avi -vf "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 {save_path}/gifs/{objname}_{scene_idx}.gif')
+                subprocess.Popen(['ffmpeg', '-y', '-i', f'{save_path}/videos/{objname}_{scene_idx}.avi', '-vf', "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse", '-loop', '0', f'{save_path}/gifs/{objname}_{scene_idx}.gif'])
 
-        import IPython; IPython.embed()
-        break
-
+    # import IPython; IPython.embed()
 
 
