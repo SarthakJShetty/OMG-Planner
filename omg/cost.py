@@ -537,7 +537,7 @@ class Cost(object):
             "collision_pts": collision_pts,
             "obs": obstacle_loss_sum,
             "smooth": smoothness_loss_sum,
-            "grasp": 0,
+            "grasp": traj.goal_cost,
             "weighted_obs": weighted_obs,
             "weighted_smooth": weighted_smooth,
             "weighted_smooth_grad": np.linalg.norm(weighted_smooth_grad),
@@ -553,7 +553,8 @@ class Cost(object):
             "reach": goal_dist,
             "execute": execute,
             "cost_traj": cost_traj,
-            "transforms": []
+            "transforms": [],
+            "pred_grasp": None
         }
 
         return cost, grad, info

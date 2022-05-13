@@ -319,6 +319,7 @@ class PlanningScene(object):
         """
         Reset env for the next run
         """
+        self.traj = Trajectory(self.cfg.timesteps, start_end_equal=(not self.cfg.fixed_endpoint))
         self.env = Env(self.cfg)
 
     def reset(self, lazy=False):

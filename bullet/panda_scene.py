@@ -19,12 +19,14 @@ from datetime import datetime
 import csv
 import cv2
 import subprocess
+import yaml
 
 def init_cfg(args):
     """
     Modify cfg based on command line arguments.
     """
-    cfg.vis = False  # set vis to False because panda_env render is True
+    # cfg.render = args.render
+    cfg.vis = False  
     cfg.window_width = 200
     cfg.window_height = 200
 
@@ -37,12 +39,12 @@ def init_cfg(args):
         cfg.use_min_goal_cost_traj = False
         cfg.learnedgrasp_weights = args.ckpt
         cfg.ol_alg = None
-        cfg.smoothness_base_weight = 0.01  # 0.1 weight for smoothness cost in total cost
+        cfg.smoothness_base_weight = 0.1  # 0.1 weight for smoothness cost in total cost
         cfg.base_obstacle_weight = 0.1  # 1.0 weight for obstacle cost in total cost
-        cfg.base_grasp_weight = 10.0  # weight for grasp cost in total cost
+        cfg.base_grasp_weight = 5.0  # weight for grasp cost in total cost
         cfg.cost_schedule_boost = 1.0  # cost schedule boost for smoothness cost weight
-        cfg.base_step_size = 0.5  # initial step size in gradient descent
-        cfg.optim_steps = 500 # optimization steps for each planner call
+        cfg.base_step_size = 0.3  # initial step size in gradient descent
+        cfg.optim_steps = 250 # optimization steps for each planner call
         # cfg.initial_ik = True # Use IK to initialize optimization
     elif 'OMG' in cfg.method:       # OMG with apples to apples parameters
         cfg.goal_set_proj = True
@@ -65,8 +67,13 @@ def init_cfg(args):
         # cfg.ol_alg = 'Baseline'
         # cfg.goal_idx = -1
 
-    cfg.get_global_param()
+    # Command-line overrides
+    dict_args = vars(args)
+    for key in dict_args.keys():
+        if key in cfg.keys() and dict_args[key] is not None:
+            cfg[key] = dict_args[key]
 
+    cfg.get_global_param()
 
 def reset_env_with_object(env, objname, dset_root):
     # Load object urdf and grasps
@@ -135,12 +142,14 @@ def init_video_writer(path, obj_name, scene_idx):
     )
 
 
-def init_dirs(out_dir, method):
-    save_path = Path(f'{out_dir}/{method}_{datetime.now().strftime("%y-%m-%d-%H-%M-%S")}')
+def init_dirs(out_dir, cfg, prefix=''):
+    save_path = Path(f'{out_dir}/{prefix}{cfg.method}_{datetime.now().strftime("%y-%m-%d-%H-%M-%S")}')
     save_path.mkdir(parents=True)
     (save_path / 'info').mkdir()
     (save_path / 'videos').mkdir()
     (save_path / 'gifs').mkdir()
+    with open(f'{save_path}/config.yaml', 'w') as yaml_file:
+        yaml.dump(cfg, yaml_file)
     return str(save_path)
 
 
@@ -150,15 +159,26 @@ if __name__ == '__main__':
     parser.add_argument("--ckpt", help="which weights to use for our method", default='/data/manifolds/fb_runs/multirun/pq-pq_mini/2022-05-10_221352/lossl1_lr0.0001/default_default/1_1/checkpoints/epoch=109-step=37605.ckpt')
     parser.add_argument("--dset_root", help="mesh root", type=str, default="/data/manifolds/acronym_mini")
     parser.add_argument("-o", "--out_dir", help="Directory to save experiment to", type=str, default="/data/manifolds/pybullet_eval/dbg")
+    parser.add_argument("--render", dest='render', help="render gui", action="store_true", default=True)
+    parser.add_argument("--no-render", dest='render', help="don't render gui", action="store_false")
     parser.add_argument("--write_video", help="write video", action="store_true")
+    parser.add_argument("--prefix", help="prefix for variant name", default="")
+
+    # cfg-specific command line args
+    parser.add_argument("--smoothness_base_weight", type=float)
+    parser.add_argument("--base_obstacle_weight", type=float)
+    parser.add_argument("--base_grasp_weight", type=float)
+    parser.add_argument("--base_step_size", type=float)
+    parser.add_argument("--optim_steps", type=int)
+
     args = parser.parse_args()
     init_cfg(args)
 
     # Init environment
-    env = PandaEnv(renders=True, gravity=False)
+    env = PandaEnv(renders=args.render, gravity=False)
 
     # Init save dir and csv
-    save_path = init_dirs(args.out_dir, args.method)
+    save_path = init_dirs(args.out_dir, cfg, prefix=args.prefix)
     with open(f'{save_path}/metrics.csv', 'w', newline='') as csvfile:
         fieldnames = ['object_name', 'scene_idx', 'execution', 'planning', 'smoothness', 'collision', 'time']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)

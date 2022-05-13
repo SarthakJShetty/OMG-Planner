@@ -808,8 +808,11 @@ class Planner(object):
                     draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
 
                     self.CHOMP_update(traj, pose_b2g, robot_model)
-
-                self.info.append(self.optim.optimize(traj, force_update=True, tstep=t+1))
+                
+                info_t = self.optim.optimize(traj, force_update=True, tstep=t+1)
+                if 'GF' in self.cfg.method:
+                    info_t['pred_grasp'] = pose_b2g.to_matrix().detach().cpu().numpy()
+                self.info.append(info_t)
                 self.history_trajectories.append(np.copy(traj.data))
                 if self.cfg.use_min_goal_cost_traj:
                     if traj.goal_cost < best_cost:
