@@ -16,20 +16,36 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     gpu = 1
-    for optim_steps in [200, 250, 300]:
-        for smooth_weight in [0.1, 0.3]:
-            for obstacle_weight in [0.3, 0.5, 0.7]:
-                for grasp_weight in [3, 5, 7]:
-                    for step_size in [0.1, 0.2, 0.3]:
-                        os.system(f"CUDA_VISIBLE_DEVICES={gpu} EGL_GPU={gpu} "
-                                  f"python -m bullet.panda_scene "
-                                  f"--method=GF_learned "
-                                  f"--write_video "
-                                  f"--no-render "
-                                  f"--smoothness_base_weight={smooth_weight} "
-                                  f"--base_obstacle_weight={obstacle_weight} "
-                                  f"--base_grasp_weight={grasp_weight} "
-                                  f"--base_step_size={step_size} "
-                                  f"--optim_steps={optim_steps} "
-                                  f"--prefix=sm{smooth_weight}_ob{obstacle_weight}_gr{grasp_weight}_st{step_size}_os{optim_steps}_ "
-                                  f"-o=/data/manifolds/pybullet_eval/{args.exp_name}")
+    for optim_steps in [250]:
+        for smooth_weight in [0.1, 0.3, 0.5]:
+            for obstacle_weight in [0.7, 1.0, 2.0]:
+                for grasp_weight in [7, 10, 12]:
+                    for step_size in [0.2]:
+                        for goal_thresh in [0.1, 0.01, 0.001]:
+                            os.system(f"CUDA_VISIBLE_DEVICES={gpu} EGL_GPU={gpu} "
+                                      f"python -m bullet.panda_scene "
+                                      f"--method=GF_learned "
+                                      f"--write_video "
+                                      f"--no-render "
+                                      f"--smoothness_base_weight={smooth_weight} "
+                                      f"--base_obstacle_weight={obstacle_weight} "
+                                      f"--base_grasp_weight={grasp_weight} "
+                                      f"--base_step_size={step_size} "
+                                      f"--optim_steps={optim_steps} "
+                                      f"--goal_thresh={goal_thresh} "
+                                      f"--prefix=sm{smooth_weight}_ob{obstacle_weight}_gr{grasp_weight}_st{step_size}_os{optim_steps}_th{goal_thresh} "
+                                      f"-o=/data/manifolds/pybullet_eval/{args.exp_name}")
+
+                            os.system(f"CUDA_VISIBLE_DEVICES={gpu} EGL_GPU={gpu} "
+                                      f"python -m bullet.panda_scene "
+                                      f"--method=GF_known "
+                                      f"--write_video "
+                                      f"--no-render "
+                                      f"--smoothness_base_weight={smooth_weight} "
+                                      f"--base_obstacle_weight={obstacle_weight} "
+                                      f"--base_grasp_weight={grasp_weight} "
+                                      f"--base_step_size={step_size} "
+                                      f"--optim_steps={optim_steps} "
+                                      f"--goal_thresh={goal_thresh} "
+                                      f"--prefix=sm{smooth_weight}_ob{obstacle_weight}_gr{grasp_weight}_st{step_size}_os{optim_steps}_th{goal_thresh} "
+                                      f"-o=/data/manifolds/pybullet_eval/{args.exp_name}_known")

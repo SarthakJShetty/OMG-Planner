@@ -133,6 +133,7 @@ cfg.fixed_endpoint = False # whether endpoint of trajectory is fixed or not
 cfg.use_min_goal_cost_traj = False # use trajectory with minimum goal cost (use_goal_grad = True, method='implicigrasps')
 cfg.disable_target_collision = False # during planning only? check
 # cfg.initial_ik = False # Use IK at the start of trajectory optimization (for our method)
+cfg.goal_thresh = 0.01
 
 """ global function """
 def get_derivative(data, start, end, diff_rule=1):

@@ -503,14 +503,15 @@ class Cost(object):
         print(f"obstacle_cost {weighted_obs}, smoothness_cost {weighted_smooth}, goal_cost {weighted_goal_cost}")
    
         # if ('Proj' in self.cfg.method or 'OMG' in self.cfg.method) and self.cfg.goal_set_proj:
-        if self.cfg.goal_set_proj:
+        if self.cfg.goal_set_proj and 'GF_known' not in self.cfg.method:
             goal_dist = np.linalg.norm(traj.data[-1] - traj.goal_set[traj.goal_idx])
             goal_dist_thresh = 0.01
         elif 'GF' in self.cfg.method:
         #  and traj.goal_cost is not None:
             goal_dist = traj.goal_cost if self.cfg.use_goal_grad else np.linalg.norm(traj.data[-1, :] - traj.goal_joints)
             # goal_dist = traj.goal_cost if self.cfg.use_goal_grad else np.linalg.norm(traj.data[-1] - traj.goal_joints)
-            goal_dist_thresh = 0.003
+            # goal_dist_thresh = 0.003
+            goal_dist_thresh = self.cfg.goal_thresh
         elif 'Fixed' in self.cfg.method:
             goal_dist = 0
             goal_dist_thresh = 0.01

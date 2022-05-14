@@ -44,6 +44,7 @@ def init_cfg(args):
         cfg.base_step_size = 0.3  # initial step size in gradient descent
         cfg.optim_steps = 250 # optimization steps for each planner call
         # cfg.initial_ik = True # Use IK to initialize optimization
+        cfg.pre_terminate = True  # terminate early if costs are below thresholds
         if 'learned' in cfg.method:
             cfg.learnedgrasp_weights = args.ckpt
             cfg.goal_set_proj = False
@@ -173,6 +174,7 @@ if __name__ == '__main__':
     parser.add_argument("--base_grasp_weight", type=float)
     parser.add_argument("--base_step_size", type=float)
     parser.add_argument("--optim_steps", type=int)
+    parser.add_argument("--goal_thresh", type=float)
 
     args = parser.parse_args()
     init_cfg(args)
