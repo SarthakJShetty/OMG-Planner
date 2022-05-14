@@ -727,6 +727,7 @@ class Planner(object):
                 T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
                 draw_pose(self.T_w2b_np @ T_b2e_np) # ee in world frame
             residual = pose_goal.local(pose_ee) # SE(3) 1 x 6
+            # residual[:, :3] = (1.0 / 0.08) * np.pi
             return residual
         residual = fn(q_curr, vis=True) # 1 x 6
         mse = torch.linalg.norm(residual, ord='fro')
@@ -748,11 +749,12 @@ class Planner(object):
         """
         Run chomp optimizer to do trajectory optmization
         """
+        self.traj = traj
         self.history_trajectories = [np.copy(traj.data)]
         self.info = []
         self.selected_goals = []
         start_time_ = time.time()
-        alg_switch = self.cfg.ol_alg != "Baseline" and 'GF' not in self.cfg.method
+        alg_switch = self.cfg.ol_alg != "Baseline" and 'GF_learned' not in self.cfg.method
 
         best_traj_idx = -1
         best_traj = None # Save lowest cost trajectory
@@ -764,7 +766,7 @@ class Planner(object):
             urdf_path = DifferentiableFrankaPanda().urdf_path.replace('_no_gripper', '')
             robot_model = th.eb.UrdfRobotModel(urdf_path)
 
-            self.optim.init(traj)
+            self.optim.init(self.traj)
 
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
                 start_time = time.time()
@@ -776,9 +778,9 @@ class Planner(object):
                     self.learner.update_goal()
                     self.selected_goals.append(self.traj.goal_idx)
 
-                if 'learned' in self.cfg.method:
+                if 'GF_learned' in self.cfg.method:
                     # Get input pose to network as position+quaternion in object frame
-                    q = torch.tensor(traj.data[-1], device='cpu').unsqueeze(0)
+                    q = torch.tensor(self.traj.data[-1], device='cpu').unsqueeze(0)
                     pose_b2e = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
                     T_b2e_np = pose_b2e.to_matrix().detach().squeeze().numpy()
                     T_o2b_np = self.get_T_obj2bot()
@@ -807,18 +809,26 @@ class Planner(object):
                     # Visualization
                     draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
 
-                    self.CHOMP_update(traj, pose_b2g, robot_model)
+                    self.CHOMP_update(self.traj, pose_b2g, robot_model)
+                elif 'GF_known' in self.cfg.method:
+                    q_goal = torch.tensor(self.traj.goal_set[self.traj.goal_idx], device='cpu', dtype=torch.float32)
+                    pose_b2g = robot_model.forward_kinematics(q_goal)['panda_hand']
+
+                    T_b2g_np = pose_b2g.to_matrix().squeeze(0).cpu().numpy()
+                    draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
+
+                    self.CHOMP_update(self.traj, pose_b2g, robot_model)
                 
-                info_t = self.optim.optimize(traj, force_update=True, tstep=t+1)
+                info_t = self.optim.optimize(self.traj, force_update=True, tstep=t+1)
                 if 'GF' in self.cfg.method:
                     info_t['pred_grasp'] = pose_b2g.to_matrix().detach().cpu().numpy()
                 self.info.append(info_t)
                 self.history_trajectories.append(np.copy(traj.data))
-                if self.cfg.use_min_goal_cost_traj:
-                    if traj.goal_cost < best_cost:
-                        best_cost = traj.goal_cost
-                        best_traj = np.copy(traj.data)
-                        best_traj_idx = t
+                # if self.cfg.use_min_goal_cost_traj:
+                #     if traj.goal_cost < best_cost:
+                #         best_cost = traj.goal_cost
+                #         best_traj = np.copy(traj.data)
+                #         best_traj_idx = t
 
                 if self.cfg.report_time:
                     print("plan optimize:", time.time() - start_time)
@@ -828,15 +838,15 @@ class Planner(object):
 
             # compute information for the final
             if not self.info[-1]["terminate"]:
-                if self.cfg.use_min_goal_cost_traj:
-                    print("Replacing final traj with lowest cost traj")
-                    traj.data = best_traj
-                    self.info.append(self.optim.optimize(traj, info_only=True))
-                    self.history_trajectories.append(best_traj)
-                    with open(f'{self.cfg.exp_dir}/{self.cfg.exp_name}/{self.cfg.scene_file}/{best_traj_idx}.txt', 'w') as f:
-                        f.write('')
-                else:
-                    self.info.append(self.optim.optimize(traj, info_only=True))
+                # if self.cfg.use_min_goal_cost_traj:
+                #     print("Replacing final traj with lowest cost traj")
+                #     traj.data = best_traj
+                #     self.info.append(self.optim.optimize(traj, info_only=True))
+                #     self.history_trajectories.append(best_traj)
+                #     with open(f'{self.cfg.exp_dir}/{self.cfg.exp_name}/{self.cfg.scene_file}/{best_traj_idx}.txt', 'w') as f:
+                #         f.write('')
+                # else:
+                self.info.append(self.optim.optimize(self.traj, info_only=True))
             else:
                 del self.history_trajectories[-1]
 

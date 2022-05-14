@@ -35,9 +35,7 @@ def init_cfg(args):
         # pq input -> pq output
         cfg.use_goal_grad = True
         cfg.fixed_endpoint = False
-        cfg.goal_set_proj = False
-        cfg.use_min_goal_cost_traj = False
-        cfg.learnedgrasp_weights = args.ckpt
+        # cfg.use_min_goal_cost_traj = False
         cfg.ol_alg = None
         cfg.smoothness_base_weight = 0.1  # 0.1 weight for smoothness cost in total cost
         cfg.base_obstacle_weight = 0.1  # 1.0 weight for obstacle cost in total cost
@@ -46,6 +44,11 @@ def init_cfg(args):
         cfg.base_step_size = 0.3  # initial step size in gradient descent
         cfg.optim_steps = 250 # optimization steps for each planner call
         # cfg.initial_ik = True # Use IK to initialize optimization
+        if 'learned' in cfg.method:
+            cfg.learnedgrasp_weights = args.ckpt
+            cfg.goal_set_proj = False
+        if 'known' in cfg.method: # Debug with known grasps
+            cfg.goal_set_proj = True
     elif 'OMG' in cfg.method:       # OMG with apples to apples parameters
         cfg.goal_set_proj = True
         cfg.fixed_endpoint = False
@@ -155,7 +158,7 @@ def init_dirs(out_dir, cfg, prefix=''):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--method", help="which method to use", required=True, choices=['compOMG_known', 'origOMG_known', 'GF_learned'])
+    parser.add_argument("--method", help="which method to use", required=True, choices=['compOMG_known', 'origOMG_known', 'GF_learned', 'GF_known'])
     parser.add_argument("--ckpt", help="which weights to use for our method", default='/data/manifolds/fb_runs/multirun/pq-pq_mini/2022-05-10_221352/lossl1_lr0.0001/default_default/1_1/checkpoints/epoch=109-step=37605.ckpt')
     parser.add_argument("--dset_root", help="mesh root", type=str, default="/data/manifolds/acronym_mini")
     parser.add_argument("-o", "--out_dir", help="Directory to save experiment to", type=str, default="/data/manifolds/pybullet_eval/dbg")

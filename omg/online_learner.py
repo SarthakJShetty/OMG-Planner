@@ -10,10 +10,10 @@ from .util import *
 import torch
 import time
 import IPython
-# import theseus as th
-# from differentiable_robot_model.robot_model import (
-#     DifferentiableFrankaPanda,
-# )
+import theseus as th
+from differentiable_robot_model.robot_model import (
+    DifferentiableFrankaPanda,
+)
 
 np.set_printoptions(4)
 
@@ -96,8 +96,8 @@ class Learner(object):
         self.q = np.ones(self.num_experts) / self.num_experts
 
         if (
-            (self.alg_name == "Baseline"
-            or (self.cfg.goal_idx == -2 and self.alg_name != "Proj"))
+            (self.alg_name == "Baseline"  # Choose goal based on initial cost
+            or (self.cfg.goal_idx == -2 and (self.alg_name == "MD" or self.alg_name == 'FTC' or self.alg_name == 'Exp' or self.alg_name == 'FTL')))  # online learning algs
             and (len(self.env.objects) > 0 and len(self.env.objects[self.env.target_idx].reach_grasps) > 0)
         ):
             costs = self.cost_vector()
@@ -106,6 +106,10 @@ class Learner(object):
             if self.alg_name is not None: # implicit grasps
                 self.traj.end = self.traj.goal_set[self.traj.goal_idx]  #
                 self.traj.interpolate_waypoints()
+
+        if self.env.cfg.method == 'GF_known':
+            urdf_path = DifferentiableFrankaPanda().urdf_path.replace('_no_gripper', '')
+            self.robot_model = th.eb.UrdfRobotModel(urdf_path)
 
     def cost_vector(self):
         """
@@ -217,18 +221,20 @@ class Learner(object):
         """
         Goal set projection 
         """
-        cur_end_point = self.traj.data[-1]
-        diff = cur_end_point - np.array(self.traj.goal_set)
-        dists = np.linalg.norm(diff, axis=-1)
-        target_idx = np.random.randint(0, len(dists))
-        # sorted_idx = np.argsort(dists)  # closest neighbor
-        # target_idx = sorted_idx[0]
-
-        # urdf_path = DifferentiableFrankaPanda().urdf_path.replace('_no_gripper', '')
-        # robot_model = th.eb.UrdfRobotModel(urdf_path)
-        # q_curr = torch.tensor(self.traj.data[-1], device='cpu', dtype=torch.float32).unsqueeze(0)
-        # pose_ee = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
-
+        if self.env.cfg.method == 'GF_known':
+            q_curr = torch.tensor(self.traj.data[-1], device='cpu', dtype=torch.float32).unsqueeze(0)
+            pose_ee = self.robot_model.forward_kinematics(q_curr)['panda_hand']
+            q_goals = torch.tensor(self.traj.goal_set, device='cpu', dtype=torch.float32)
+            pose_goals = self.robot_model.forward_kinematics(q_goals)['panda_hand']
+            logmaps = pose_goals.local(pose_ee).data  # tensor # N x 6
+            # logmaps[:, :3] *= (1.0 / 0.08) * np.pi * 2
+            norms = torch.linalg.norm(logmaps, axis=1)
+            target_idx = torch.argmin(norms)
+        else:
+            cur_end_point = self.traj.data[-1]
+            diff = cur_end_point - np.array(self.traj.goal_set)
+            dists = np.linalg.norm(diff, axis=-1)
+            target_idx = np.argmin(dists)
 
         self.p = np.zeros(self.N)
         self.p[target_idx] = 1
@@ -270,7 +276,8 @@ class Learner(object):
 
         goal_idx_old = self.traj.goal_idx
         self.traj.goal_idx = np.argmax(self.p)
-        self.traj.end = self.traj.goal_set[self.traj.goal_idx]
+        if self.cfg.method != 'GF_known':
+            self.traj.end = self.traj.goal_set[self.traj.goal_idx]
         self.Ti[self.traj.goal_idx] += 1
         self.Tis.append(self.Ti)
         return self.traj.goal_idx != goal_idx_old

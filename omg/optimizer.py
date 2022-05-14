@@ -150,7 +150,7 @@ class Optimizer(object):
         if (info["terminate"] and not force_update) or info_only:
             return info
 
-        if self.cfg.goal_set_proj:
+        if self.cfg.goal_set_proj and self.cfg.method != 'GF_known': # snap to goal unless debugging GF
             update = self.goal_set_projection(traj, grad)
         else:
             # SGD
