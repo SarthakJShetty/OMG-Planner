@@ -33,7 +33,7 @@ if __name__ == '__main__':
                                       f"--base_step_size={step_size} "
                                       f"--optim_steps={optim_steps} "
                                       f"--goal_thresh={goal_thresh} "
-                                      f"--prefix=sm{smooth_weight}_ob{obstacle_weight}_gr{grasp_weight}_st{step_size}_os{optim_steps}_th{goal_thresh} "
+                                      f"--prefix=sm{smooth_weight}_ob{obstacle_weight}_gr{grasp_weight}_st{step_size}_os{optim_steps}_th{goal_thresh}_ "
                                       f"-o=/data/manifolds/pybullet_eval/{args.exp_name}")
 
                             os.system(f"CUDA_VISIBLE_DEVICES={gpu} EGL_GPU={gpu} "

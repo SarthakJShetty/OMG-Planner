@@ -32,6 +32,7 @@ import theseus as th
 from differentiable_robot_model.robot_model import (
     DifferentiableFrankaPanda,
 )
+from bullet.methods.learnedgrasp import LearnedGrasp
 
 
 def solve_one_pose_ik(input):
@@ -129,8 +130,8 @@ class Planner(object):
             self.setup_time = time.time() - start_time_
             self.learner = Learner(env, self.traj, self.cost)
         elif 'learned' in self.cfg.method:
-            from bullet.methods.learnedgrasp import LearnedGrasp
-            self.grasp_predictor = LearnedGrasp(ckpt_path=self.cfg.learnedgrasp_weights)
+            use_shape_code = 'shape' in self.cfg.learnedgrasp_weights  
+            self.grasp_predictor = LearnedGrasp(ckpt_path=self.cfg.learnedgrasp_weights, use_shape_code=use_shape_code, dset_root=self.cfg.dset_root)
             self.setup_time = 0
         else:
             raise NotImplementedError
@@ -788,15 +789,9 @@ class Planner(object):
                     pq_o2e_np = pt.pq_from_transform(T_o2e_np) # xyz wxyz
                     input_pq = torch.tensor(pq_o2e_np, device='cuda', dtype=torch.float32)
                     objname = self.env.objects[0].name
-                    onehot = [
-                        'Book_b1611143b4da5c783143cfc9128d0843_0.023835858278933857', 
-                        'Bottle_244894af3ba967ccd957eaf7f4edb205_0.012953570261294404',
-                        'Bowl_9a52843cc89cd208362be90aaa182ec6_0.0008104428339208306', 
-                        'Mug_40f9a6cc6b2c3b3a78060a3a3a55e18f_0.0006670441940038386']
-                    input_x = torch.cat([input_pq, torch.tensor([onehot.index(objname)], device=input_pq.device)])
 
                     # Run network
-                    pq_o2g = self.grasp_predictor.forward(input_x.unsqueeze(0)).cpu()
+                    pq_o2g = self.grasp_predictor.forward(input_pq, objname).cpu()
                     pq_o2g_np = pq_o2g.numpy()
 
                     # Get predicted grasp in bot frame

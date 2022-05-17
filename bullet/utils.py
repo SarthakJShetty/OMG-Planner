@@ -1,8 +1,9 @@
-
+import os
 import numpy as np
 import pybullet as p
 import pytransform3d.rotations as pr
 from collections import namedtuple
+from manifold_grasping.utils import load_mesh
 RGBA = namedtuple('RGBA', ['red', 'green', 'blue', 'alpha'])
 BLACK = RGBA(0, 0, 0, 1)
 CLIENT = 0
@@ -90,3 +91,24 @@ def bullet_execute_plan(env, plan, write_video, video_writer):
             video_writer.write(robs['rgb'][:, :, [2, 1, 0]].astype(np.uint8))
             video_writer.write(robs['rgb'][:, :, [2, 1, 0]].astype(np.uint8)) # to get enough frames to save
     return rew
+
+def objinfo_from_obj(grasp_h5s, mesh_root, objname):
+    # Load object urdf and grasps
+    objhash = os.listdir(f'{mesh_root}/meshes/{objname}')[0].replace('.obj', '') # [HASH]
+    grasp_prefix = f'{objname}_{objhash}' # Book_[HASH]
+    for grasp_h5 in grasp_h5s: # Get file in grasps/ corresponding to this book, hash, and scale
+        if grasp_prefix in grasp_h5:
+            graspfile = grasp_h5
+            scale = graspfile.split('_')[-1].replace('.h5', '')
+            break
+
+    obj_mesh, T_ctr2obj = load_mesh(f'{mesh_root}/grasps/{graspfile}', scale=scale, mesh_root_dir=mesh_root, load_for_bullet=True)
+
+    # Load env
+    objinfo = {
+        'name': f'{grasp_prefix}_{scale}',
+        'urdf_dir': f'{mesh_root}/meshes_bullet/{grasp_prefix}_{scale}/model_normalized.urdf',
+        'scale': float(scale),
+        'T_ctr2obj': T_ctr2obj
+    }
+    return graspfile, obj_mesh, objinfo
