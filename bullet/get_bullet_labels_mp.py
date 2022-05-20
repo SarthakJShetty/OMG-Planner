@@ -209,22 +209,12 @@ if __name__ == "__main__":
     parser.add_argument("--render", help="render", action="store_true")
     parser.add_argument("--egl", help="use egl render", action="store_true")
     parser.add_argument("--mesh_root", help="mesh root", type=str, default="/data/manifolds/acronym")
-    # parser.add_argument("-gr", "--grasp_root", help="grasp root", type=str, default="/data/manifolds/acronym/grasps") 
-    # parser.add_argument("-o", "--objects", help="objects to load", nargs='*', default=[]) 
-
-    # parser.add_argument("-ge", "--grasp_eval", help="grasps to evaluate", type=str, default="")
-
     parser.add_argument("--overwrite", help="overwrite", action="store_true")
     parser.add_argument("--workers", help="Pool workers", type=int, default=1)
     parser.add_argument("--lin", help="How far to linear shake in a second", default=0.15, type=float)
-    parser.add_argument("--rot", help="How far to angular shake in a second, in degrees", default=90, type=float)
-    # parser.add_argument("-dbg", "--debug", help="debug plot", action="store_true")
-    # parser.add_argument("--start_idx", help="What object by list index to start with", type=int, default=0)
+    parser.add_argument("--rot", help="How far to angular shake in a second, in degrees", default=180, type=float)
 
     args = parser.parse_args()
-
-    # Check if csv exists in out dir
-    # mkdir_if_missing(args.out_dir)
 
     # acronym/
     #   meshes/
@@ -234,57 +224,55 @@ if __name__ == "__main__":
     #     Book_[HASH]/
     #       model_normalized.urdf
 
+    # For each grasp file, load mesh and get pybullet labels for all grasps
     grasp_and_object_list = []
     grasp_h5s = os.listdir(f'{args.mesh_root}/grasps')
     for objname in os.listdir(f'{args.mesh_root}/meshes'):
-        graspfile, obj_mesh, objinfo = objinfo_from_obj(grasp_h5s, mesh_root=args.mesh_root, objname=objname)
-        # # Load object urdf and grasps
-        # objhash = os.listdir(f'{args.mesh_root}/meshes/{objname}')[0].replace('.obj', '') # [HASH]
-        # grasp_prefix = f'{objname}_{objhash}' # Book_[HASH]
-        # for grasp_h5 in grasp_h5s: # Get file in grasps/ corresponding to this book, hash, and scale
-        #     if grasp_prefix in grasp_h5:
-        #         graspfile = grasp_h5
-        #         break
-
-        # obj_mesh, obj_scale = load_mesh(f'{args.mesh_root}/grasps/{graspfile}', scale = mesh_root_dir=args.mesh_root, load_for_bullet=True)
-
-        # # Load env
-        # objinfo = {
-        #     'urdf_dir': f'{args.mesh_root}/meshes_bullet/{grasp_prefix}/model_normalized.urdf',
-        #     'scale': obj_scale,
-        #     'mesh': obj_mesh
-        # }
-        grasp_and_object = (graspfile, objinfo)
-
-        with h5py.File(f"{args.mesh_root}/grasps/{graspfile}", "r+") as data:
-            # Set up bullet dataset
-            bullet_group_name = 'grasps/qualities/bullet'
-            if args.overwrite and bullet_group_name in data:
-                del data[f"{bullet_group_name}"]
-        
+        for grasp_h5 in grasp_h5s:
+            grasp_id = grasp_h5.replace('.h5', '')
+            scale = float(grasp_id.split('_')[-1])
             try:
-                data.attrs['lin_shake_duration']
-            except KeyError as e:
-                data.attrs.create('lin_shake_duration', 150.0 / 1000.0)
-                data.attrs.create('rot_shake_duration', 150.0 / 1000.0)
+                obj_mesh, T_ctr2obj = load_mesh(f'{args.mesh_root}/grasps/{grasp_h5}', scale=scale, mesh_root_dir=args.mesh_root, load_for_bullet=True)
+            except Exception as e:
+                print(e)
+                continue
+            objinfo = {
+                'name': grasp_h5,
+                'urdf_dir': f'{args.mesh_root}/meshes_bullet/{grasp_id}/model_normalized.urdf',
+                'scale': scale,
+                'T_ctr2obj': T_ctr2obj
+            }
+            grasp_and_object = (grasp_h5, objinfo)
 
-            if bullet_group_name not in data:
-                bullet_group = data.create_group(bullet_group_name)
-                dset = bullet_group.create_dataset(f"object_in_gripper", (len(data['grasps/qualities/flex/object_in_gripper']),), dtype='i8')
-                collected = bullet_group.create_dataset(f"collected", (len(data['grasps/qualities/flex/object_in_gripper']),), dtype='bool')
-            else:
-                dset = data[f"{bullet_group_name}/object_in_gripper"]
-                if f"{bullet_group_name}/collected" not in data:
-                    bullet_group = data[bullet_group_name]
+            with h5py.File(f"{args.mesh_root}/grasps/{grasp_h5}", "r+") as data:
+                # Set up bullet dataset
+                bullet_group_name = 'grasps/qualities/bullet'
+                if args.overwrite and bullet_group_name in data:
+                    del data[f"{bullet_group_name}"]
+ 
+                try:
+                    data.attrs['lin_shake_duration']
+                except KeyError:
+                    data.attrs.create('lin_shake_duration', 150.0 / 1000.0)
+                    data.attrs.create('rot_shake_duration', 150.0 / 1000.0)
+
+                if bullet_group_name not in data:
+                    bullet_group = data.create_group(bullet_group_name)
+                    dset = bullet_group.create_dataset(f"object_in_gripper", (len(data['grasps/qualities/flex/object_in_gripper']),), dtype='i8')
                     collected = bullet_group.create_dataset(f"collected", (len(data['grasps/qualities/flex/object_in_gripper']),), dtype='bool')
                 else:
-                    collected = data[f"{bullet_group_name}/collected"]
+                    dset = data[f"{bullet_group_name}/object_in_gripper"]
+                    if f"{bullet_group_name}/collected" not in data:
+                        bullet_group = data[bullet_group_name]
+                        collected = bullet_group.create_dataset(f"collected", (len(data['grasps/qualities/flex/object_in_gripper']),), dtype='bool')
+                    else:
+                        collected = data[f"{bullet_group_name}/collected"]
 
-            if np.asarray(collected).sum() == len(collected):
-                print(f"All {grasp_path} grasps collected, skipping")
-                continue
+                if np.asarray(collected).sum() == len(collected):
+                    print(f"All {grasp_h5} grasps collected, skipping")
+                    continue
 
-        grasp_and_object_list.append(grasp_and_object)
+            grasp_and_object_list.append(grasp_and_object)
 
     import multiprocessing as m
     with m.Pool(args.workers) as pool:

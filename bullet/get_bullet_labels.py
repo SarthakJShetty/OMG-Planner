@@ -65,8 +65,8 @@ def linear_shake(env, timeSteps, delta_z, record=False, second_shake=False):
         p.stepSimulation()
         if second_shake:
             p.stepSimulation()
-        # if env._renders:
-            # time.sleep(env._timeStep)
+        if env._renders:
+            time.sleep(env._timeStep)
         if record and t % 100 == 0:
             observation = env._get_observation()
             observations.append(observation)
@@ -81,8 +81,8 @@ def rot_shake(env, timeSteps, delta_a, record=False):
         jointPoses[-4] += delta_a / timeSteps
         env._panda.setTargetPositions(jointPoses)
         p.stepSimulation()
-        # if env._renders:
-            # time.sleep(env._timeStep)
+        if env._renders:
+            time.sleep(env._timeStep)
         if record and t % 100 == 0:
             observation = env._get_observation()
             observations.append(observation)
@@ -99,7 +99,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--overwrite", help="overwrite", action="store_true")
     parser.add_argument("--lin", help="How far to linear shake in a second", default=0.15, type=float)
-    parser.add_argument("--rot", help="How far to angular shake in a second, in degrees", default=90, type=float)
+    parser.add_argument("--rot", help="How far to angular shake in a second, in degrees", default=180, type=float)
     # parser.add_argument("-dbg", "--debug", help="debug plot", action="store_true")
     # parser.add_argument("--start_idx", help="What object by list index to start with", type=int, default=0)
 
@@ -132,6 +132,7 @@ if __name__ == "__main__":
 
     grasp_h5s = os.listdir(f'{args.mesh_root}/grasps')
     for objname in os.listdir(f'{args.mesh_root}/meshes'):
+        # TODO update with code from get_bullet_labels_mp
         graspfile, obj_mesh, objinfo = objinfo_from_obj(grasp_h5s, mesh_root=args.mesh_root, objname=objname)
         env.reset(init_joints=init_joints, no_table=True, objinfo=objinfo)
         rotgrasp2grasp_T = pt.transform_from(pr.matrix_from_axis_angle([0, 0, 1, -np.pi/2]), [0, 0, 0]) # correct wrist rotation

@@ -125,25 +125,31 @@ if not os.path.exists(args.save_root):
 for obj_name in os.listdir(args.mesh_root):
     for mesh_file in os.listdir(f"{args.mesh_root}/{obj_name}"):
         mesh_id = mesh_file.replace('.obj', '')
-        mesh_path = f"{args.save_root}/{obj_name}_{mesh_id}"
-        if os.path.exists(mesh_path):
-            if not args.overwrite:
-                 and len(os.listdir(mesh_path)) != 9:
-                continue
-            print(f"overwriting {mesh_path}")
-            shutil.rmtree(mesh_path)
-        os.mkdir(mesh_path)
 
-        os.system(f"cp {args.mesh_root}/{obj_name}/{mesh_file} {mesh_path}/model_normalized.obj")
+        for grasp_file in os.listdir(f'{args.mesh_root}/../grasps/'):
+            if mesh_id in grasp_file:
+                scale = grasp_file.replace('.h5', '').split('_')[-1]
+                # mesh_path = f"{args.save_root}/{obj_name}_{mesh_id}"
+                mesh_path = f"{args.save_root}/{obj_name}_{mesh_id}_{scale}"
 
-        gen_xyz.generate_extents_points(random_paths=[mesh_path])
+                if os.path.exists(mesh_path):
+                    if not args.overwrite and len(os.listdir(mesh_path)) == 9:
+                        print(f"skipping {mesh_path}")
+                        continue
+                    print(f"overwriting {mesh_path}")
+                    shutil.rmtree(mesh_path)
+                os.mkdir(mesh_path)
 
-        ####### The object SDF is required for CHOMP Scene
-        gen_sdf.gen_sdf(random_paths=[mesh_path])
-        convert_sdf.convert_sdf([mesh_path])
+                os.system(f"cp {args.mesh_root}/{obj_name}/{mesh_file} {mesh_path}/model_normalized.obj")
 
-        ####### These two are mainly for rendering and simulation, needs update urdf if used in bullet
-        ####### This can be used for meshes with broken topology and add textures uvs
-        # blender_process.process_obj([save_dir]) # Don't think we need blender for this, the YCB objects don't seem to be processed versions?
-        gen_convex_shape.convexify_model_subprocess([mesh_path])
-        cp_urdf([mesh_path])
+                gen_xyz.generate_extents_points(random_paths=[mesh_path])
+
+                ####### The object SDF is required for CHOMP Scene
+                gen_sdf.gen_sdf(random_paths=[mesh_path])
+                convert_sdf.convert_sdf([mesh_path])
+
+                ####### These two are mainly for rendering and simulation, needs update urdf if used in bullet
+                ####### This can be used for meshes with broken topology and add textures uvs
+                # blender_process.process_obj([save_dir]) # Don't think we need blender for this, the YCB objects don't seem to be processed versions?
+                gen_convex_shape.convexify_model_subprocess([mesh_path])
+                cp_urdf([mesh_path])
