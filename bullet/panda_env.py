@@ -23,6 +23,10 @@ import pkgutil
 from .utils import depth2pc
 from copy import deepcopy
 import pytransform3d.rotations as pr
+from .utils import draw_pose
+
+import trimesh
+from acronym_tools import create_gripper_marker
 
 
 class PandaEnv:
@@ -50,7 +54,8 @@ class PandaEnv:
         gui_debug=True,
         gravity=True,
         root_dir=None,
-        cam_look=[-0.35, -0.58, -0.88],
+        cam_look=[-0.05, -0.5, -0.6852],
+        # cam_look=[-0.35, -0.58, -0.88],
     ):
         """Initializes the pandaYCBObjectEnv.
 
@@ -79,10 +84,39 @@ class PandaEnv:
         self._env_step = 0
         self._gravity = gravity
 
+        # observation cameras
         self._cam_look = cam_look
-        self._cam_dist = 1.3  # 0.9
-        self._cam_yaw = 180
-        self._cam_pitch = -41
+        self._cams = [
+            {
+                'look': cam_look,
+                'dist': 0.9,
+                'yaw': 45,
+                'pitch': -34,
+                'roll': 0
+            },
+            {
+                'look': cam_look,
+                'dist': 0.9,
+                'yaw': 225,
+                'pitch': -34,
+                'roll': 0
+            },
+            {
+                'look': cam_look,
+                'dist': 0.9,
+                'yaw': 135,
+                'pitch': -34,
+                'roll': 0
+            },
+            {
+                'look': cam_look,
+                'dist': 0.9,
+                'yaw': 325,
+                'pitch': -34,
+                'roll': 0
+            },
+        ]
+
         self._safeDistance = safeDistance
         self._root_dir = root_dir if root_dir is not None else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
         self._p = p
@@ -103,7 +137,7 @@ class PandaEnv:
             self.cid = p.connect(p.SHARED_MEMORY)
             if self.cid < 0:
                 self.cid = p.connect(p.GUI)
-                p.resetDebugVisualizerCamera(self._cam_dist, self._cam_yaw, 0, [-0.35, -0.58, -0.88])
+                p.resetDebugVisualizerCamera(1.3, 180, 0, [-0.35, -0.58, -0.88])
             if not self._gui_debug:
                 p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
 
@@ -142,16 +176,25 @@ class PandaEnv:
         return [uid]
 
     def reset_perception(self):
-        look = self._cam_look
-        distance = self._cam_dist
-        pitch = self._cam_pitch
-        yaw = self._cam_yaw
-        roll = 0
         self._fov = 60.0 + self._cameraRandom * np.random.uniform(-2, 2)
-        # http://www.songho.ca/opengl/gl_transform.html#modelview
-        self._view_matrix = p.computeViewMatrixFromYawPitchRoll(
-            look, distance, yaw, pitch, roll, 2
-        )
+
+        # Draw target axes
+        T = np.eye(4)
+        T[:3, 3] = self._cam_look
+        draw_pose(T)
+
+        self._view_matrices = []
+        self._extrinsics = []
+        for cam in self._cams:
+            # http://www.songho.ca/opengl/gl_transform.html#modelview
+            view_matrix = p.computeViewMatrixFromYawPitchRoll(
+                cam['look'], cam['dist'], cam['yaw'], cam['pitch'], cam['roll'], 2
+            )
+            self._view_matrices.append(view_matrix)
+            view_matrix = np.reshape(np.array(view_matrix), (4, 4)).T
+            extrinsic_matrix = np.linalg.inv(view_matrix)
+            draw_pose(extrinsic_matrix)
+            self._extrinsics.append(extrinsic_matrix)
 
         self._aspect = float(self._window_width) / self._window_height
 
@@ -266,41 +309,73 @@ class PandaEnv:
         return observation, reward, done, None
 
     def _get_observation(self, get_pc=False):
-        _, _, rgba, zbuffer, mask = p.getCameraImage(
-            width=self._window_width,
-            height=self._window_height,
-            viewMatrix=self._view_matrix,
-            projectionMatrix=self._proj_matrix,
-            physicsClientId=self.cid,
-        )
+        rgbs = []
+        depths = []
+        masks = []
+        pcs = []
 
-        # The depth provided by getCameraImage() is in normalized device coordinates from 0 to 1.
-        # To get the metric depth, scale to [-1, 1] and then apply inverse of projection matrix.
-        # https://stackoverflow.com/questions/51315865/glreadpixels-how-to-get-actual-depth-instead-of-normalized-values
-        # https://github.com/bulletphysics/bullet3/blob/master/examples/pybullet/examples/getCameraImageTest.py
-        # https://stackoverflow.com/questions/51315865/glreadpixels-how-to-get-actual-depth-instead-of-normalized-values
-        depth_zo = 2. * zbuffer - 1.
-        depth = (self.far + self.near - depth_zo * (self.far - self.near))
-        depth = (2. * self.near * self.far) / depth
-        rgb = rgba[..., :3]
+        for i, cam in enumerate(self._cams):
+            _, _, rgba, zbuffer, mask = p.getCameraImage(
+                width=self._window_width,
+                height=self._window_height,
+                viewMatrix=self._view_matrices[i],
+                projectionMatrix=self._proj_matrix,
+                physicsClientId=self.cid,
+            )
 
-        joint_pos, joint_vel = self._panda.getJointStates()
+            # The depth provided by getCameraImage() is in normalized device coordinates from 0 to 1.
+            # To get the metric depth, scale to [-1, 1] and then apply inverse of projection matrix.
+            # https://stackoverflow.com/questions/51315865/glreadpixels-how-to-get-actual-depth-instead-of-normalized-values
+            # https://github.com/bulletphysics/bullet3/blob/master/examples/pybullet/examples/getCameraImageTest.py
+            # https://stackoverflow.com/questions/51315865/glreadpixels-how-to-get-actual-depth-instead-of-normalized-values
+            depth_zo = 2. * zbuffer - 1.
+            depth = (self.far + self.near - depth_zo * (self.far - self.near))
+            depth = (2. * self.near * self.far) / depth
+            rgb = rgba[..., :3]
 
-        depth_masked = deepcopy(depth)
-        depth_masked[~(mask == self._objectUids[self.target_idx])] = 0
-        pc = depth2pc(depth_masked, self._intr_matrix)[0] if get_pc else None # N x 7 (XYZ, RGB, Mask ID)
+            depth_masked = deepcopy(depth)
+            depth_masked[~(mask == self._objectUids[self.target_idx])] = 0
+            pc = depth2pc(depth_masked, self._intr_matrix)[0] if get_pc else None # N x 7 (XYZ, RGB, Mask ID)
 
-        if False and pc is not None:
-            import matplotlib.pyplot as plt
-            fig = plt.figure()
-            ax = fig.add_subplot(projection='3d')
-            ax.scatter(pc[:, 0], pc[:, 1], pc[:, 2])
-            plt.show()
+            rgbs.append(rgb)
+            depths.append(depth)  # width x height
+            masks.append(mask)
+            pcs.append(pc)
+
+            joint_pos, joint_vel = self._panda.getJointStates()
+
+        # Get point clouds in object frame: centered at mean of point cloud with world axes
+        if get_pc:
+            T_rotx = np.eye(4)
+            T_rotx[:3, :3] = pr.matrix_from_euler_xyz([np.pi, 0, 0])
+            T_cams = []
+            pcs_world = []
+            for i, pc_cam in enumerate(pcs):
+                T_world_cam = self._extrinsics[i]
+                T_world_cam_rot = T_world_cam @ T_rotx
+                draw_pose(T_world_cam_rot)
+                T_cams.append(T_world_cam_rot)
+                pc_world = (T_world_cam_rot @ pc_cam.T).T
+                pcs_world.append(pc_world)
+            pc_world = np.concatenate(pcs_world, axis=0)
+            mean_pc = np.mean(pc_world, axis=0)
+            pc_obj = pc_world - mean_pc
+
+            if False:  # Debug visualization
+                pcd_obj = trimesh.points.PointCloud(pc_obj[:, :3], colors=np.array([0, 0, 255, 255]))
+                # camera poses represented using the gripper marker
+                cams = [create_gripper_marker(color=[255, 0, 0]).apply_transform(T_cam) for T_cam in T_cams]
+                trimesh.Scene([pcd_obj] + cams).show()
+        else:
+            pc = None
 
         obs = {
-            'rgb': rgb,
-            'depth': depth[..., None],
-            'mask': mask[..., None],
+            'rgb': rgbs,
+            'depth': depths,
+            'mask': masks,
+            # 'rgb': rgb,
+            # 'depth': depth,
+            # 'mask': mask,
             'points': pc,
             'joint_pos': joint_pos,
             'joint_vel': joint_vel

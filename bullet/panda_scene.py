@@ -115,6 +115,7 @@ def randomly_place_object(env):
 
     T_w2o = T_w2b @ T_rand @ T_ctr2obj
     # draw_pose(T_w2b @ T_rand)
+    # print(T_w2o)
     pq_w2o = pt.pq_from_transform(T_w2o)  # wxyz
 
     p.resetBasePositionAndOrientation(
@@ -167,6 +168,7 @@ if __name__ == '__main__':
     parser.add_argument("--no-render", dest='render', help="don't render gui", action="store_false")
     parser.add_argument("--write_video", help="write video", action="store_true")
     parser.add_argument("--prefix", help="prefix for variant name", default="")
+    parser.add_argument("--pc", help="get point cloud with observation", action="store_true")
 
     # cfg-specific command line args
     parser.add_argument("--smoothness_base_weight", type=float)
@@ -192,13 +194,14 @@ if __name__ == '__main__':
     # Iterate over objects in folder
     for objname in os.listdir(f'{args.dset_root}/meshes'):
         scene = PlanningScene(cfg)
-        for scene_idx in range(1):
+        for scene_idx in range(1):  # TODO
             metrics = init_metrics_entry(objname, scene_idx)
             video_writer = init_video_writer(f"{save_path}/videos", objname, scene_idx) if args.write_video else None
 
-            env.reset(no_table=True)
+            # env.reset(no_table=True)
             objinfo = reset_env_with_object(env, objname, args.dset_root)
             randomly_place_object(env)  # Note: currently not random
+            obs = env._get_observation(get_pc=args.pc)
 
             # Scene has separate Env class which is used for planning
             # Add object to planning scene env
