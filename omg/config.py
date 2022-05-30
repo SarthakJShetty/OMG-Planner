@@ -130,11 +130,17 @@ cfg.use_goal_grad = False # whether to include the goal gradient and cost in the
 cfg.fixed_endpoint = False # whether endpoint of trajectory is fixed or not
 # exp_name = ''
 # cfg.use_ik = False # use ik with output pose method
-cfg.use_min_goal_cost_traj = False # use trajectory with minimum goal cost (use_goal_grad = True, method='implicigrasps')
+cfg.use_min_cost_traj = False # use trajectory with minimum goal cost (use_goal_grad = True, method='implicigrasps')
 cfg.disable_target_collision = False # during planning only? check
 # cfg.initial_ik = False # Use IK at the start of trajectory optimization (for our method)
 cfg.goal_thresh = 0.01
 cfg.dset_root = ''
+
+cfg.eval_type = ''  # type of evaluation to run
+cfg.gravity = False  # whether gravity should be on
+cfg.table = False  # whether table should be present in scene
+cfg.vary_obj_pose = False # whether to vary object pose
+cfg.single_shape_code = False 
 
 """ global function """
 def get_derivative(data, start, end, diff_rule=1):

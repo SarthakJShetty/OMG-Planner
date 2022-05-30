@@ -73,10 +73,17 @@ def get_world2bot_transform():
     T_world2bot[:3, 3] = pos
     return T_world2bot
 
-def get_random_transform():
+def get_random_transform(cfg):
     """Currently this is not a random transform"""
     T_rand = np.eye(4)
-    T_rand[:3, 3] = [0.5, 0.0, 0.5]
+    T_rand[:3, 3] = cfg.tgt_pos
+    # T_rand[:3, 3] = [0.5, 0.0, 0.5]
+    # T_rand[:3, 3] = [0.5, 0.0, 0.1]
+
+    if cfg.vary_obj_pose:
+        # TODO cache and load random scenes
+        raise NotImplementedError
+
     return T_rand
 
 def bullet_execute_plan(env, plan, write_video, video_writer):
@@ -84,12 +91,13 @@ def bullet_execute_plan(env, plan, write_video, video_writer):
     for k in range(plan.shape[0]):
         obs, rew, done, _ = env.step(plan[k].tolist())
         if write_video:
-            video_writer.write(obs['rgb'][:, :, [2, 1, 0]].astype(np.uint8))
+            video_writer.write(obs['rgb'][0][:, :, [2, 1, 0]].astype(np.uint8))
+            # video_writer.write(obs['rgb'][:, :, [2, 1, 0]].astype(np.uint8))
     (rew, ret_obs) = env.retract(record=True)
     if write_video: 
         for robs in ret_obs:
-            video_writer.write(robs['rgb'][:, :, [2, 1, 0]].astype(np.uint8))
-            video_writer.write(robs['rgb'][:, :, [2, 1, 0]].astype(np.uint8)) # to get enough frames to save
+            video_writer.write(robs['rgb'][0][:, :, [2, 1, 0]].astype(np.uint8))
+            video_writer.write(robs['rgb'][0][:, :, [2, 1, 0]].astype(np.uint8)) # to get enough frames to save
     return rew
 
 def objinfo_from_obj(grasp_h5s, mesh_root, objname):

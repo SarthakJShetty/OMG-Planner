@@ -13,12 +13,11 @@ import pybullet as p
 import numpy as np
 import pybullet_data
 
-from PIL import Image
-import glob
-import IPython
+# from PIL import Image
+# import glob
 from .panda_gripper import Panda
 
-import scipy.io as sio
+# import scipy.io as sio
 import pkgutil
 from .utils import depth2pc
 from copy import deepcopy
@@ -54,7 +53,8 @@ class PandaEnv:
         gui_debug=True,
         gravity=True,
         root_dir=None,
-        cam_look=[-0.05, -0.5, -0.6852],
+        cam_look=[-0.05, -0.5, -1.1]
+        # cam_look=[-0.05, -0.5, -0.6852],
         # cam_look=[-0.35, -0.58, -0.88],
     ):
         """Initializes the pandaYCBObjectEnv.
@@ -255,6 +255,19 @@ class PandaEnv:
             0.0,
             0.707,
         )
+        # drawer_file = 'data/objects/kitchen_drawer'
+        # drawer_file = 'data/objects/kitchen_sektion_bottom_two_drawers'
+        # # rotate drawer in z axis
+        # self.drawer_id = p.loadURDF(
+        #     os.path.join(drawer_file, 'model_normalized.urdf'),
+        #     0.5 - self._shift[0],
+        #     0.0 - self._shift[1],
+        #     0,
+        #     0.0,
+        #     0.0,
+        #     0.0,
+        #     1.0,
+        # )
 
         self.objinfos = [objinfo]
         self._objectUids = self.load_object(objinfo=objinfo)
@@ -315,32 +328,34 @@ class PandaEnv:
         pcs = []
 
         for i, cam in enumerate(self._cams):
-            _, _, rgba, zbuffer, mask = p.getCameraImage(
-                width=self._window_width,
-                height=self._window_height,
-                viewMatrix=self._view_matrices[i],
-                projectionMatrix=self._proj_matrix,
-                physicsClientId=self.cid,
-            )
+            if i == 0:
+                _, _, rgba, zbuffer, mask = p.getCameraImage(
+                    width=self._window_width,
+                    height=self._window_height,
+                    viewMatrix=self._view_matrices[i],
+                    projectionMatrix=self._proj_matrix,
+                    physicsClientId=self.cid,
+                )
 
-            # The depth provided by getCameraImage() is in normalized device coordinates from 0 to 1.
-            # To get the metric depth, scale to [-1, 1] and then apply inverse of projection matrix.
-            # https://stackoverflow.com/questions/51315865/glreadpixels-how-to-get-actual-depth-instead-of-normalized-values
-            # https://github.com/bulletphysics/bullet3/blob/master/examples/pybullet/examples/getCameraImageTest.py
-            # https://stackoverflow.com/questions/51315865/glreadpixels-how-to-get-actual-depth-instead-of-normalized-values
-            depth_zo = 2. * zbuffer - 1.
-            depth = (self.far + self.near - depth_zo * (self.far - self.near))
-            depth = (2. * self.near * self.far) / depth
-            rgb = rgba[..., :3]
+                # The depth provided by getCameraImage() is in normalized device coordinates from 0 to 1.
+                # To get the metric depth, scale to [-1, 1] and then apply inverse of projection matrix.
+                # https://stackoverflow.com/questions/51315865/glreadpixels-how-to-get-actual-depth-instead-of-normalized-values
+                # https://github.com/bulletphysics/bullet3/blob/master/examples/pybullet/examples/getCameraImageTest.py
+                # https://stackoverflow.com/questions/51315865/glreadpixels-how-to-get-actual-depth-instead-of-normalized-values
+                depth_zo = 2. * zbuffer - 1.
+                depth = (self.far + self.near - depth_zo * (self.far - self.near))
+                depth = (2. * self.near * self.far) / depth
+                rgb = rgba[..., :3]
+                depth_masked = deepcopy(depth)
+                depth_masked[~(mask == self._objectUids[self.target_idx])] = 0
 
-            depth_masked = deepcopy(depth)
-            depth_masked[~(mask == self._objectUids[self.target_idx])] = 0
-            pc = depth2pc(depth_masked, self._intr_matrix)[0] if get_pc else None # N x 7 (XYZ, RGB, Mask ID)
+                rgbs.append(rgb)
+                depths.append(depth)  # width x height
+                masks.append(mask)
 
-            rgbs.append(rgb)
-            depths.append(depth)  # width x height
-            masks.append(mask)
-            pcs.append(pc)
+            if get_pc:
+                pc = depth2pc(depth_masked, self._intr_matrix)[0] if get_pc else None # N x 7 (XYZ, RGB, Mask ID)
+                pcs.append(pc)
 
             joint_pos, joint_vel = self._panda.getJointStates()
 
@@ -358,16 +373,14 @@ class PandaEnv:
                 pc_world = (T_world_cam_rot @ pc_cam.T).T
                 pcs_world.append(pc_world)
             pc_world = np.concatenate(pcs_world, axis=0)
-            mean_pc = np.mean(pc_world, axis=0)
-            pc_obj = pc_world - mean_pc
 
             if False:  # Debug visualization
-                pcd_obj = trimesh.points.PointCloud(pc_obj[:, :3], colors=np.array([0, 0, 255, 255]))
+                pcd_world = trimesh.points.PointCloud(pc_world[:, :3], colors=np.array([0, 0, 255, 255]))
                 # camera poses represented using the gripper marker
                 cams = [create_gripper_marker(color=[255, 0, 0]).apply_transform(T_cam) for T_cam in T_cams]
-                trimesh.Scene([pcd_obj] + cams).show()
+                trimesh.Scene([pcd_world] + cams).show()
         else:
-            pc = None
+            pc_world = None
 
         obs = {
             'rgb': rgbs,
@@ -376,7 +389,7 @@ class PandaEnv:
             # 'rgb': rgb,
             # 'depth': depth,
             # 'mask': mask,
-            'points': pc,
+            'points': pc_world,
             'joint_pos': joint_pos,
             'joint_vel': joint_vel
         }

@@ -10,7 +10,7 @@ from .online_learner import Learner
 from . import config
 import time
 import multiprocessing
-# from copy import deepcopy
+from copy import deepcopy
 
 import torch
 # from liegroups.torch import SE3
@@ -130,8 +130,7 @@ class Planner(object):
             self.setup_time = time.time() - start_time_
             self.learner = Learner(env, self.traj, self.cost)
         elif 'learned' in self.cfg.method:
-            use_shape_code = 'shape' in self.cfg.learnedgrasp_weights  
-            self.grasp_predictor = LearnedGrasp(ckpt_path=self.cfg.learnedgrasp_weights, use_shape_code=use_shape_code, dset_root=self.cfg.dset_root)
+            self.grasp_predictor = LearnedGrasp(ckpt_path=self.cfg.learnedgrasp_weights, single_shape_code=self.cfg.single_shape_code, dset_root=self.cfg.dset_root)
             self.setup_time = 0
         else:
             raise NotImplementedError
@@ -647,7 +646,7 @@ class Planner(object):
                 draw_pose(T_w2b)
                 T_b2o = unpack_pose(target_obj.pose)
                 draw_pose(T_w2b @ T_b2o)
-                
+
                 for T_obj2grasp in target_obj.grasps_poses[:30]:
                     draw_pose(T_w2b @ T_b2o @ T_obj2grasp)
 
@@ -728,6 +727,7 @@ class Planner(object):
                 T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
                 draw_pose(self.T_w2b_np @ T_b2e_np) # ee in world frame
             residual = pose_goal.local(pose_ee) # SE(3) 1 x 6
+            # residual = pose_ee.local(pose_goal) # SE(3) 1 x 6
             # residual[:, :3] = (1.0 / 0.08) * np.pi
             return residual
         residual = fn(q_curr, vis=True) # 1 x 6
@@ -746,7 +746,7 @@ class Planner(object):
         traj.goal_grad = q_curr.grad.cpu().numpy()[:, :7]
         print(f"cost: {traj.goal_cost}, grad: {traj.goal_grad}")
 
-    def plan(self, traj):
+    def plan(self, traj, pc=None):
         """
         Run chomp optimizer to do trajectory optmization
         """
@@ -767,6 +767,17 @@ class Planner(object):
             urdf_path = DifferentiableFrankaPanda().urdf_path.replace('_no_gripper', '')
             robot_model = th.eb.UrdfRobotModel(urdf_path)
 
+            # Get shape code for point cloud
+            if pc is not None:
+                mean_pc = np.mean(pc, axis=0)
+                pc_obj = deepcopy(pc)
+                pc_obj[:, :3] -= mean_pc[:3]
+                shape_code = self.grasp_predictor.get_shape_code(pc_obj)
+                T_w2pc = np.eye(4)
+                T_w2pc[:3, 3] = mean_pc[:3]
+                T_b2pc = np.linalg.inv(self.T_w2b_np) @ T_w2pc
+                draw_pose(T_w2pc)
+
             self.optim.init(self.traj)
 
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
@@ -784,22 +795,48 @@ class Planner(object):
                     q = torch.tensor(self.traj.data[-1], device='cpu').unsqueeze(0)
                     pose_b2e = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
                     T_b2e_np = pose_b2e.to_matrix().detach().squeeze().numpy()
+
+                    # object frame is known in 1hot encoding
+                    # object frame is estimated with shape codes
+
                     T_o2b_np = self.get_T_obj2bot()
                     T_o2e_np = T_o2b_np @ T_b2e_np
                     pq_o2e_np = pt.pq_from_transform(T_o2e_np) # xyz wxyz
                     input_pq = torch.tensor(pq_o2e_np, device='cuda', dtype=torch.float32)
-                    objname = self.env.objects[0].name
 
                     # Run network
-                    pq_o2g = self.grasp_predictor.forward(input_pq, objname).cpu()
-                    pq_o2g_np = pq_o2g.numpy()
+                    shape_info = {}
+                    if pc is not None:  # shape code
+                        shape_info['shape_code'] = shape_code
+                    elif self.cfg.single_shape_code: # single shape code
+                        objname = self.env.objects[0].name
+                        shape_info['shape_key'] = objname
+                    else:  # 1 hot
+                        objname = self.env.objects[0].name
+                        shape_info['1hot'] = objname
+                    output = self.grasp_predictor.forward(input_pq, shape_info)
 
-                    # Get predicted grasp in bot frame
-                    T_o2g_np = np.eye(4)
-                    T_o2g_np[:3, :3] = pr.matrix_from_quaternion(pq_o2g_np[3:8])
-                    T_o2g_np[:3, 3] = pq_o2g_np[:3]
-                    T_b2g_np = np.linalg.inv(T_o2b_np) @ T_o2g_np
-                    pose_b2g = th.SE3(data=torch.tensor(T_b2g_np[:3]).float().unsqueeze(0))
+                    if pc is not None:
+                        pq_pc2g = output
+                        pq_pc2g_np = pq_pc2g.detach().cpu().numpy()
+
+                        # Get predicted grasp in bot frame
+                        T_pc2g_np = np.eye(4)
+                        T_pc2g_np[:3, :3] = pr.matrix_from_quaternion(pq_pc2g_np[3:8])
+                        T_pc2g_np[:3, 3] = pq_pc2g_np[:3]
+                        T_b2g_np = T_b2pc @ T_pc2g_np
+                        # draw_pose(self.T_w2b_np @ np.linalg.inv(T_o2b_np) @ T_pc2g_np)
+                        pose_b2g = th.SE3(data=torch.tensor(T_b2g_np[:3]).float().unsqueeze(0))
+                    else:  # 1 hot
+                        pq_o2g = output
+                        pq_o2g_np = pq_o2g.detach().cpu().numpy()
+
+                        # Get predicted grasp in bot frame
+                        T_o2g_np = np.eye(4)
+                        T_o2g_np[:3, :3] = pr.matrix_from_quaternion(pq_o2g_np[3:8])
+                        T_o2g_np[:3, 3] = pq_o2g_np[:3]
+                        T_b2g_np = np.linalg.inv(T_o2b_np) @ T_o2g_np
+                        pose_b2g = th.SE3(data=torch.tensor(T_b2g_np[:3]).float().unsqueeze(0))
 
                     # Visualization
                     draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
@@ -813,17 +850,17 @@ class Planner(object):
                     draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
 
                     self.CHOMP_update(self.traj, pose_b2g, robot_model)
-                
+
                 info_t = self.optim.optimize(self.traj, force_update=True, tstep=t+1)
                 if 'GF' in self.cfg.method:
                     info_t['pred_grasp'] = pose_b2g.to_matrix().detach().cpu().numpy()
                 self.info.append(info_t)
                 self.history_trajectories.append(np.copy(traj.data))
-                # if self.cfg.use_min_goal_cost_traj:
-                #     if traj.goal_cost < best_cost:
-                #         best_cost = traj.goal_cost
-                #         best_traj = np.copy(traj.data)
-                #         best_traj_idx = t
+                if self.cfg.use_min_cost_traj:
+                    if info_t['cost'] < best_cost:
+                        best_cost = info_t['cost']
+                        best_traj = np.copy(traj.data)
+                        best_traj_idx = t
 
                 if self.cfg.report_time:
                     print("plan optimize:", time.time() - start_time)
@@ -833,15 +870,15 @@ class Planner(object):
 
             # compute information for the final
             if not self.info[-1]["terminate"]:
-                # if self.cfg.use_min_goal_cost_traj:
-                #     print("Replacing final traj with lowest cost traj")
-                #     traj.data = best_traj
-                #     self.info.append(self.optim.optimize(traj, info_only=True))
-                #     self.history_trajectories.append(best_traj)
-                #     with open(f'{self.cfg.exp_dir}/{self.cfg.exp_name}/{self.cfg.scene_file}/{best_traj_idx}.txt', 'w') as f:
-                #         f.write('')
-                # else:
-                self.info.append(self.optim.optimize(self.traj, info_only=True))
+                if self.cfg.use_min_cost_traj:
+                    print("Replacing final traj with lowest cost traj")
+                    traj.data = best_traj
+                    self.info.append(self.optim.optimize(traj, info_only=True))
+                    self.history_trajectories.append(best_traj)
+                    # with open(f'{self.cfg.exp_dir}/{self.cfg.exp_name}/{self.cfg.scene_file}/{best_traj_idx}.txt', 'w') as f:
+                    #     f.write('')
+                else:
+                    self.info.append(self.optim.optimize(self.traj, info_only=True))
             else:
                 del self.history_trajectories[-1]
 

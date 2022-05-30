@@ -30,6 +30,17 @@ def init_cfg(args):
     cfg.window_width = 200
     cfg.window_height = 200
 
+    cfg.eval_type = args.eval_type
+    cfg.vary_obj_pose = False if 'fixedpose' in cfg.eval_type else True
+    cfg.gravity = False if 'nograv' in cfg.eval_type else True
+    if '1obj_float_fixedpose_nograv':
+        cfg.table = False
+        cfg.cam_look = [-0.05, -0.5, -0.6852]
+        cfg.tgt_pos = [0.5, 0.0, 0.5]
+    else:
+        raise NotImplementedError
+        # [-0.05, -0.5, -1.1]
+
     cfg.method = args.method
     if 'GF' in cfg.method:
         # pq input -> pq output
@@ -45,6 +56,8 @@ def init_cfg(args):
         cfg.optim_steps = 250 # optimization steps for each planner call
         # cfg.initial_ik = True # Use IK to initialize optimization
         cfg.pre_terminate = True  # terminate early if costs are below thresholds
+        if 'single' in cfg.method:
+            cfg.single_shape_code = True
         if 'learned' in cfg.method:
             cfg.learnedgrasp_weights = args.ckpt
             cfg.goal_set_proj = False
@@ -79,7 +92,7 @@ def init_cfg(args):
 
     cfg.get_global_param()
 
-def reset_env_with_object(env, objname, dset_root):
+def get_object_info(env, objname, dset_root):
     # Load object urdf and grasps
     objhash = os.listdir(f'{dset_root}/meshes/{objname}')[0].replace('.obj', '')  # [HASH]
     grasp_h5s = os.listdir(f'{dset_root}/grasps')
@@ -99,16 +112,14 @@ def reset_env_with_object(env, objname, dset_root):
         'scale': float(scale),
         'T_ctr2obj': T_ctr2obj
     }
-    env.reset(no_table=True, objinfo=objinfo)
     return objinfo
 
 
-def randomly_place_object(env):
+def randomly_place_object(cfg, env):
     # place single object
     T_w2b = get_world2bot_transform()
 
-    # TODO make actually random
-    T_rand = get_random_transform()
+    T_rand = get_random_transform(cfg)
 
     # Apply object to centroid transform
     T_ctr2obj = env.objinfos[0]['T_ctr2obj']
@@ -124,6 +135,10 @@ def randomly_place_object(env):
         pr.quaternion_xyzw_from_wxyz(pq_w2o[3:])
     )
     p.resetBaseVelocity(env._objectUids[0], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+
+    if cfg.gravity:
+        for i in range(10000):
+            p.stepSimulation()
 
 
 def init_metrics_entry(object_name, scene_idx):
@@ -160,7 +175,9 @@ def init_dirs(out_dir, cfg, prefix=''):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--method", help="which method to use", required=True, choices=['compOMG_known', 'origOMG_known', 'GF_learned', 'GF_known'])
+    parser.add_argument("--method", help="which method to use", required=True)
+        # , choices=['compOMG_known', 'origOMG_known', 'GF_learned_1hot', 'GF_learned_shape', 'GF_known'])
+    parser.add_argument("--eval_type", help="which eval to run", required=True, choices=['1obj_float_fixedpose_nograv'])
     parser.add_argument("--ckpt", help="which weights to use for our method", default='/data/manifolds/fb_runs/multirun/pq-pq_mini/2022-05-10_221352/lossl1_lr0.0001/default_default/1_1/checkpoints/epoch=109-step=37605.ckpt')
     parser.add_argument("--dset_root", help="mesh root", type=str, default="/data/manifolds/acronym_mini")
     parser.add_argument("-o", "--out_dir", help="Directory to save experiment to", type=str, default="/data/manifolds/pybullet_eval/dbg")
@@ -177,12 +194,13 @@ if __name__ == '__main__':
     parser.add_argument("--base_step_size", type=float)
     parser.add_argument("--optim_steps", type=int)
     parser.add_argument("--goal_thresh", type=float)
+    parser.add_argument("--use_min_cost_traj", type=int)
 
     args = parser.parse_args()
     init_cfg(args)
 
     # Init environment
-    env = PandaEnv(renders=args.render, gravity=False)
+    env = PandaEnv(renders=args.render, gravity=cfg.gravity, cam_look=cfg.cam_look)
 
     # Init save dir and csv
     save_path = init_dirs(args.out_dir, cfg, prefix=args.prefix)
@@ -198,9 +216,9 @@ if __name__ == '__main__':
             metrics = init_metrics_entry(objname, scene_idx)
             video_writer = init_video_writer(f"{save_path}/videos", objname, scene_idx) if args.write_video else None
 
-            # env.reset(no_table=True)
-            objinfo = reset_env_with_object(env, objname, args.dset_root)
-            randomly_place_object(env)  # Note: currently not random
+            objinfo = get_object_info(env, objname, args.dset_root)
+            env.reset(no_table=not cfg.table, objinfo=objinfo)
+            randomly_place_object(cfg, env)
             obs = env._get_observation(get_pc=args.pc)
 
             # Scene has separate Env class which is used for planning
@@ -230,7 +248,8 @@ if __name__ == '__main__':
             scene.env.set_target(objinfo['name'])
             scene.reset(lazy=True)
 
-            info = scene.step()
+            pc = obs['points'] if args.pc else None
+            info = scene.step(pc=pc)
             plan = scene.planner.history_trajectories[-1]
             grasp_success = bullet_execute_plan(env, plan, args.write_video, video_writer)
 
