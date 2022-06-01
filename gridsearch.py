@@ -37,6 +37,7 @@ if __name__ == '__main__':
                                       f"--dset_root='/data/manifolds/acronym_mini_relabel' "
                                       f"--prefix=sm{smooth_weight}_ob{obstacle_weight}_gr{grasp_weight}_st{step_size}_os{optim_steps}_th{goal_thresh}_ "
                                       f"--pc "
+                                      f"--use_min_cost_traj=1 "
                                       f"--ckpt={args.ckpt} "
                                       f"-o=/data/manifolds/pybullet_eval/{args.exp_name}")
                             # import sys 

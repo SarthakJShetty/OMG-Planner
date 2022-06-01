@@ -22,13 +22,24 @@ def save_joints(joints):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--dset_root", help="mesh root", type=str, default="/data/manifolds/acronym_mini_relabel")
+    parser.add_argument("--table", help="toggle table", action='store_true')
     args = parser.parse_args()
 
-env = PandaEnv(renders=True, gravity=False, cam_look=[-0.05, -0.5, -0.6852])
+# If using the table, turn gravity on and set camera parameters
+if args.table:
+    gravity = True
+    cam_look = [-0.05, -0.5, -1.1]
+    target_pos = [0.5, 0.0, 0.1]
+else:
+    gravity = False
+    cam_look = [-0.05, -0.5, -0.6852]
+    target_pos = [0.5, 0.0, 0.5]
+
+env = PandaEnv(renders=True, gravity=gravity, cam_look=cam_look)
 
 # Change this to get more complex scenes
 # use the first object as a stand-in
-objname = os.listdir(f'{args.dset_root}/meshes_bullet')[0] 
+objname = os.listdir(f'{args.dset_root}/meshes_bullet')[3]
 objinfo = get_object_info(env, objname, args.dset_root)
 
 urdf_path = DifferentiableFrankaPanda().urdf_path.replace('_no_gripper', '')
@@ -38,9 +49,8 @@ count = 0
 n_samples = 30
 while count < n_samples:
     # Place object in scene
-    env.reset(no_table=True, objinfo=objinfo)
-    target_pos = [0.5, 0.0, 0.5]
-    place_object(env, target_pos, random=False, gravity=False)
+    env.reset(no_table=not args.table, objinfo=objinfo)
+    place_object(env, target_pos, random=False, gravity=gravity)
     pos, orn = p.getBasePositionAndOrientation(env._objectUids[0])  # xyzw
 
     # Randomly sample joints for robot

@@ -769,14 +769,17 @@ class Planner(object):
 
             # Get shape code for point cloud
             if pc is not None:
-                mean_pc = np.mean(pc, axis=0)
-                pc_obj = deepcopy(pc)
-                pc_obj[:, :3] -= mean_pc[:3]
-                shape_code = self.grasp_predictor.get_shape_code(pc_obj)
+                # mean_pc = np.mean(pc, axis=0)
+                # pc_obj = deepcopy(pc)
+                # pc_obj[:, :3] -= mean_pc[:3]
+                shape_code, mean_pc = self.grasp_predictor.get_shape_code(pc)
                 T_w2pc = np.eye(4)
                 T_w2pc[:3, 3] = mean_pc[:3]
                 T_b2pc = np.linalg.inv(self.T_w2b_np) @ T_w2pc
                 draw_pose(T_w2pc)
+            
+            # if 'dbg' in self.cfg.method:
+            #     import IPython; IPython.embed()
 
             self.optim.init(self.traj)
 

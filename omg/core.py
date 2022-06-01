@@ -157,7 +157,7 @@ class Env(object):
 
             self.indexes = list(range(len(self.names)))
             self.combine_sdfs()
-            if 'target_name' in scene: 
+            if 'target_name' in scene:
                 self.set_target(scene['target_name'][0])
 
     def add_plane(self, trans, quat):
@@ -304,7 +304,7 @@ class PlanningScene(object):
 
     def __init__(self, cfg):
         self.cfg = cfg
-        self.traj = Trajectory(cfg.timesteps, start_end_equal=(not cfg.fixed_endpoint))
+        self.traj = Trajectory(timesteps=cfg.timesteps, start_end_equal=(not cfg.fixed_endpoint))
         print("Setting up env...")
         start_time = time.time()
         self.env = Env(cfg)
@@ -315,11 +315,17 @@ class PlanningScene(object):
         #     if cfg.vis:
         #         self.setup_renderer()
 
-    def reset_env(self):
+    def reset_env(self, joints=None):
         """
         Reset env for the next run
         """
-        self.traj = Trajectory(self.cfg.timesteps, start_end_equal=(not self.cfg.fixed_endpoint))
+        if joints is not None:
+            self.traj = Trajectory(timesteps=self.cfg.timesteps,
+                                   start_end_equal=(not self.cfg.fixed_endpoint),
+                                   start=joints)
+        else:
+            self.traj = Trajectory(self.cfg.timesteps,
+                                   start_end_equal=(not self.cfg.fixed_endpoint))
         self.env = Env(self.cfg)
 
     def reset(self, lazy=False):
@@ -369,14 +375,14 @@ class PlanningScene(object):
 
         def fast_vis_collision(poses, cls_indexes, i, collision_pts, interact):
             vis_pt = collision_pts[i-1,:,:,:3].reshape(-1, 3).T  #-1
-            vis_color = collision_pts[i-1,:,:,6:9].reshape(-1, 3).astype(np.int) # 
-            vis_pt_with_grad = -collision_pts[i-1,:,:,9:12].reshape(-1, 3).T * 0.02 + vis_pt #            
+            vis_color = collision_pts[i-1,:,:,6:9].reshape(-1, 3).astype(np.int) #
+            vis_pt_with_grad = -collision_pts[i-1,:,:,9:12].reshape(-1, 3).T * 0.02 + vis_pt #
             return self.renderer.vis(
                             poses,
                             cls_indexes,
                             interact=interact,
-                            visualize_context={"line":[(vis_pt_with_grad, vis_pt)], 
-                                "project_point":[vis_pt], "project_color":[vis_color], 
+                            visualize_context={"line":[(vis_pt_with_grad, vis_pt)],
+                                "project_point":[vis_pt], "project_color":[vis_color],
                                 "reset_line_point": True,
                                 "line_color":[[0,255,255]], "point_size": [5], "white_bg": True},
                             cam_pos=self.cam_pos,
@@ -407,9 +413,9 @@ class PlanningScene(object):
                             cam_pos=self.cam_pos,
                             V=self.cam_V,
                             shifted_pose=np.eye(4),
-                        ) 
+                        )
 
-            if vis_goal_set:            
+            if vis_goal_set:
                 goal = self.planner.selected_goals[optim_i]
                 goal_poses, goal_idx = get_sample_goals(self, self.traj.goal_set, goal)
                 bg_image = self.renderer.vis(
@@ -422,8 +428,8 @@ class PlanningScene(object):
                             shifted_pose=np.eye(4),
                         ).astype(np.float32)
                 bg_mask = (bg_image == 255).sum(-1) != 3
-                bg_image[:,:,[1, 2]] *= 0.1   
-                
+                bg_image[:,:,[1, 2]] *= 0.1
+
                 bg_image2 = self.renderer.vis(
                             goal_poses[-3:],
                             goal_idx[-3:],
@@ -434,12 +440,12 @@ class PlanningScene(object):
                             shifted_pose=np.eye(4),
                         ).astype(np.float32)
                 bg_mask2 = (bg_image2 == 255).sum(-1) != 3
-                bg_image2[:,:,[0, 2]] *= 0.1 # green   
+                bg_image2[:,:,[0, 2]] *= 0.1 # green
                 bg_image[bg_mask2] = bg_image2[bg_mask2]
                 bg_mask = bg_mask | bg_mask2
                 mix_frame_image[bg_mask] = bg_image[bg_mask] * 0.5 + mix_frame_image[bg_mask] * 0.5
                 mix_frame_image = mix_frame_image.astype(np.uint8)
-                if interact >= 1: 
+                if interact >= 1:
                     cv2.imshow('test', mix_frame_image[:,:,[2,1,0]])
                     cv2.waitKey(1)
             if traj_idx is not None:
@@ -458,9 +464,9 @@ class PlanningScene(object):
                         fast_vis_collision(poses, cls_indexes, i, collision_pts, interact)
                     )
                 elif goal_set and i > 0:
-                    frame, mask = fast_vis_goalset(poses, cls_indexes, i, traj, interact, traj_idx=traj_idx)                    
-                    frames.append(frame)                  
-                    masks.append(mask)  
+                    frame, mask = fast_vis_goalset(poses, cls_indexes, i, traj, interact, traj_idx=traj_idx)
+                    frames.append(frame)
+                    masks.append(mask)
                 else:
                     frame, mask = fast_vis_simple(poses, cls_indexes, interact, traj_idx=traj_idx)
                     frames.append(frame)
@@ -468,7 +474,7 @@ class PlanningScene(object):
 
             if interact > 0:
                 fast_vis_end(poses, cls_indexes, nonstop)
-            
+
             if traj_idx is not None:
                 return frames, masks
             else:
@@ -621,15 +627,15 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-v", "--vis", help="visualization", action="store_true" 
+        "-v", "--vis", help="visualization", action="store_true"
     )
     parser.add_argument(
-        "-vc", "--vis_collision_pt", help="collision visualization", action="store_true" 
-    ) 
+        "-vc", "--vis_collision_pt", help="collision visualization", action="store_true"
+    )
     parser.add_argument(
-        "-vg", "--vis_goalset", help="goalset visualization", action="store_true" 
-    )           
- 
+        "-vg", "--vis_goalset", help="goalset visualization", action="store_true"
+    )
+
     parser.add_argument("-f", "--file", help="filename", type=str, default="demo_scene_1")
     parser.add_argument("-w", "--write_video", help="write video", action="store_true")
     parser.add_argument("-g", "--grasp", help="grasp initialization", type=str, default="grasp")
@@ -649,26 +655,26 @@ if __name__ == "__main__":
     )
     config.cfg.traj_init = args.grasp
     config.cfg.vis = args.vis or args.write_video
-    
+
     if not args.experiment:
         scene = PlanningScene(config.cfg)
         info = scene.step()
         if args.vis or args.write_video:
-            scene.fast_debug_vis(interact=int(args.vis), write_video=args.write_video, 
+            scene.fast_debug_vis(interact=int(args.vis), write_video=args.write_video,
                         nonstop=True, collision_pt=args.vis_collision_pt, goal_set=args.vis_goalset)
     else:
-        scene_files = ['scene_{}'.format(i) for i in range(100)]    
-        for scene_file in scene_files:   
+        scene_files = ['scene_{}'.format(i) for i in range(100)]
+        for scene_file in scene_files:
             config.cfg.output_video_name = "output_videos/" + scene_file
-            config.cfg.output_video_name = config.cfg.output_video_name + ".avi"     
+            config.cfg.output_video_name = config.cfg.output_video_name + ".avi"
             config.cfg.scene_file = scene_file
             config.cfg.use_standoff = False
 
             scene = PlanningScene(config.cfg)
-            info = scene.step() 
-    
+            info = scene.step()
+
             if args.vis or args.write_video:
                 scene.fast_debug_vis(interact=int(args.vis), write_video=args.write_video, nonstop=True,
                                      collision_pt=args.vis_collision_pt, goal_set=args.vis_goalset)
                 scene.renderer.release()
- 
+

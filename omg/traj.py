@@ -7,7 +7,9 @@ class Trajectory(object):
     Trajectory class that wraps an object or an obstacle
     """
 
-    def __init__(self, timesteps=100, dof=9, start_end_equal=False):
+    def __init__(self,
+                 timesteps=100, dof=9, start_end_equal=False,
+                 start=[0.0, -1.285, 0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04],):
         """
         Initialize fixed endpoint trajectory.
         """
@@ -17,7 +19,7 @@ class Trajectory(object):
         self.goal_set = []
         self.goal_quality = []
 
-        self.start = np.array([0.0, -1.285, 0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04])
+        self.start = np.array(start)
         if start_end_equal:
             self.end = self.start.copy()
             # When trajectory end does not match goal

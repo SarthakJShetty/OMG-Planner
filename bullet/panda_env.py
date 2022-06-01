@@ -231,8 +231,8 @@ class PandaEnv:
         if init_joints is None:
             self._panda = Panda(stepsize=self._timeStep, base_shift=self._shift)
         else:
-            for _ in range(1000):
-                p.stepSimulation()
+            # for _ in range(1000):
+                # p.stepSimulation()
             self._panda = Panda(
                 stepsize=self._timeStep, init_joints=init_joints, base_shift=self._shift
             )
@@ -321,48 +321,51 @@ class PandaEnv:
 
         return observation, reward, done, None
 
-    def _get_observation(self, get_pc=False):
+    def _get_observation(self, get_pc=False, single_view=True):
         rgbs = []
         depths = []
         masks = []
         pcs = []
 
         for i, cam in enumerate(self._cams):
-            if i == 0:
-                _, _, rgba, zbuffer, mask = p.getCameraImage(
-                    width=self._window_width,
-                    height=self._window_height,
-                    viewMatrix=self._view_matrices[i],
-                    projectionMatrix=self._proj_matrix,
-                    physicsClientId=self.cid,
-                )
+            _, _, rgba, zbuffer, mask = p.getCameraImage(
+                width=self._window_width,
+                height=self._window_height,
+                viewMatrix=self._view_matrices[i],
+                projectionMatrix=self._proj_matrix,
+                physicsClientId=self.cid,
+            )
 
-                # The depth provided by getCameraImage() is in normalized device coordinates from 0 to 1.
-                # To get the metric depth, scale to [-1, 1] and then apply inverse of projection matrix.
-                # https://stackoverflow.com/questions/51315865/glreadpixels-how-to-get-actual-depth-instead-of-normalized-values
-                # https://github.com/bulletphysics/bullet3/blob/master/examples/pybullet/examples/getCameraImageTest.py
-                # https://stackoverflow.com/questions/51315865/glreadpixels-how-to-get-actual-depth-instead-of-normalized-values
-                depth_zo = 2. * zbuffer - 1.
-                depth = (self.far + self.near - depth_zo * (self.far - self.near))
-                depth = (2. * self.near * self.far) / depth
-                rgb = rgba[..., :3]
-                depth_masked = deepcopy(depth)
-                depth_masked[~(mask == self._objectUids[self.target_idx])] = 0
+            # The depth provided by getCameraImage() is in normalized device coordinates from 0 to 1.
+            # To get the metric depth, scale to [-1, 1] and then apply inverse of projection matrix.
+            # https://stackoverflow.com/questions/51315865/glreadpixels-how-to-get-actual-depth-instead-of-normalized-values
+            # https://github.com/bulletphysics/bullet3/blob/master/examples/pybullet/examples/getCameraImageTest.py
+            # https://stackoverflow.com/questions/51315865/glreadpixels-how-to-get-actual-depth-instead-of-normalized-values
+            depth_zo = 2. * zbuffer - 1.
+            depth = (self.far + self.near - depth_zo * (self.far - self.near))
+            depth = (2. * self.near * self.far) / depth
+            rgb = rgba[..., :3]
+            depth_masked = deepcopy(depth)
+            depth_masked[~(mask == self._objectUids[self.target_idx])] = 0
 
-                rgbs.append(rgb)
-                depths.append(depth)  # width x height
-                masks.append(mask)
+            rgbs.append(rgb)
+            depths.append(depth)  # width x height
+            masks.append(mask)
 
             if get_pc:
-                pc = depth2pc(depth_masked, self._intr_matrix)[0] if get_pc else None # N x 7 (XYZ, RGB, Mask ID)
+                pc = depth2pc(depth_masked, self._intr_matrix)[0] # N x 7 (XYZ, RGB, Mask ID)
                 pcs.append(pc)
 
-            joint_pos, joint_vel = self._panda.getJointStates()
+            if single_view:
+                break
+
+        joint_pos, joint_vel = self._panda.getJointStates()
 
         # Get point clouds in object frame: centered at mean of point cloud with world axes
         if get_pc:
             T_rotx = np.eye(4)
             T_rotx[:3, :3] = pr.matrix_from_euler_xyz([np.pi, 0, 0])
+
             T_cams = []
             pcs_world = []
             for i, pc_cam in enumerate(pcs):

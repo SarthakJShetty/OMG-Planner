@@ -100,6 +100,7 @@ class LearnedGrasp:
         return outpose
 
     def get_shape_code(self, pc):
+        """input is not mean_centered"""
         # Farthest point sampling
         pc_t = torch.tensor(pc[:, :3]).unsqueeze(0)  # 1 x N x 3
         try:
@@ -108,12 +109,17 @@ class LearnedGrasp:
             print(e)
             import IPython; IPython.embed()
 
+        # mean center the point cloud
+        mean_pc = pc_fps.mean(axis=1)
+        pc_fps -= mean_pc
+        # import IPython; IPython.embed()
+
         # Run VN-OccNets
         shape_mi = {'point_cloud': pc_fps.cuda()}
         with torch.no_grad():
             latent = self.model.shape_model.extract_latent(shape_mi)
             latent = torch.reshape(latent, (latent.shape[0], -1))
-        return latent
+        return latent, mean_pc.squeeze().cpu().numpy()
 
 
 # class ImplicitGrasp_NoVision:

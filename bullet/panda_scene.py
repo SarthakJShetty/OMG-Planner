@@ -10,7 +10,7 @@ from .panda_env import PandaEnv
 
 from acronym_tools import create_gripper_marker
 from manifold_grasping.utils import load_mesh
-from .utils import get_world2bot_transform, get_random_transform, draw_pose, bullet_execute_plan
+from .utils import get_world2bot_transform, draw_pose, bullet_execute_plan, get_object_info, place_object
 
 import pytransform3d.rotations as pr
 import pytransform3d.transformations as pt
@@ -66,6 +66,7 @@ def init_cfg(args):
     elif 'OMG' in cfg.method:       # OMG with apples to apples parameters
         cfg.goal_set_proj = True
         cfg.fixed_endpoint = False
+        cfg.remove_flip_grasp = False
         cfg.ol_alg = 'MD'
         cfg.smoothness_base_weight = 0.1  # 0.1 weight for smoothness cost in total cost
         cfg.base_obstacle_weight = 1.0  # 1.0 weight for obstacle cost in total cost
@@ -92,53 +93,53 @@ def init_cfg(args):
 
     cfg.get_global_param()
 
-def get_object_info(env, objname, dset_root):
-    # Load object urdf and grasps
-    objhash = os.listdir(f'{dset_root}/meshes/{objname}')[0].replace('.obj', '')  # [HASH]
-    grasp_h5s = os.listdir(f'{dset_root}/grasps')
-    grasp_prefix = f'{objname}_{objhash}'  # for example: Book_[HASH]
-    for grasp_h5 in grasp_h5s:  # Get file in grasps/ corresponding to this object, hash, and scale
-        if grasp_prefix in grasp_h5:
-            graspfile = grasp_h5
-            scale = graspfile.split('_')[-1].replace('.h5', '')
-            break
+# def get_object_info(env, objname, dset_root):
+#     # Load object urdf and grasps
+#     objhash = os.listdir(f'{dset_root}/meshes/{objname}')[0].replace('.obj', '')  # [HASH]
+#     grasp_h5s = os.listdir(f'{dset_root}/grasps')
+#     grasp_prefix = f'{objname}_{objhash}'  # for example: Book_[HASH]
+#     for grasp_h5 in grasp_h5s:  # Get file in grasps/ corresponding to this object, hash, and scale
+#         if grasp_prefix in grasp_h5:
+#             graspfile = grasp_h5
+#             scale = graspfile.split('_')[-1].replace('.h5', '')
+#             break
 
-    obj_mesh, T_ctr2obj = load_mesh(f'{dset_root}/grasps/{graspfile}', scale=scale, mesh_root_dir=dset_root, load_for_bullet=True)
+#     obj_mesh, T_ctr2obj = load_mesh(f'{dset_root}/grasps/{graspfile}', scale=scale, mesh_root_dir=dset_root, load_for_bullet=True)
 
-    # Load env
-    objinfo = {
-        'name': f'{grasp_prefix}_{scale}',
-        'urdf_dir': f'{dset_root}/meshes_bullet/{grasp_prefix}_{scale}/model_normalized.urdf',
-        'scale': float(scale),
-        'T_ctr2obj': T_ctr2obj
-    }
-    return objinfo
+#     # Load env
+#     objinfo = {
+#         'name': f'{grasp_prefix}_{scale}',
+#         'urdf_dir': f'{dset_root}/meshes_bullet/{grasp_prefix}_{scale}/model_normalized.urdf',
+#         'scale': float(scale),
+#         'T_ctr2obj': T_ctr2obj
+#     }
+#     return objinfo
 
 
-def randomly_place_object(cfg, env):
-    # place single object
-    T_w2b = get_world2bot_transform()
+# def randomly_place_object(cfg, env):
+#     # place single object
+#     T_w2b = get_world2bot_transform()
 
-    T_rand = get_random_transform(cfg)
+#     T_rand = get_random_transform(cfg)
 
-    # Apply object to centroid transform
-    T_ctr2obj = env.objinfos[0]['T_ctr2obj']
+#     # Apply object to centroid transform
+#     T_ctr2obj = env.objinfos[0]['T_ctr2obj']
 
-    T_w2o = T_w2b @ T_rand @ T_ctr2obj
-    # draw_pose(T_w2b @ T_rand)
-    # print(T_w2o)
-    pq_w2o = pt.pq_from_transform(T_w2o)  # wxyz
+#     T_w2o = T_w2b @ T_rand @ T_ctr2obj
+#     # draw_pose(T_w2b @ T_rand)
+#     # print(T_w2o)
+#     pq_w2o = pt.pq_from_transform(T_w2o)  # wxyz
 
-    p.resetBasePositionAndOrientation(
-        env._objectUids[0],
-        pq_w2o[:3],
-        pr.quaternion_xyzw_from_wxyz(pq_w2o[3:])
-    )
-    p.resetBaseVelocity(env._objectUids[0], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+#     p.resetBasePositionAndOrientation(
+#         env._objectUids[0],
+#         pq_w2o[:3],
+#         pr.quaternion_xyzw_from_wxyz(pq_w2o[3:])
+#     )
+#     p.resetBaseVelocity(env._objectUids[0], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
 
-    if cfg.gravity:
-        for i in range(10000):
-            p.stepSimulation()
+#     if cfg.gravity:
+#         for i in range(10000):
+#             p.stepSimulation()
 
 
 def init_metrics_entry(object_name, scene_idx):
@@ -186,6 +187,7 @@ if __name__ == '__main__':
     parser.add_argument("--write_video", help="write video", action="store_true")
     parser.add_argument("--prefix", help="prefix for variant name", default="")
     parser.add_argument("--pc", help="get point cloud with observation", action="store_true")
+    parser.add_argument("--run_scenes", help="Run scenes", action="store_true")
 
     # cfg-specific command line args
     parser.add_argument("--smoothness_base_weight", type=float)
@@ -209,17 +211,27 @@ if __name__ == '__main__':
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
+    if args.run_scenes:
+        init_joints = []
+        with open('./data/init_joints_tspace.csv', 'r') as f:
+            reader = csv.reader(f)
+            for row in reader:
+                init_joints.append([float(x) for x in row])
+        # init_joints = init_joints[:5]  # debug
+    else:
+        init_joints = [[0.0, -1.285, 0.0, -2.356, 0.0, 1.571, 0.785, 0.0, 0.04, 0.04]]
+
     # Iterate over objects in folder
-    for objname in os.listdir(f'{args.dset_root}/meshes'):
+    for objname in os.listdir(f'{args.dset_root}/meshes_bullet'):
         scene = PlanningScene(cfg)
-        for scene_idx in range(1):  # TODO
+        for scene_idx in range(len(init_joints)):
             metrics = init_metrics_entry(objname, scene_idx)
             video_writer = init_video_writer(f"{save_path}/videos", objname, scene_idx) if args.write_video else None
 
             objinfo = get_object_info(env, objname, args.dset_root)
-            env.reset(no_table=not cfg.table, objinfo=objinfo)
-            randomly_place_object(cfg, env)
-            obs = env._get_observation(get_pc=args.pc)
+            env.reset(init_joints=init_joints[scene_idx], no_table=not cfg.table, objinfo=objinfo)
+            place_object(env, cfg.tgt_pos, random=False, gravity=cfg.gravity)
+            obs = env._get_observation(get_pc=args.pc, single_view=False)
 
             # Scene has separate Env class which is used for planning
             # Add object to planning scene env
@@ -237,7 +249,7 @@ if __name__ == '__main__':
             draw_pose(T_w2o @ T_o2c)
 
             obj_prefix = f'{args.dset_root}/meshes_bullet'
-            scene.reset_env()
+            scene.reset_env(joints=init_joints[scene_idx])
             scene.env.add_object(objinfo['name'], trans, orn, obj_prefix=obj_prefix, abs_path=True)
             scene.env.add_plane(np.array([0.05, 0, -0.17]), np.array([1, 0, 0, 0]))
             scene.env.combine_sdfs()
