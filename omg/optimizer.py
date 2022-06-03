@@ -150,7 +150,8 @@ class Optimizer(object):
         if (info["terminate"] and not force_update) or info_only:
             return info
 
-        if self.cfg.goal_set_proj and self.cfg.method != 'GF_known': # snap to goal unless debugging GF
+        if self.cfg.goal_set_proj:
+            #  and 'GF_known' not in self.cfg.method: # snap to goal unless debugging GF
             update = self.goal_set_projection(traj, grad)
         else:
             # SGD
@@ -168,7 +169,7 @@ class Optimizer(object):
             self.v = self.b2*self.v + (1 - self.b2)*np.square(Agrad)
             hat_m = self.m / (1 - np.power(self.b1, tstep))
             hat_v = self.v / (1 - np.power(self.b2, tstep))
-            print(f"alpha: {self.alpha * (self.alpha_decay**tstep)}")
+            # print(f"alpha: {self.alpha * (self.alpha_decay**tstep)}")
             update = -self.alpha * (self.alpha_decay**tstep) * hat_m / (np.sqrt(hat_v) + self.eps)
 
             # LM

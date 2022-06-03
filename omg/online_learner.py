@@ -223,7 +223,12 @@ class Learner(object):
         """
         if self.env.cfg.method == 'GF_known':
             q_curr = torch.tensor(self.traj.data[-1], device='cpu', dtype=torch.float32).unsqueeze(0)
-            pose_ee = self.robot_model.forward_kinematics(q_curr)['panda_hand']
+            try:
+                pose_ee = self.robot_model.forward_kinematics(q_curr)['panda_hand']
+            except Exception as e:
+                print(e)
+                import IPython; IPython.embed()
+
             q_goals = torch.tensor(self.traj.goal_set, device='cpu', dtype=torch.float32)
             pose_goals = self.robot_model.forward_kinematics(q_goals)['panda_hand']
             logmaps = pose_goals.local(pose_ee).data  # tensor # N x 6
@@ -232,7 +237,11 @@ class Learner(object):
             target_idx = torch.argmin(norms)
         else:
             cur_end_point = self.traj.data[-1]
-            diff = cur_end_point - np.array(self.traj.goal_set)
+            try:
+                diff = cur_end_point - np.array(self.traj.goal_set)
+            except Exception as e: # no grasps in the goal set
+                print(e)
+                import IPython; IPython.embed()
             dists = np.linalg.norm(diff, axis=-1)
             target_idx = np.argmin(dists)
 

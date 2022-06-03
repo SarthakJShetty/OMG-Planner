@@ -132,6 +132,11 @@ class Planner(object):
         elif 'learned' in self.cfg.method:
             self.grasp_predictor = LearnedGrasp(ckpt_path=self.cfg.learnedgrasp_weights, single_shape_code=self.cfg.single_shape_code, dset_root=self.cfg.dset_root)
             self.setup_time = 0
+        elif 'CG' in self.cfg.method:
+            from bullet.methods.contact_graspnet import ContactGraspNetInference
+            self.grasp_predictor = ContactGraspNetInference()
+            # Run grasp predictor to set up grasp set
+            self.setup_time = 0
         else:
             raise NotImplementedError
 
@@ -804,7 +809,14 @@ class Planner(object):
 
                     T_o2b_np = self.get_T_obj2bot()
                     T_o2e_np = T_o2b_np @ T_b2e_np
+                    try:
+                        pr.check_matrix(T_o2e_np[:3, :3])
+                    except ValueError as e:
+                        print(e)
+                        print("normalizing matrix")
+                        T_o2e_np[:3, :3] = pr.norm_matrix(T_o2e_np[:3, :3])
                     pq_o2e_np = pt.pq_from_transform(T_o2e_np) # xyz wxyz
+                        
                     input_pq = torch.tensor(pq_o2e_np, device='cuda', dtype=torch.float32)
 
                     # Run network
@@ -843,6 +855,18 @@ class Planner(object):
 
                     # Visualization
                     draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
+
+                    # Initial IK
+                    # if t == 0 and self.cfg.use_initial_ik:
+                    #     # import IPython; IPython.embed()
+                    #     pq_b2g = pt.pq_from_transform(T_b2g_np) # wxyz
+                    #     seed = self.traj.start[:7]
+                    #     goal_ik = config.cfg.ROBOT.inverse_kinematics(
+                    #         pq_b2g[:3], ros_quat(pq_b2g[3:]), seed=seed
+                    #     )
+                        
+                        # update traj with goal_ik
+                        # traj
 
                     self.CHOMP_update(self.traj, pose_b2g, robot_model)
                 elif 'GF_known' in self.cfg.method:
