@@ -48,13 +48,15 @@ def init_cfg(args):
         cfg.fixed_endpoint = False
         # cfg.use_min_goal_cost_traj = False
         cfg.ol_alg = None
+        
+        # The following params are controlled as args so these don't reflect the values used
         cfg.smoothness_base_weight = 0.1  # 0.1 weight for smoothness cost in total cost
         cfg.base_obstacle_weight = 0.1  # 1.0 weight for obstacle cost in total cost
         cfg.base_grasp_weight = 5.0  # weight for grasp cost in total cost
         cfg.cost_schedule_boost = 1.0  # cost schedule boost for smoothness cost weight
         cfg.base_step_size = 0.3  # initial step size in gradient descent
         cfg.optim_steps = 250 # optimization steps for each planner call
-        # cfg.initial_ik = True # Use IK to initialize optimization
+        cfg.use_initial_ik = False # Use IK to initialize optimization
         cfg.pre_terminate = True  # terminate early if costs are below thresholds
         if 'single' in cfg.method:
             cfg.single_shape_code = True
@@ -62,7 +64,8 @@ def init_cfg(args):
             cfg.learnedgrasp_weights = args.ckpt
             cfg.goal_set_proj = False
         if 'known' in cfg.method: # Debug with known grasps
-            cfg.goal_set_proj = True
+            # cfg.goal_set_proj = True
+            cfg.remove_flip_grasp = False
     elif 'OMG' in cfg.method:       # OMG with apples to apples parameters
         cfg.goal_set_proj = True
         cfg.fixed_endpoint = False
@@ -77,7 +80,10 @@ def init_cfg(args):
             cfg.use_standoff = False
         elif 'orig' in cfg.method:      # original parameters
             cfg.use_standoff = True
-            cfg.disable_target_collision = True
+            if 'col' in cfg.method:
+                cfg.disable_target_collision = False
+            else:
+                cfg.disable_target_collision = True
     else:
         raise NotImplementedError
         # cfg.root_dir = '/data/manifolds/acronym_mini_bookonly/meshes_bullet'
@@ -197,6 +203,7 @@ if __name__ == '__main__':
     parser.add_argument("--optim_steps", type=int)
     parser.add_argument("--goal_thresh", type=float)
     parser.add_argument("--use_min_cost_traj", type=int)
+    parser.add_argument("--use_initial_ik", action='store_true')
 
     args = parser.parse_args()
     init_cfg(args)
@@ -210,6 +217,9 @@ if __name__ == '__main__':
         fieldnames = ['object_name', 'scene_idx', 'execution', 'planning', 'smoothness', 'collision', 'time']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
+    # save args
+    with open(f'{save_path}/args.yaml', 'w') as f:
+        yaml.dump(vars(args), f)
 
     if args.run_scenes:
         init_joints = []
