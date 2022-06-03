@@ -7,6 +7,7 @@ import pytransform3d.rotations as pr
 from .panda_env import PandaEnv
 from .utils import get_world2bot_transform, draw_pose, get_object_info, place_object
 import torch
+from manifold_grasping.generate_grasp_data.collect_dataset import random_transform
 import theseus as th
 from differentiable_robot_model.robot_model import (
     DifferentiableFrankaPanda,
@@ -55,7 +56,6 @@ while count < n_samples:
 
     # Randomly sample joints for robot
     if True:  # end effector
-        from manifold_grasping.generate_grasp_data.collect_dataset import random_transform
         T_world_bot = get_world2bot_transform()
 
         T_bot_tgt = np.eye(4)
@@ -77,7 +77,7 @@ while count < n_samples:
         pose_ee = robot_model.forward_kinematics(torch.tensor([joints]))['panda_hand']
         T_bot_ee = pose_ee.to_matrix().numpy()
         T_world_ee = T_world_bot @ T_bot_ee
-        if not np.allclose(T_world_ee, T_world_rand, atol=1e-05):
+        if not np.allclose(T_world_ee, T_world_rand, atol=1e-04):
             continue
 
         user_inp = input("save? (y/n): ")
