@@ -1,6 +1,6 @@
 python -m bullet.panda_scene \
-    --method=GF_learned_singleshape_minerr --write_video \
-    --no-render \
+    --method=GF_learned_shape_minerr --write_video \
+    --render \
     --eval_type=1obj_float_fixedpose_nograv \
     --smoothness_base_weight=0.1 \
     --base_obstacle_weight=0.7 \
@@ -9,8 +9,9 @@ python -m bullet.panda_scene \
     --optim_steps=250 \
     --goal_thresh=0.01 \
     --dset_root='/data/manifolds/acronym_mini_relabel' \
-    --ckpt='/data/manifolds/fb_runs/multirun/pq-pq_relabel_shape/2022-05-15_204054/lossl1_lr0.0001/default_default/8_8/checkpoints/epoch=479-step=161749.ckpt' \
-    -o /data/manifolds/pybullet_eval/$EXP_NAME
+    --pc \
+    --ckpt='/data/manifolds/fb_runs/multirun/pq-pq_relabel_shape100fps/2022-05-22_143051/0/default_default/94_94/checkpoints/epoch=465-step=555572.ckpt' \
+    -o /data/manifolds/pybullet_eval/dbg
 
 # python -m bullet.panda_scene \
 #     --method=GF_learned_shapelg_minerr --write_video \
