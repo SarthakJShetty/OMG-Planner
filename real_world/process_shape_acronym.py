@@ -123,6 +123,9 @@ if not os.path.exists(args.save_root):
 
 # Iterate over all meshes in acronym/meshes and process them into /outdir/objname_meshid/
 for obj_name in os.listdir(args.mesh_root):
+    # if 'Book' not in obj_name: # debug
+    #     continue
+    # import IPython; IPython.embed()
     for mesh_file in os.listdir(f"{args.mesh_root}/{obj_name}"):
         mesh_id = mesh_file.replace('.obj', '')
 
@@ -150,6 +153,13 @@ for obj_name in os.listdir(args.mesh_root):
 
                 ####### These two are mainly for rendering and simulation, needs update urdf if used in bullet
                 ####### This can be used for meshes with broken topology and add textures uvs
-                # blender_process.process_obj([save_dir]) # Don't think we need blender for this, the YCB objects don't seem to be processed versions?
-                gen_convex_shape.convexify_model_subprocess([mesh_path])
+                blender_process.process_obj(mesh_path)
+
+                ####### The convex shape can be used for bullet.
+                try:
+                    gen_convex_shape.convexify_model_subprocess([mesh_path])
+                except Exception as e:
+                    print(e)
+                    print("=================> need vhacd from bullet, see README")
+                
                 cp_urdf([mesh_path])
