@@ -32,7 +32,6 @@ import theseus as th
 from differentiable_robot_model.robot_model import (
     DifferentiableFrankaPanda,
 )
-from bullet.methods.learnedgrasp import LearnedGrasp
 
 
 def solve_one_pose_ik(input):
@@ -130,6 +129,7 @@ class Planner(object):
             self.setup_time = time.time() - start_time_
             self.learner = Learner(env, self.traj, self.cost)
         elif 'learned' in self.cfg.method:
+            from bullet.methods.learnedgrasp import LearnedGrasp
             self.grasp_predictor = LearnedGrasp(ckpt_path=self.cfg.learnedgrasp_weights, single_shape_code=self.cfg.single_shape_code, dset_root=self.cfg.dset_root)
             self.setup_time = 0
         elif 'CG' in self.cfg.method:

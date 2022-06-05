@@ -4,6 +4,103 @@
 
 ![image](assets/top.PNG)
 
+### GraspProject OMG installation
+Ubuntu 18.04, CUDA 11.1
+* `sudo apt install libx11-dev libeigen3-dev cmake mesa-common-dev cmake build-essential libgl1-mesa-dev freeglut3-dev libglfw3-dev libgles2-mesa-dev libassimp-dev assimp-utils ffmpeg`
+* `sudo ln -sh /usr/include/eigen3/Eigen Eigen`
+* `ln -s /usr/local/cuda/include/crt/math_functions.hpp /usr/local/cuda/include/math_functions.hpp`
+
+* `git clone https://github.com/liruiw/OMG-Planner.git --recursive`
+* Install miniconda3 and create the virtual env python 3.7.9
+    * `conda create --name gm_ndf python=3.7.9`
+    * `conda activate gm_ndf`
+    * `pip install -r requirements.txt`
+* Install [ycb_render](ycb_render)  
+
+    ```Shell
+    cd ycb_render
+    python setup.py develop
+    ```
+
+* Install Eigen from the Github source code [here](https://gitlab.com/libeigen/eigen)
+    ```
+    git clone https://gitlab.com/libeigen/eigen
+    cd eigen
+    mkdir build
+    cd build
+    cmake ..
+    sudo make install
+    ```
+
+* Install the submodule Sophus. Check if the submodule is correctly downloaded.
+
+    ```Shell
+    cd Sophus
+    mkdir build
+    cd build
+    cmake ..
+    make -j8
+    sudo make install
+    ```
+
+* Install torch
+    ```
+    pip install torch==1.8.1+cu111 torchvision==0.9.1+cu111 torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
+    ```
+    or
+    ```
+    conda install pytorch==1.8.0 cudatoolkit=11.1 -c pytorch -c conda-forge
+    ```
+
+* Compile the new layers under layers we introduce.
+    ```Shell
+    cd layers
+    python setup.py install
+    ```
+
+* Install the submodule PyKDL. Check this tutorial [here](https://git.ias.informatik.tu-darmstadt.de/lutter/ias_pykdl/blob/8b864ccf81763439ba5d45a359e1993208c2247c/pykdl.md) if there is any issue with installing PyKDL.
+
+    ```bash
+    conda install sip==4.19.9
+    cd orocos_kinematics_dynamics
+     
+    export ROS_PYTHON_VERSION=3
+    cd orocos_kdl
+    mkdir build; cd build;
+    cmake ..
+    make -j8; sudo make install
+      
+    cd ../../python_orocos_kdl
+    mkdir build; cd build;
+    cmake ..  -DPYTHON_VERSION=3.7.9 -DPYTHON_EXECUTABLE=~/miniconda3/envs/gm_ndf/bin/python3.7
+    make -j8;  cp PyKDL.so ~/miniconda3/envs/gm_ndf/lib/python3.7/site-packages/
+    ```
+
+* Install theseus
+    ```
+    conda install -c conda-forge scikit-learn scikit-sparse
+    git clone https://github.com/facebookresearch/theseus.git && cd theseus
+    pip install -e .
+    ```
+
+* Install acronym
+    ```
+    git clone https://github.com/thomasweng15/acronym
+    pip install -r requirements.txt
+    pip install -e .
+    ```
+
+* Now you can run the pybullet scene
+    ```
+    python -m bullet.panda_scene --method origOMG_known --eval_type 1obj_float_fixedpose_nograv --dset_root=/home/thomasweng/data/manifolds/acronym_mini_relabel -o=/home/thomasweng/data/manifolds/pybullet_eval/dbg
+    ```
+    or 
+    ```
+    python eval_scripts/run_eval.py --exp_name=dbg --data_root=/home/thomasweng/data/manifolds --trials=1 --render
+    ```
+
+
+
 ### Installation
 ```bash
 git clone https://github.com/liruiw/OMG-Planner.git --recursive
