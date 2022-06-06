@@ -63,8 +63,10 @@ def init_cfg(args):
             cfg.goal_set_proj = False
         if 'known' in cfg.method: # Debug with known grasps
             cfg.goal_set_proj = False
+            cfg.remove_flip_grasp = False
     elif 'OMG' in cfg.method:       # OMG with apples to apples parameters
         cfg.goal_set_proj = True
+        cfg.remove_flip_grasp = False
         cfg.fixed_endpoint = False
         cfg.ol_alg = 'MD'
         cfg.smoothness_base_weight = 0.1  # 0.1 weight for smoothness cost in total cost
