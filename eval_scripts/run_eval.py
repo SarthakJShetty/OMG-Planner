@@ -41,9 +41,9 @@ for var_cfg in exp_cfg.variants:
             f"--use_min_cost_traj={var_cfg.use_min_cost_traj} "
             f"--ckpt={var_cfg.ckpt} "
         )
-        if var_cfg.use_pc:
+        if 'use_pc' in var_cfg and var_cfg.use_pc:
             template += '--pc '
-        if var_cfg.use_initial_ik:
+        if 'use_initial_ik' in var_cfg and var_cfg.use_initial_ik:
             template += '--use_initial_ik '
 
     # check if there are existing dirs for this method for this experiment
