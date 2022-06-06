@@ -7,7 +7,7 @@ opencv-python==3.4.3.18
 transforms3d
 # torchvision
 # torch==1.4.0
-pillow
+pillow==8.3.2
 six==1.16.0
 IPython
 matplotlib
