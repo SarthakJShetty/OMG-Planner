@@ -22,7 +22,7 @@ for var_cfg in exp_cfg.variants:
         f"python -m bullet.panda_scene "
         f"--write_video "
         f"{render_flag} "
-        f"--eval_type=1obj_float_fixedpose_nograv "
+        f"--eval_type={exp_cfg.common.eval_type} "
         f"--run_scenes "
         f"--dset_root='{args.data_root}/acronym_mini_relabel' "
         f"-o {args.data_root}/pybullet_eval/{args.exp_name} "

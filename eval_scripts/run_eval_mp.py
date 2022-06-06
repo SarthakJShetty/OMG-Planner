@@ -31,7 +31,7 @@ for var_cfg in exp_cfg.variants:
         f"python -m bullet.panda_scene "
         f"--write_video "
         f"{render_flag} "
-        f"--eval_type=1obj_float_fixedpose_nograv "
+        f"--eval_type={exp_cfg.common.eval_type} "
         f"--run_scenes "
         f"--dset_root='{args.data_root}/acronym_mini_relabel' "
         f"-o {args.data_root}/pybullet_eval/{args.exp_name} "
@@ -50,10 +50,10 @@ for var_cfg in exp_cfg.variants:
             f"--use_min_cost_traj={var_cfg.use_min_cost_traj} "
             f"--ckpt={var_cfg.ckpt} "
         )
-        if var_cfg.use_pc:
+        if 'use_pc' in var_cfg and var_cfg.use_pc:
             template += '--pc '
-        if var_cfg.use_initial_ik:
-            template += '--use_initial_ik'
+        if 'use_initial_ik' in var_cfg and var_cfg.use_initial_ik:
+            template += '--use_initial_ik '
 
     # check if there are existing dirs for this method for this experiment
     # only run up to max n_trials accounting for existing trials

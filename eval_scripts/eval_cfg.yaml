@@ -1,4 +1,6 @@
 common:
+  eval_type: 1obj_float_rotpose_nograv
+  # eval_type: 1obj_float_fixedpose_nograv
 variants:
   # - method: GF_learned_shape_minerr
   #   ckpt: /data/manifolds/fb_runs/multirun/pq-pq_relabel_shape100fps_bulletpcs/2022-05-31_141653/augoff/default_default/26_26/checkpoints/epoch=127-step=172564.ckpt
@@ -10,18 +12,18 @@ variants:
   #   ckpt: null
   #   use_min_cost_traj: 0
   #   use_pc: 0
-  # - method: origOMG_known_col
-  #   ckpt: null
-  #   use_min_cost_traj: 0
-  #   use_pc: 0
-  # - method: compOMG_known
-  #   ckpt: null
-  #   use_min_cost_traj: 0
-  #   use_pc: 0
-  # - method: GF_known
-  #   ckpt: null
-  #   use_min_cost_traj: 0
-  #   use_pc: 0
+  - method: origOMG_known_col
+    ckpt: null
+    use_min_cost_traj: 0
+    use_pc: 0
+  - method: compOMG_known
+    ckpt: null
+    use_min_cost_traj: 0
+    use_pc: 0
+  - method: GF_known
+    ckpt: null
+    use_min_cost_traj: 0
+    use_pc: 0
   - method: GF_known_mincosttraj
     ckpt: null 
     use_min_cost_traj: 1
