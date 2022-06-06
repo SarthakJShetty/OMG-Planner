@@ -62,13 +62,10 @@ def init_cfg(args):
             cfg.learnedgrasp_weights = args.ckpt
             cfg.goal_set_proj = False
         if 'known' in cfg.method: # Debug with known grasps
-            # cfg.goal_set_proj = True
-            # cfg.remove_flip_grasp = False
-            pass
+            cfg.goal_set_proj = False
     elif 'OMG' in cfg.method:       # OMG with apples to apples parameters
         cfg.goal_set_proj = True
         cfg.fixed_endpoint = False
-        # cfg.remove_flip_grasp = False
         cfg.ol_alg = 'MD'
         cfg.smoothness_base_weight = 0.1  # 0.1 weight for smoothness cost in total cost
         cfg.base_obstacle_weight = 1.0  # 1.0 weight for obstacle cost in total cost

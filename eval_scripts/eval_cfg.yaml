@@ -6,10 +6,10 @@ variants:
   #   use_pc: 1
   #   use_initial_ik: 1
 
-  - method: origOMG_known
-    ckpt: null
-    use_min_cost_traj: 0
-    use_pc: 0
+  # - method: origOMG_known
+  #   ckpt: null
+  #   use_min_cost_traj: 0
+  #   use_pc: 0
   # - method: origOMG_known_col
   #   ckpt: null
   #   use_min_cost_traj: 0
@@ -22,10 +22,10 @@ variants:
   #   ckpt: null
   #   use_min_cost_traj: 0
   #   use_pc: 0
-  # - method: GF_known_mincosttraj
-  #   ckpt: null 
-  #   use_min_cost_traj: 1
-  #   use_pc: 0
+  - method: GF_known_mincosttraj
+    ckpt: null 
+    use_min_cost_traj: 1
+    use_pc: 0
 
   # - method: GF_learned_1hot_minerr
   #   ckpt: /data/manifolds/fb_runs/multirun/pq-pq_mini_relabel/2022-05-27_161440/0/default_default/15_15/checkpoints/epoch=675-step=909345.ckpt
