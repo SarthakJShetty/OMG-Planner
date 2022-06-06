@@ -39,14 +39,12 @@ def init_cfg(args):
         cfg.tgt_pos = [0.5, 0.0, 0.5]
     else:
         raise NotImplementedError
-        # [-0.05, -0.5, -1.1]
 
     cfg.method = args.method
     if 'GF' in cfg.method:
         # pq input -> pq output
         cfg.use_goal_grad = True
         cfg.fixed_endpoint = False
-        # cfg.use_min_goal_cost_traj = False
         cfg.ol_alg = None
         
         # The following params are controlled as args so these don't reflect the values used
@@ -65,11 +63,12 @@ def init_cfg(args):
             cfg.goal_set_proj = False
         if 'known' in cfg.method: # Debug with known grasps
             # cfg.goal_set_proj = True
-            cfg.remove_flip_grasp = False
+            # cfg.remove_flip_grasp = False
+            pass
     elif 'OMG' in cfg.method:       # OMG with apples to apples parameters
         cfg.goal_set_proj = True
         cfg.fixed_endpoint = False
-        cfg.remove_flip_grasp = False
+        # cfg.remove_flip_grasp = False
         cfg.ol_alg = 'MD'
         cfg.smoothness_base_weight = 0.1  # 0.1 weight for smoothness cost in total cost
         cfg.base_obstacle_weight = 1.0  # 1.0 weight for obstacle cost in total cost
@@ -86,10 +85,6 @@ def init_cfg(args):
                 cfg.disable_target_collision = True
     else:
         raise NotImplementedError
-        # cfg.root_dir = '/data/manifolds/acronym_mini_bookonly/meshes_bullet'
-        # debug method using fixed grasp
-        # cfg.ol_alg = 'Baseline'
-        # cfg.goal_idx = -1
 
     # Command-line overrides
     dict_args = vars(args)
@@ -98,54 +93,6 @@ def init_cfg(args):
             cfg[key] = dict_args[key]
 
     cfg.get_global_param()
-
-# def get_object_info(env, objname, dset_root):
-#     # Load object urdf and grasps
-#     objhash = os.listdir(f'{dset_root}/meshes/{objname}')[0].replace('.obj', '')  # [HASH]
-#     grasp_h5s = os.listdir(f'{dset_root}/grasps')
-#     grasp_prefix = f'{objname}_{objhash}'  # for example: Book_[HASH]
-#     for grasp_h5 in grasp_h5s:  # Get file in grasps/ corresponding to this object, hash, and scale
-#         if grasp_prefix in grasp_h5:
-#             graspfile = grasp_h5
-#             scale = graspfile.split('_')[-1].replace('.h5', '')
-#             break
-
-#     obj_mesh, T_ctr2obj = load_mesh(f'{dset_root}/grasps/{graspfile}', scale=scale, mesh_root_dir=dset_root, load_for_bullet=True)
-
-#     # Load env
-#     objinfo = {
-#         'name': f'{grasp_prefix}_{scale}',
-#         'urdf_dir': f'{dset_root}/meshes_bullet/{grasp_prefix}_{scale}/model_normalized.urdf',
-#         'scale': float(scale),
-#         'T_ctr2obj': T_ctr2obj
-#     }
-#     return objinfo
-
-
-# def randomly_place_object(cfg, env):
-#     # place single object
-#     T_w2b = get_world2bot_transform()
-
-#     T_rand = get_random_transform(cfg)
-
-#     # Apply object to centroid transform
-#     T_ctr2obj = env.objinfos[0]['T_ctr2obj']
-
-#     T_w2o = T_w2b @ T_rand @ T_ctr2obj
-#     # draw_pose(T_w2b @ T_rand)
-#     # print(T_w2o)
-#     pq_w2o = pt.pq_from_transform(T_w2o)  # wxyz
-
-#     p.resetBasePositionAndOrientation(
-#         env._objectUids[0],
-#         pq_w2o[:3],
-#         pr.quaternion_xyzw_from_wxyz(pq_w2o[3:])
-#     )
-#     p.resetBaseVelocity(env._objectUids[0], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
-
-#     if cfg.gravity:
-#         for i in range(10000):
-#             p.stepSimulation()
 
 
 def init_metrics_entry(object_name, scene_idx):
@@ -183,8 +130,10 @@ def init_dirs(out_dir, cfg, prefix=''):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--method", help="which method to use", required=True)
-        # , choices=['compOMG_known', 'origOMG_known', 'GF_learned_1hot', 'GF_learned_shape', 'GF_known'])
-    parser.add_argument("--eval_type", help="which eval to run", required=True, choices=['1obj_float_fixedpose_nograv'])
+    parser.add_argument("--eval_type", help="which eval to run", required=True, choices=[
+        '1obj_float_fixedpose_nograv', 
+        '1obj_float_fixedpose_nograv_rndjnts', 
+        '1obj_float_rotpose_nograv'])
     parser.add_argument("--ckpt", help="which weights to use for our method", default='/data/manifolds/fb_runs/multirun/pq-pq_mini/2022-05-10_221352/lossl1_lr0.0001/default_default/1_1/checkpoints/epoch=109-step=37605.ckpt')
     parser.add_argument("--dset_root", help="mesh root", type=str, default="/data/manifolds/acronym_mini")
     parser.add_argument("-o", "--out_dir", help="Directory to save experiment to", type=str, default="/data/manifolds/pybullet_eval/dbg")
@@ -221,26 +170,44 @@ if __name__ == '__main__':
     with open(f'{save_path}/args.yaml', 'w') as f:
         yaml.dump(vars(args), f)
 
-    if args.run_scenes:
-        init_joints = []
+    if args.run_scenes and 'rotpose' in args.eval_type:
+        scenes = []
+        with open('./data/object_rotations.csv', 'r') as f:
+            reader = csv.reader(f)
+            for row in reader:
+                scene = {
+                    'joints': [0.0, -1.285, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04],
+                    'obj_rot': pr.quaternion_wxyz_from_xyzw([float(x) for x in row[3:]])
+                }
+                scenes.append(scene)
+    elif args.run_scenes and 'rndjnts' in args.eval_type: 
+        scenes = []
         with open('./data/init_joints_tspace.csv', 'r') as f:
             reader = csv.reader(f)
             for row in reader:
-                init_joints.append([float(x) for x in row])
-        # init_joints = init_joints[:5]  # debug
+                scene = {
+                    'joints': [float(x) for x in row],
+                    'obj_rot': [0, 0, 0, 1]
+                }
+                scenes.append(scene)
     else:
-        init_joints = [[0.0, -1.285, 0.0, -2.356, 0.0, 1.571, 0.785, 0.0, 0.04, 0.04]]
+        scenes = [
+            {
+                "joints": [0.0, -1.285, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04],
+                "obj_rot": [0, 0, 0, 1]
+            }
+        ]
 
     # Iterate over objects in folder
     for objname in os.listdir(f'{args.dset_root}/meshes_bullet'):
         scene = PlanningScene(cfg)
-        for scene_idx in range(len(init_joints)):
+        for scene_idx in range(len(scenes)):
             metrics = init_metrics_entry(objname, scene_idx)
             video_writer = init_video_writer(f"{save_path}/videos", objname, scene_idx) if args.write_video else None
 
             objinfo = get_object_info(env, objname, args.dset_root)
-            env.reset(init_joints=init_joints[scene_idx], no_table=not cfg.table, objinfo=objinfo)
-            place_object(env, cfg.tgt_pos, random=False, gravity=cfg.gravity)
+            env.reset(init_joints=scenes[scene_idx]['joints'], no_table=not cfg.table, objinfo=objinfo)
+            place_object(env, cfg.tgt_pos, q=scenes[scene_idx]['obj_rot'], random=False, gravity=cfg.gravity)
             obs = env._get_observation(get_pc=args.pc, single_view=False)
 
             # Scene has separate Env class which is used for planning
@@ -259,7 +226,7 @@ if __name__ == '__main__':
             draw_pose(T_w2o @ T_o2c)
 
             obj_prefix = f'{args.dset_root}/meshes_bullet'
-            scene.reset_env(joints=init_joints[scene_idx])
+            scene.reset_env(joints=scenes[scene_idx]['joints'])
             scene.env.add_object(objinfo['name'], trans, orn, obj_prefix=obj_prefix, abs_path=True)
             scene.env.add_plane(np.array([0.05, 0, -0.17]), np.array([1, 0, 0, 0]))
             scene.env.combine_sdfs()
@@ -289,7 +256,6 @@ if __name__ == '__main__':
 
             # Convert avi to high quality gif 
             if args.write_video and info != []:
-                # os.system(f'ffmpeg -y -i {save_path}/videos/{objname}_{scene_idx}.avi -vf "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 {save_path}/gifs/{objname}_{scene_idx}.gif')
                 subprocess.Popen(['ffmpeg', '-y', '-i', f'{save_path}/videos/{objname}_{scene_idx}.avi', '-vf', "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse", '-loop', '0', f'{save_path}/gifs/{objname}_{scene_idx}.gif'])
 
     # import IPython; IPython.embed()

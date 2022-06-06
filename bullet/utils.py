@@ -130,25 +130,36 @@ def get_object_info(env, objname, mesh_root):
     }
     return objinfo
 
-def get_random_transform(pos):
-    """Currently this is not a random transform"""
+def get_random_transform(pos, q=None, random=False):
     T_rand = np.eye(4)
     T_rand[:3, 3] = pos
-    # T_rand[:3, 3] = [0.5, 0.0, 0.5]
-    # T_rand[:3, 3] = [0.5, 0.0, 0.1]
 
-    # if cfg.vary_obj_pose:
-        # TODO cache and load random scenes
-        # raise NotImplementedError
+    if q is not None:
+        T_rand[:3, :3] = pr.matrix_from_quaternion(q)
+    elif random: 
+        q = pr.random_quaternion()
+        T_rand[:3, :3] = pr.matrix_from_quaternion(q)
 
     return T_rand
 
 
-def place_object(env, target_pos, random=False, gravity=False):
+def place_object(env, target_pos, q=None, random=False, gravity=False):
+    """_summary_
+
+    Args:
+        env (_type_): _description_
+        target_pos (_type_): _description_
+        q (_type_, optional): _description_. Defaults to None. The object rotation as an wxyz quaternion
+        random (bool, optional): _description_. Defaults to False. Whether to sample a random rotation
+        gravity (bool, optional): _description_. Defaults to False.
+
+    Returns:
+        _type_: _description_
+    """
     # place single object
     T_w2b = get_world2bot_transform()
-
-    T_rand = get_random_transform(target_pos)
+ 
+    T_rand = get_random_transform(target_pos, q=q, random=random)
 
     # Apply object to centroid transform
     T_ctr2obj = env.objinfos[0]['T_ctr2obj']
