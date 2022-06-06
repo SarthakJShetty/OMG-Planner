@@ -64,7 +64,7 @@ def init_cfg(args):
             cfg.learnedgrasp_weights = args.ckpt
             cfg.goal_set_proj = False
         if 'known' in cfg.method: # Debug with known grasps
-            # cfg.goal_set_proj = True
+            cfg.goal_set_proj = False
             cfg.remove_flip_grasp = False
     elif 'OMG' in cfg.method:       # OMG with apples to apples parameters
         cfg.goal_set_proj = True
