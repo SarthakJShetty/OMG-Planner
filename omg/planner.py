@@ -124,8 +124,7 @@ class Planner(object):
         if 'known' in self.cfg.method:
             start_time_ = time.time()
             self.load_grasp_set(env)
-            # self.setup_goal_set(env, filter_collision=False)
-            self.setup_goal_set(env)
+            self.setup_goal_set(env, filter_collision=self.cfg.filter_collision)
             self.grasp_init(env)
             self.setup_time = time.time() - start_time_
             self.learner = Learner(env, self.traj, self.cost)

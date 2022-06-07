@@ -33,12 +33,17 @@ def init_cfg(args):
     cfg.eval_type = args.eval_type
     cfg.vary_obj_pose = False if 'fixedpose' in cfg.eval_type else True
     cfg.gravity = False if 'nograv' in cfg.eval_type else True
-    if '1obj_float_fixedpose_nograv':
+    if '1obj_float' in cfg.eval_type:
         cfg.table = False
         cfg.cam_look = [-0.05, -0.5, -0.6852]
         cfg.tgt_pos = [0.5, 0.0, 0.5]
     else:
         raise NotImplementedError
+
+    if not args.filter_collisions:
+        cfg.filter_collision = False
+    else:
+        cfg.filter_collision = True
 
     cfg.method = args.method
     if 'GF' in cfg.method:
@@ -142,6 +147,7 @@ if __name__ == '__main__':
     parser.add_argument("--prefix", help="prefix for variant name", default="")
     parser.add_argument("--pc", help="get point cloud with observation", action="store_true")
     parser.add_argument("--run_scenes", help="Run scenes", action="store_true")
+    parser.add_argument("--no-filter-collisions", dest="filter_collisions", help="Filter collisions from grasp set", action="store_false")
 
     # cfg-specific command line args
     parser.add_argument("--smoothness_base_weight", type=float)
