@@ -124,6 +124,7 @@ class Planner(object):
         if 'known' in self.cfg.method:
             start_time_ = time.time()
             self.load_grasp_set(env)
+            # self.setup_goal_set(env, filter_collision=False)
             self.setup_goal_set(env)
             self.grasp_init(env)
             self.setup_time = time.time() - start_time_
@@ -440,6 +441,12 @@ class Planner(object):
                                 grasps_v = [create_gripper_marker(color=[0, 0, 255]).apply_transform(T) for T in (T_ctr2obj @ Ts_obj2rotgrasp)[:50]]
                                 m = obj_mesh.apply_transform(T_ctr2obj)
                                 trimesh.Scene([m] + grasps_v).show()
+
+                            if False:
+                                T = get_world2bot_transform()
+                                T_b2o = pt.transform_from_pq(target_obj.pose)
+                                T_w2o = T @ T_b2o
+                                [draw_pose(T @ T_b2o @ x) for x in pose_grasp[:50]]
                         else:
                             simulator_path = (
                                 self.cfg.robot_model_path

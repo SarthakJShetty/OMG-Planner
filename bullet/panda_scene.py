@@ -243,10 +243,16 @@ if __name__ == '__main__':
 
             # Save data
             metrics['execution'] = grasp_success
-            metrics['planning'] = info[-1]['execute']
-            metrics['smoothness'] = info[-1]['smooth']
-            metrics['collision'] = info[-1]['obs']
-            metrics['time'] = info[-1]['time']
+            if info != []:
+                metrics['planning'] = info[-1]['execute']
+                metrics['smoothness'] = info[-1]['smooth']
+                metrics['collision'] = info[-1]['obs']
+                metrics['time'] = info[-1]['time']
+            else:
+                metrics['planning'] = np.nan 
+                metrics['smoothness'] = np.nan
+                metrics['collision'] = np.nan
+                metrics['time'] = np.nan
             with open(f'{save_path}/metrics.csv', 'a', newline='') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writerow(metrics)
