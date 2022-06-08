@@ -117,26 +117,13 @@ class Optimizer(object):
         return update
 
     def init(self, traj):
-        # SGD with momentum
-        # self.alpha = 0.05
-        # self.momentum = 0.9
-        # self.v_curr = 0.0
-        # self.v_next = 0.0
-
-        # Adam
-        self.alpha = 0.03
-        self.alpha_decay = 0.999
-        self.b1 = 0.9
-        self.b2 = 0.999
-        self.eps = 1e-8
-        self.m = 0 # first moment vector
-        self.v = 0 # second moment vector
-
-        # LM
-        # https://en.wikipedia.org/wiki/Levenberg%E2%80%93Marquardt_algorithm#Choice_of_damping_parameter
-        # https://github.com/CalciferZh/Minimal-IK/blob/master/solver.py
-        # self.damping = 1e-3
-        # self.nu = 1.5
+        if self.cfg.chomp_adam:
+            self.step_decay = 0.999
+            self.b1 = 0.9
+            self.b2 = 0.999
+            self.eps = 1e-8
+            self.m = 0 # first moment vector
+            self.v = 0 # second moment vector
 
     def optimize(self, traj, force_update=False, info_only=False, tstep=None):
         """
@@ -154,47 +141,16 @@ class Optimizer(object):
             #  and 'GF_known' not in self.cfg.method: # snap to goal unless debugging GF
             update = self.goal_set_projection(traj, grad)
         else:
-            # SGD
-            # update = -self.cfg.step_size * self.cfg.Ainv.dot(grad)
-
-            # SGD with Momentum
-            # Agrad = self.cfg.Ainv.dot(grad)
-            # self.v_next = self.momentum*self.v_curr + Agrad
-            # update = -self.alpha * self.v_next
-            # self.v_curr = self.v_next
-
-            # Adam
-            Agrad = self.cfg.Ainv.dot(grad) # 30 x 9
-            self.m = self.b1*self.m + (1 - self.b1)*Agrad
-            self.v = self.b2*self.v + (1 - self.b2)*np.square(Agrad)
-            hat_m = self.m / (1 - np.power(self.b1, tstep))
-            hat_v = self.v / (1 - np.power(self.b2, tstep))
-            # print(f"alpha: {self.alpha * (self.alpha_decay**tstep)}")
-            update = -self.alpha * (self.alpha_decay**tstep) * hat_m / (np.sqrt(hat_v) + self.eps)
-
-            # LM
-            # jac = traj.jac.numpy()
-            # mse = traj.goal_cost
-            # last_mse = traj.last_goal_cost
-            # # params 
-
-            # jtj = np.matmul(jac.T, jac) # 9 x 9
-            # jtj = jtj + self.damping * np.eye(jtj.shape[0])
-
-            # update = last_mse - mse
-            # delta = np.matmul(
-            #     np.matmul(np.linalg.inv(jtj), jac.T), # 9 x 6
-            #     residual # 6 x 1
-            # ).ravel()
-            # params -= delta
-
-            # if update > last_update and update > 0:
-            #     self.damping /= self.nu
-            # else:
-            #     self.damping *= self.nu
-
-            # last_update = update
-            # last_mse = mse
+            if self.cfg.chomp_adam:  # Adam
+                Agrad = self.cfg.Ainv.dot(grad) # 30 x 9
+                self.m = self.b1*self.m + (1 - self.b1)*Agrad
+                self.v = self.b2*self.v + (1 - self.b2)*np.square(Agrad)
+                hat_m = self.m / (1 - np.power(self.b1, tstep))
+                hat_v = self.v / (1 - np.power(self.b2, tstep))
+                # print(f"alpha: {self.alpha * (self.alpha_decay**tstep)}")
+                update = -self.cfg.step_size * (self.step_decay**tstep) * hat_m / (np.sqrt(hat_v) + self.eps)
+            else:  # SGD
+                update = -self.cfg.step_size * self.cfg.Ainv.dot(grad)
 
         traj.update(update)
         traj.set(self.handle_joint_limit(traj.data))
