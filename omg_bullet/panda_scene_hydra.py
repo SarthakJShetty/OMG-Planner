@@ -21,6 +21,7 @@ import cv2
 import subprocess
 import yaml
 import hydra
+from hydra.utils import get_original_cwd
 from omegaconf import OmegaConf
 from omegaconf.listconfig import ListConfig
 
@@ -155,7 +156,7 @@ def get_scenes(hydra_cfg):
     scenes = []
     if hydra_cfg.run_scenes:
         if hydra_cfg.eval.obj_csv is not None:
-            with open(Path(os.path.dirname(__file__)) / ".." / hydra_cfg.eval.obj_csv, 'r') as f:
+            with open(Path(get_original_cwd()) / ".." / hydra_cfg.eval.obj_csv, 'r') as f:
                 reader = csv.reader(f)
                 for row in reader:
                     scene = {
@@ -164,7 +165,7 @@ def get_scenes(hydra_cfg):
                     }
                     scenes.append(scene)
         elif hydra_cfg.eval.joints_csv is not None:
-            with open(Path(os.path.dirname(__file__)) / ".." / hydra_cfg.eval.joints_csv, 'r') as f:
+            with open(Path(get_original_cwd()) / ".." / hydra_cfg.eval.joints_csv, 'r') as f:
                 reader = csv.reader(f)
                 for row in reader:
                     scene = {
@@ -225,7 +226,8 @@ def set_scene_env(scene, uid, objinfo, joints, hydra_cfg):
     scene.reset(lazy=True)
     
 
-@hydra.main(config_path=f'{os.path.dirname(__file__)}/../config', config_name="panda_scene")
+@hydra.main(config_path=str(Path(os.path.dirname(__file__)) / '..' / 'config'), 
+            config_name="panda_scene", version_base=None)
 def main(hydra_cfg):
     merge_cfgs(hydra_cfg, cfg)
     init_dir(hydra_cfg)

@@ -1,13 +1,14 @@
 data_root: /home/thomasweng/data/manifolds
 experiment: dbg
 dataset: acronym_mini_relabel
-# out_dir: ${data_dir}/pybullet_eval/${exp_name}
 
 defaults:
-  - eval/1obj_float_rotpos_nograv
-  - variant/origOMG_known
+  - eval: 1obj_float_rotpos_nograv
+  - variant: origOMG_known_col
 
 hydra:
+  job:
+    chdir: True
   run:
     dir: ${data_root}/pybullet_eval/${experiment}/${variant.method}_${now:%Y-%m-%d_%H%M%S}
 
@@ -16,23 +17,8 @@ render: True
 write_video: True
 run_scenes: True # run full evaluation
 
-# Planning configs
-# filter_collisions: False
-# smoothness_base_weight: 0.1
-# base_obstacle_weight: 0.7
-# base_grasp_weight: 10.0
-# base_step_size: 0.2
-# optim_steps: 300
-# goal_thresh: 0.01
-# use_min_cost_traj: True
-# use_initial_ik: False
-
-# Learned methods configs
-# pc: False
-# ckpt: null
-
 # Other configs
 vis: False
 window_width: 200
 window_height: 200 
-  
+ 
