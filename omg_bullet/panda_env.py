@@ -26,6 +26,7 @@ from .utils import draw_pose
 
 import trimesh
 from acronym_tools import create_gripper_marker
+from pathlib import Path
 
 
 class PandaEnv:
@@ -238,15 +239,16 @@ class PandaEnv:
             )
 
         # Initialize objects
+        fpath = Path(os.path.dirname(__file__))
         plane_file = "data/objects/floor"
         table_file = "data/objects/table/models"
         self.plane_id = p.loadURDF(
-            os.path.join(plane_file, 'model_normalized.urdf'),
+            str(fpath / '..' / plane_file / 'model_normalized.urdf'),
             [0 - self._shift[0], 0 - self._shift[1], -0.82 - self._shift[2]]
         )
         table_z = -5 if no_table else -0.82 - self._shift[2]
         self.table_id = p.loadURDF(
-            os.path.join(table_file, 'model_normalized.urdf'),
+            str(fpath / '..' / table_file / 'model_normalized.urdf'),
             0.5 - self._shift[0],
             0.0 - self._shift[1],
             table_z,

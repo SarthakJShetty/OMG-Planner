@@ -17,7 +17,7 @@ import torch
 import pytransform3d.rotations as pr
 import pytransform3d.transformations as pt
 
-from bullet.utils import draw_pose, get_world2bot_transform
+from omg_bullet.utils import draw_pose, get_world2bot_transform
 import numpy as np
 # from .viz_trimesh import visualize_predicted_grasp, trajT_to_grasppredT, grasppredT_to_trajT
 # import pytorch3d.transforms as ptf

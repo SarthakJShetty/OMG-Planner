@@ -131,6 +131,9 @@ def init_dirs(out_dir, cfg, prefix=''):
     return str(save_path)
 
 
+
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--method", help="which method to use", required=True)

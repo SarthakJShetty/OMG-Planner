@@ -1,0 +1,16 @@
+# Evaluation configs
+method: origOMG_known_col
+use_standoff: True
+disable_target_collision: False
+filter_collision: False
+
+goal_set_proj: True
+remove_flip_grasp: False
+fixed_endpoint: True
+ol_alg: 'MD'
+smoothness_base_weight: 0.1
+base_obstacle_weight: 1.0
+cost_schedule_boost: 1.02
+base_step_size: 0.1
+optim_steps: 50
+pre_terminate: True

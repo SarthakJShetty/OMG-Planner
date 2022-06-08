@@ -30,6 +30,7 @@ class Trajectory(object):
             self.goal_grad = None
         else:
             self.end = np.array([-0.99, -1.74, -0.61, -3.04, 0.88, 1.21, -1.12, 0.04, 0.04])
+            self.goal_cost = 0
         self.interpolate_waypoints(mode=config.cfg.traj_interpolate)
 
     def update(self, grad):

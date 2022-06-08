@@ -138,9 +138,13 @@ cfg.dset_root = ''
 cfg.eval_type = ''  # type of evaluation to run
 cfg.gravity = False  # whether gravity should be on
 cfg.table = False  # whether table should be present in scene
-cfg.vary_obj_pose = False # whether to vary object pose
+cfg.cam_look = []
+cfg.tgt_pos = []
+# cfg.vary_obj_pose = False # whether to vary object pose
 cfg.single_shape_code = False 
 cfg.use_initial_ik = False # Use IK at the start of trajectory optimization (for our method)
+cfg.filter_collision = True
+cfg.pc = False
 
 """ global function """
 def get_derivative(data, start, end, diff_rule=1):
