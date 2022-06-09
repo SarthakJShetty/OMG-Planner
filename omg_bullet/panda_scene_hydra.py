@@ -103,9 +103,11 @@ def get_scenes(hydra_cfg):
     return scenes
 
 
-def save_metrics(grasp_success, info):
+def save_metrics(objname, scene_idx, grasp_success, info):
     has_plan = info != []
     metrics = {
+        'object_name': objname,
+        'scene_idx': scene_idx,
         'execution': grasp_success,
         'planning': info[-1]['execute'] if has_plan else np.nan,
         'smoothness': info[-1]['smooth'] if has_plan else np.nan,
@@ -173,7 +175,7 @@ def main(hydra_cfg):
             video_writer = init_video_writer(Path(os.getcwd()) / 'videos', objname, scene_idx) if hydra_cfg.write_video else None
             grasp_success = bullet_execute_plan(env, plan, hydra_cfg.write_video, video_writer)
 
-            save_metrics(grasp_success, info)
+            save_metrics(objname, scene_idx, grasp_success, info)
             cwd = Path(os.getcwd())
             np.savez(cwd / 'info' / f'{objname}_{scene_idx}', info=info, trajs=scene.planner.history_trajectories)
 
