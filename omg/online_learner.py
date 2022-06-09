@@ -285,8 +285,9 @@ class Learner(object):
 
         goal_idx_old = self.traj.goal_idx
         self.traj.goal_idx = np.argmax(self.p)
-        if self.cfg.method != 'GF_known':
-            self.traj.end = self.traj.goal_set[self.traj.goal_idx]
+        # if 'GF_known' not in self.cfg.method:
+        #     self.traj.end = self.traj.goal_set[self.traj.goal_idx]
+        self.traj.end = self.traj.goal_set[self.traj.goal_idx]
         self.Ti[self.traj.goal_idx] += 1
         self.Tis.append(self.Ti)
         return self.traj.goal_idx != goal_idx_old

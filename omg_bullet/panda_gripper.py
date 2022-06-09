@@ -10,7 +10,7 @@ import numpy as np
 # adapted from https://github.com/bryandlee/franka_pybullet/tree/ac86319a0b2f6c863ba3c7ee3d52f4f51b2be3bd
 class Panda:
     def __init__(
-        self, stepsize=1e-3, realtime=0, init_joints=None, base_shift=[0, 0, 0]
+        self, stepsize=1e-3, realtime=0, init_joints=None, base_shift=[0, 0, 0], viz=False
     ):
         self.t = 0.0
         self.stepsize = stepsize
@@ -63,11 +63,18 @@ class Panda:
         p.setAdditionalSearchPath(current_dir + "/models")
 
         flags = p.URDF_ENABLE_CACHED_GRAPHICS_SHAPES
-        self.robot = p.loadURDF(
-            "panda/panda_gripper.urdf",
-            useFixedBase=True,
-            flags=p.URDF_USE_SELF_COLLISION,
-        )
+        if viz:
+            self.robot = p.loadURDF(
+                "panda/panda_gripper_nocol.urdf",
+                useFixedBase=True,
+                # flags=p.URDF_USE_SELF_COLLISION,
+            )
+        else:
+            self.robot = p.loadURDF(
+                "panda/panda_gripper.urdf",
+                useFixedBase=True,
+                flags=p.URDF_USE_SELF_COLLISION,
+            )
         self._base_position = [
             -0.05 - base_shift[0],
             0.0 - base_shift[1],

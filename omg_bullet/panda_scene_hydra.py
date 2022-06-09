@@ -47,84 +47,6 @@ def merge_cfgs(hydra_cfg, cfg):
         if key in cfg.keys():
             val = hydra_cfg[key]
             cfg[key] = val if type(val) != ListConfig else list(val)
-
-    cfg.get_global_param()
-
-def init_cfg(args):
-    """
-    Modify cfg based on command line arguments.
-    """
-    # cfg.render = args.render
-    cfg.vis = False  
-    cfg.window_width = 200
-    cfg.window_height = 200
-
-    cfg.eval_type = args.eval_type
-    # cfg.vary_obj_pose = False if 'fixedpose' in cfg.eval_type else True
-    cfg.gravity = False if 'nograv' in cfg.eval_type else True
-    if '1obj_float' in cfg.eval_type:
-        cfg.table = False
-        cfg.cam_look = [-0.05, -0.5, -0.6852]
-        cfg.tgt_pos = [0.5, 0.0, 0.5]
-    else:
-        raise NotImplementedError
-
-    if not args.filter_collisions:
-        cfg.filter_collision = False
-    else:
-        cfg.filter_collision = True
-
-    cfg.method = args.method
-    if 'GF' in cfg.method:
-        # pq input -> pq output
-        cfg.use_goal_grad = True
-        cfg.fixed_endpoint = False
-        cfg.ol_alg = None
-        
-        # The following params are controlled as args so these don't reflect the values used
-        cfg.smoothness_base_weight = 0.1  # 0.1 weight for smoothness cost in total cost
-        cfg.base_obstacle_weight = 0.1  # 1.0 weight for obstacle cost in total cost
-        cfg.base_grasp_weight = 5.0  # weight for grasp cost in total cost
-        cfg.cost_schedule_boost = 1.0  # cost schedule boost for smoothness cost weight
-        cfg.base_step_size = 0.3  # initial step size in gradient descent
-        cfg.optim_steps = 250 # optimization steps for each planner call
-        cfg.use_initial_ik = False # Use IK to initialize optimization
-        cfg.pre_terminate = True  # terminate early if costs are below thresholds
-        if 'single' in cfg.method:
-            cfg.single_shape_code = True
-        if 'learned' in cfg.method:
-            cfg.learnedgrasp_weights = args.ckpt
-            cfg.goal_set_proj = False
-        if 'known' in cfg.method: # Debug with known grasps
-            cfg.goal_set_proj = False
-            cfg.remove_flip_grasp = False
-    elif 'OMG' in cfg.method:       # OMG with apples to apples parameters
-        cfg.goal_set_proj = True
-        cfg.remove_flip_grasp = False
-        cfg.fixed_endpoint = False
-        cfg.ol_alg = 'MD'
-        cfg.smoothness_base_weight = 0.1  # 0.1 weight for smoothness cost in total cost
-        cfg.base_obstacle_weight = 1.0  # 1.0 weight for obstacle cost in total cost
-        cfg.cost_schedule_boost = 1.02  # cost schedule boost for smoothness cost weight
-        cfg.base_step_size = 0.1  # initial step size in gradient descent
-        cfg.optim_steps = 50  # optimization steps for each planner call
-        if 'comp' in cfg.method:        # apples to apples parameters
-            cfg.use_standoff = False
-        elif 'orig' in cfg.method:      # original parameters
-            cfg.use_standoff = True
-            if 'col' in cfg.method:
-                cfg.disable_target_collision = False
-            else:
-                cfg.disable_target_collision = True
-    else:
-        raise NotImplementedError
-
-    # Command-line overrides
-    dict_args = vars(args)
-    for key in dict_args.keys():
-        if key in cfg.keys() and dict_args[key] is not None:
-            cfg[key] = dict_args[key]
-
     cfg.get_global_param()
 
 
@@ -245,7 +167,7 @@ def main(hydra_cfg):
 
             set_scene_env(scene, env._objectUids[0], objinfo, scenes[scene_idx]['joints'], hydra_cfg)
             pc = obs['points'] if cfg.pc else None
-            info = scene.step(pc=pc)
+            info = scene.step(pc=pc, viz_env=env)
             plan = scene.planner.history_trajectories[-1]
 
             video_writer = init_video_writer(Path(os.getcwd()) / 'videos', objname, scene_idx) if hydra_cfg.write_video else None

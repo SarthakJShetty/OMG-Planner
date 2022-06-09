@@ -431,8 +431,7 @@ class Cost(object):
             * start
             / self.cfg.time_interval
         )
-        # if not self.cfg.goal_set_proj:
-        if self.cfg.fixed_endpoint:
+        if not self.cfg.smooth_loss_on_endpoint:
             ed[-1] = (
                 self.cfg.diff_rule[0][self.cfg.diff_rule_length // 2]
                 * end

@@ -126,7 +126,6 @@ cfg.render = True
 cfg.method = ''
 cfg.acronym_dir = None
 cfg.use_goal_grad = False # whether to include the goal gradient and cost in the cost computation 
-cfg.fixed_endpoint = False # whether endpoint of trajectory is fixed or not
 cfg.use_min_cost_traj = False # use trajectory with minimum goal cost (use_goal_grad = True, method='implicigrasps')
 cfg.disable_target_collision = False # during planning only? check
 cfg.goal_thresh = 0.01
@@ -138,10 +137,12 @@ cfg.table = False  # whether table should be present in scene
 cfg.cam_look = []
 cfg.tgt_pos = []
 cfg.single_shape_code = False 
-cfg.use_initial_ik = False # Use IK at the start of trajectory optimization (for our method)
+cfg.initial_ik = False # Use IK at the start of trajectory optimization (for our method)
 cfg.filter_collision = True
 cfg.pc = False
 cfg.chomp_adam = False
+cfg.smooth_loss_on_endpoint = True
+cfg.start_end_equal = False
 
 """ global function """
 def get_derivative(data, start, end, diff_rule=1):
@@ -225,8 +226,7 @@ def get_global_param(steps=cfg.timesteps):
             cfg.time_interval,
             cfg.diff_rule_length,
             i + 1,
-            # not cfg.goal_set_proj,
-            cfg.fixed_endpoint
+            not cfg.smooth_loss_on_endpoint
         )
         for i in range(cfg.diff_rule.shape[0])
     ]

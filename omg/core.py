@@ -304,7 +304,7 @@ class PlanningScene(object):
 
     def __init__(self, cfg):
         self.cfg = cfg
-        self.traj = Trajectory(timesteps=cfg.timesteps, start_end_equal=(not cfg.fixed_endpoint))
+        self.traj = Trajectory(timesteps=cfg.timesteps, start_end_equal=cfg.start_end_equal)
         print("Setting up env...")
         start_time = time.time()
         self.env = Env(cfg)
@@ -321,11 +321,11 @@ class PlanningScene(object):
         """
         if joints is not None:
             self.traj = Trajectory(timesteps=self.cfg.timesteps,
-                                   start_end_equal=(not self.cfg.fixed_endpoint),
+                                   start_end_equal=self.cfg.start_end_equal,
                                    start=joints)
         else:
             self.traj = Trajectory(self.cfg.timesteps,
-                                   start_end_equal=(not self.cfg.fixed_endpoint))
+                                   start_end_equal=self.cfg.start_end_equal)
         self.env = Env(self.cfg)
 
     def reset(self, lazy=False):
@@ -532,11 +532,11 @@ class PlanningScene(object):
         resize = [self.env.objects[-1].resize]
         self.renderer.load_objects(models, scale=resize, add=True)
 
-    def step(self, pc=None):
+    def step(self, pc=None, viz_env=None):
         """
         Run an optimization step
         """
-        plan = self.planner.plan(self.traj, pc=pc)
+        plan = self.planner.plan(self.traj, pc=pc, viz_env=viz_env)
         return plan
 
     def prepare_render_list(self, joints):

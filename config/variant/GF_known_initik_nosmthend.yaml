@@ -1,19 +1,19 @@
 # Evaluation configs
-method: GF_known_chmpadam
+method: GF_known_initik
 use_goal_grad: True
 ol_alg: null 
 use_min_cost_traj: False
 filter_collision: False
-chomp_adam: True
-# Check these params in light of new params
+base_step_size: 0.03
+smooth_loss_on_endpoint: False
+start_end_equal: True
+initial_ik: True
+base_grasp_weight: 1.0
 
 goal_set_proj: False
-smooth_loss_on_endpoint: True
 remove_flip_grasp: False
 smoothness_base_weight: 0.1
 base_obstacle_weight: 0.7
-base_grasp_weight: 5.0
 cost_schedule_boost: 1.0
-base_step_size: 0.3
 optim_steps: 250
 pre_terminate: True

@@ -55,8 +55,6 @@ class PandaEnv:
         gravity=True,
         root_dir=None,
         cam_look=[-0.05, -0.5, -1.1]
-        # cam_look=[-0.05, -0.5, -0.6852],
-        # cam_look=[-0.35, -0.58, -0.88],
     ):
         """Initializes the pandaYCBObjectEnv.
 
@@ -237,6 +235,10 @@ class PandaEnv:
             self._panda = Panda(
                 stepsize=self._timeStep, init_joints=init_joints, base_shift=self._shift
             )
+        self._panda_viz = Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True)
+        # self._panda_vizs = []
+        # for i in range(self._traj_tsteps): # TODO update with config    
+            # self._panda_vizs.append(Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True))
 
         # Initialize objects
         fpath = Path(os.path.dirname(__file__))
@@ -443,3 +445,9 @@ class PandaEnv:
 
         # return obj_dir, poses
         return [uid], poses
+
+    def update_panda_viz(self, traj):
+        # for tstep in range(traj.data.shape[0]): 
+        #     self._panda_vizs[tstep].reset(traj.data[tstep])
+        joints = traj.data[-1]
+        self._panda_viz.reset(joints)

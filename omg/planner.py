@@ -699,35 +699,6 @@ class Planner(object):
 
         return T_obj2goal
 
-    # def grad_pose_update(self, pose_ee, pose_goal):
-    #     """
-    #     Update gradient in pose space
-    #     """
-    #     pose_ee.data = pose_ee.data.detach().clone()
-    #     pose_ee.data.requires_grad = True
-    #     pose_err = torch.linalg.norm(pose_goal.local(pose_ee))
-    #     pose_err.backward()
-    #     pose_ee.data = pose_ee.data - 0.01*pose_ee.data.grad
-    #     if True: # visualize
-    #         T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
-    #         draw_pose(self.T_world2bot @ T_b2e_np) # ee in world frame
-    #     return pose_ee
-
-    # def grad_joints_update(self, q_curr, pose_goal, robot_model, opt):
-    #     opt.zero_grad()
-    #     # q_curr = q_curr.detach().clone()
-    #     # q_curr.requires_grad = True
-    #     pose_ee = robot_model.forward_kinematics(q_curr)['panda_hand']
-    #     if True: # visualize
-    #         T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
-    #         draw_pose(self.T_world2bot @ T_b2e_np) # ee in world frame
-
-    #     pose_err = torch.linalg.norm(pose_goal.local(pose_ee))
-    #     pose_err.backward()
-    #     opt.step()
-    #     # q_curr = q_curr - 0.01*q_curr.grad
-    #     return q_curr
-
     def CHOMP_update(self, traj, pose_goal, robot_model):
         q_curr = torch.tensor(traj.data[-1], device='cpu', dtype=torch.float32).unsqueeze(0)
         q_curr.requires_grad = True
@@ -736,7 +707,9 @@ class Planner(object):
             pose_ee = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
             if vis: # visualize
                 T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
+                # T_b2g_np = pose_goal.to_matrix().detach().squeeze().numpy()
                 draw_pose(self.T_w2b_np @ T_b2e_np) # ee in world frame
+                # draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
             residual = pose_goal.local(pose_ee) # SE(3) 1 x 6
             # residual = pose_ee.local(pose_goal) # SE(3) 1 x 6
             # residual[:, :3] = (1.0 / 0.08) * np.pi
@@ -757,7 +730,7 @@ class Planner(object):
         traj.goal_grad = q_curr.grad.cpu().numpy()[:, :7]
         print(f"cost: {traj.goal_cost}, grad: {traj.goal_grad}")
 
-    def plan(self, traj, pc=None):
+    def plan(self, traj, pc=None, viz_env=None):
         """
         Run chomp optimizer to do trajectory optmization
         """
@@ -789,16 +762,13 @@ class Planner(object):
                 T_b2pc = np.linalg.inv(self.T_w2b_np) @ T_w2pc
                 draw_pose(T_w2pc)
             
-            # if 'dbg' in self.cfg.method:
-            #     import IPython; IPython.embed()
-
             self.optim.init(self.traj)
 
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
                 start_time = time.time()
 
                 if (
-                    self.cfg.goal_set_proj and
+                    # self.cfg.goal_set_proj and
                     alg_switch and t < self.cfg.optim_steps
                 ):
                     self.learner.update_goal()
@@ -859,20 +829,10 @@ class Planner(object):
                         T_b2g_np = np.linalg.inv(T_o2b_np) @ T_o2g_np
                         pose_b2g = th.SE3(data=torch.tensor(T_b2g_np[:3]).float().unsqueeze(0))
 
+                    # TODO initial ik
+
                     # Visualization
                     draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
-
-                    # Initial IK
-                    # if t == 0 and self.cfg.use_initial_ik:
-                    #     # import IPython; IPython.embed()
-                    #     pq_b2g = pt.pq_from_transform(T_b2g_np) # wxyz
-                    #     seed = self.traj.start[:7]
-                    #     goal_ik = config.cfg.ROBOT.inverse_kinematics(
-                    #         pq_b2g[:3], ros_quat(pq_b2g[3:]), seed=seed
-                    #     )
-                        
-                        # update traj with goal_ik
-                        # traj
 
                     self.CHOMP_update(self.traj, pose_b2g, robot_model)
                 elif 'GF_known' in self.cfg.method:
@@ -882,9 +842,24 @@ class Planner(object):
                     T_b2g_np = pose_b2g.to_matrix().squeeze(0).cpu().numpy()
                     draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
 
-                    self.CHOMP_update(self.traj, pose_b2g, robot_model)
+                    if t == 0 and self.cfg.initial_ik:
+                        pq_b2g = pt.pq_from_transform(T_b2g_np) # wxyz
+                        seed = self.traj.start[:7]
+                        goal_ik = config.cfg.ROBOT.inverse_kinematics(
+                            pq_b2g[:3], ros_quat(pq_b2g[3:]), seed=seed
+                        )
+                        
+                        traj.set_goal_and_interp(goal_ik)
+                        traj.goal_cost = 0
+                        traj.goal_grad = np.zeros((1, 7))
+                    else:
+                        self.CHOMP_update(self.traj, pose_b2g, robot_model)
 
                 info_t = self.optim.optimize(self.traj, force_update=True, tstep=t+1)
+
+                if viz_env:
+                    viz_env.update_panda_viz(self.traj)
+
                 if 'GF' in self.cfg.method:
                     info_t['pred_grasp'] = pose_b2g.to_matrix().detach().cpu().numpy()
                 self.info.append(info_t)

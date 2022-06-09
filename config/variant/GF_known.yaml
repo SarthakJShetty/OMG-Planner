@@ -1,10 +1,12 @@
 # Evaluation configs
 method: GF_known
 use_goal_grad: True
-fixed_endpoint: False
 ol_alg: null 
 use_min_cost_traj: False
 filter_collision: False
+smooth_loss_on_endpoint: True
+start_end_equal: True
+initial_ik: False
 
 goal_set_proj: False
 remove_flip_grasp: False
@@ -14,5 +16,4 @@ base_grasp_weight: 5.0
 cost_schedule_boost: 1.0
 base_step_size: 0.3
 optim_steps: 250
-use_initial_ik: False
 pre_terminate: True

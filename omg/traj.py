@@ -48,6 +48,18 @@ class Trajectory(object):
         Set trajectory by given data.
         """
         self.data = new_traj
+    
+    def set_goal_and_interp(self, goal):
+        """Set goal of trajectory and interpolate trajectory from start to goal
+
+        Args:
+            goal (_type_): goal in joint angles
+        """
+        if goal.shape[0] == 7:
+            goal = np.concatenate([goal, [0.04, 0.04]], axis=0)
+
+        self.end = goal
+        self.interpolate_waypoints(mode=config.cfg.traj_interpolate)
 
     def interpolate_waypoints(self, waypoints=None, mode="cubic"):  # linear
         """
