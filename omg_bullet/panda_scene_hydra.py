@@ -67,7 +67,9 @@ def init_dir(hydra_cfg):
     with open(cwd / 'hydra_config.yaml', 'w') as yaml_file:
         OmegaConf.save(config=hydra_cfg, f=yaml_file.name)
     with open(cwd / 'config.yaml', 'w') as yaml_file:
-        yaml.dump(cfg, yaml_file)
+        save_cfg = cfg.copy()
+        save_cfg['ROBOT'] = None
+        yaml.dump(save_cfg, yaml_file)
     with open(cwd / 'metrics.csv', 'w', newline='') as csvfile:
         fieldnames = ['object_name', 'scene_idx', 'execution', 'planning', 'smoothness', 'collision', 'time']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
