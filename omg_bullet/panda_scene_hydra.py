@@ -1,5 +1,5 @@
 import os
-# import argparse
+import random
 import pybullet as p
 import numpy as np
 from omg.config import cfg
@@ -12,10 +12,10 @@ from omg_bullet.panda_env import PandaEnv
 # from manifold_grasping.utils import load_mesh
 from omg_bullet.utils import get_world2bot_transform, draw_pose, bullet_execute_plan, get_object_info, place_object
 
+import torch
 import pytransform3d.rotations as pr
 # import pytransform3d.transformations as pt
 from pathlib import Path
-# from datetime import datetime
 import csv
 import cv2
 import subprocess
@@ -155,6 +155,10 @@ def set_scene_env(scene, uid, objinfo, joints, hydra_cfg):
 @hydra.main(config_path=str(Path(os.path.dirname(__file__)) / '..' / 'config'), 
             config_name="panda_scene", version_base=None)
 def main(hydra_cfg):
+    np.random.seed(0)
+    random.seed(0)
+    torch.manual_seed(0)
+
     merge_cfgs(hydra_cfg, cfg)
     init_dir(hydra_cfg)
 
@@ -162,8 +166,12 @@ def main(hydra_cfg):
 
     scenes = get_scenes(hydra_cfg)
     for objname in os.listdir(Path(hydra_cfg.data_root) / hydra_cfg.dataset / 'meshes_bullet'):
+        # if 'Bottle' not in objname: 
+        #     continue
         scene = PlanningScene(cfg)
         for scene_idx in range(len(scenes)):
+            # if scene_idx != 6:
+            #     continue
             objinfo = get_object_info(env, objname, Path(hydra_cfg.data_root) / hydra_cfg.dataset)
             env.reset(init_joints=scenes[scene_idx]['joints'], no_table=not cfg.table, objinfo=objinfo)
             place_object(env, cfg.tgt_pos, q=scenes[scene_idx]['obj_rot'], random=False, gravity=cfg.gravity)
