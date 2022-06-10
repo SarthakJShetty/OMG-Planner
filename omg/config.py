@@ -226,7 +226,7 @@ def get_global_param(steps=cfg.timesteps):
             cfg.time_interval,
             cfg.diff_rule_length,
             i + 1,
-            not cfg.smooth_loss_on_endpoint
+            cfg.smooth_loss_on_endpoint
         )
         for i in range(cfg.diff_rule.shape[0])
     ]

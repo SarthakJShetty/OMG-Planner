@@ -223,11 +223,7 @@ class Learner(object):
         """
         if self.env.cfg.method == 'GF_known':
             q_curr = torch.tensor(self.traj.data[-1], device='cpu', dtype=torch.float32).unsqueeze(0)
-            try:
-                pose_ee = self.robot_model.forward_kinematics(q_curr)['panda_hand']
-            except Exception as e:
-                print(e)
-                import IPython; IPython.embed()
+            pose_ee = self.robot_model.forward_kinematics(q_curr)['panda_hand']
 
             q_goals = torch.tensor(self.traj.goal_set, device='cpu', dtype=torch.float32)
             pose_goals = self.robot_model.forward_kinematics(q_goals)['panda_hand']
@@ -285,9 +281,8 @@ class Learner(object):
 
         goal_idx_old = self.traj.goal_idx
         self.traj.goal_idx = np.argmax(self.p)
-        # if 'GF_known' not in self.cfg.method:
-        #     self.traj.end = self.traj.goal_set[self.traj.goal_idx]
-        self.traj.end = self.traj.goal_set[self.traj.goal_idx]
+        if 'GF_known' not in self.cfg.method: # Don't update endpoint of trajectory, let gradient do it
+            self.traj.end = self.traj.goal_set[self.traj.goal_idx]
         self.Ti[self.traj.goal_idx] += 1
         self.Tis.append(self.Ti)
         return self.traj.goal_idx != goal_idx_old

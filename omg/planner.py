@@ -728,7 +728,7 @@ class Planner(object):
 
         traj.goal_cost = mse.item()
         traj.goal_grad = q_curr.grad.cpu().numpy()[:, :7]
-        print(f"cost: {traj.goal_cost}, grad: {traj.goal_grad}")
+        # print(f"cost: {traj.goal_cost}, grad: {traj.goal_grad}")
 
     def plan(self, traj, pc=None, viz_env=None):
         """
@@ -857,8 +857,8 @@ class Planner(object):
 
                 info_t = self.optim.optimize(self.traj, force_update=True, tstep=t+1)
 
-                if viz_env:
-                    viz_env.update_panda_viz(self.traj)
+                # if viz_env:
+                #     viz_env.update_panda_viz(self.traj)
 
                 if 'GF' in self.cfg.method:
                     info_t['pred_grasp'] = pose_b2g.to_matrix().detach().cpu().numpy()

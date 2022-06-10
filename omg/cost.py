@@ -431,7 +431,7 @@ class Cost(object):
             * start
             / self.cfg.time_interval
         )
-        if not self.cfg.smooth_loss_on_endpoint:
+        if self.cfg.smooth_loss_on_endpoint:
             ed[-1] = (
                 self.cfg.diff_rule[0][self.cfg.diff_rule_length // 2]
                 * end
@@ -499,7 +499,7 @@ class Cost(object):
                 + self.cfg.smoothness_weight * smoothness_loss[:-1]
             )
 
-        print(f"obstacle_cost {weighted_obs}, smoothness_cost {weighted_smooth}, goal_cost {weighted_goal_cost}")
+        print(f"obstacle_cost {weighted_obs}, smoothness_cost {weighted_smooth}, goal_cost {weighted_goal_cost}, collision pts: {collide}")
    
         # if ('Proj' in self.cfg.method or 'OMG' in self.cfg.method) and self.cfg.goal_set_proj:
         if self.cfg.goal_set_proj and 'GF_known' not in self.cfg.method:
