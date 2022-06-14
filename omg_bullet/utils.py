@@ -122,11 +122,18 @@ def get_object_info(env, objname, mesh_root):
     grasp_h5 = Path(mesh_root) / 'grasps' / f'{objname}.h5'
     scale = objname.split('_')[-1]
     obj_mesh, T_ctr2obj = load_mesh(str(grasp_h5), scale=scale, mesh_root_dir=mesh_root, load_for_bullet=True)
+
+    # This object info is for Mug object
+    # T_ctr2obj_com = np.eye(4)
+    # T_ctr2obj_com[:3, 3] = -obj_mesh.center_mass
+    # T_ctr2obj_com[:3, 3] = -obj_mesh.centroid
+    T_ctr2obj_com = None
     objinfo = {
         'name': objname,
         'urdf_dir': f'{mesh_root}/meshes_bullet/{objname}/model_normalized.urdf',
         'scale': float(scale),
-        'T_ctr2obj': T_ctr2obj
+        'T_ctr2obj': T_ctr2obj,
+        'T_ctr2obj_com': T_ctr2obj_com
     }
     return objinfo
 
@@ -162,12 +169,33 @@ def place_object(env, target_pos, q=None, random=False, gravity=False):
     T_rand = get_random_transform(target_pos, q=q, random=random)
 
     # Apply object to centroid transform
-    T_ctr2obj = env.objinfos[0]['T_ctr2obj']
+    T_ctr2obj = env.objinfos[0]['T_ctr2obj'] # TODO
+    # T_ctr2obj = env.objinfos[0]['T_ctr2obj_com']
 
     T_w2o = T_w2b @ T_rand @ T_ctr2obj
     # draw_pose(T_w2b @ T_rand)
     # print(T_w2o)
     pq_w2o = pt.pq_from_transform(T_w2o)  # wxyz
+
+    # p.resetBasePositionAndOrientation(
+    #     env._objectUids[0],
+    #     [0, 0, 0],
+    #     [0, 0, 0, 1]
+    # )
+
+    # pq_c2o = pt.pq_from_transform(T_ctr2obj)
+    # p.resetBasePositionAndOrientation(
+    #     env._objectUids[0],
+    #     -pq_c2o[:3],
+    #     pr.quaternion_xyzw_from_wxyz(pq_c2o[3:])
+    # )
+
+    # pq_c2o = pt.pq_from_transform(env.objinfos[0]['T_ctr2obj_com'])
+    # p.resetBasePositionAndOrientation(
+    #     env._objectUids[0],
+    #     -pq_c2o[:3],
+    #     pr.quaternion_xyzw_from_wxyz(pq_c2o[3:])
+    # )
 
     p.resetBasePositionAndOrientation(
         env._objectUids[0],

@@ -133,7 +133,8 @@ def set_scene_env(scene, uid, objinfo, joints, hydra_cfg):
     T_w2o = np.eye(4)
     T_w2o[:3, :3] = pr.matrix_from_quaternion(tf_quat(orn_w2o))
     T_w2o[:3, 3] = trans_w2o
-    T_o2c = np.linalg.inv(objinfo['T_ctr2obj'])
+    T_o2c = np.linalg.inv(objinfo['T_ctr2obj']) # TODO
+    # T_o2c = np.linalg.inv(objinfo['T_ctr2obj_com'])
     T_b2c = T_b2w @ T_w2o @ T_o2c
     trans = T_b2c[:3, 3]
     orn = pr.quaternion_from_matrix(T_b2c[:3, :3])  # wxyz
@@ -141,14 +142,20 @@ def set_scene_env(scene, uid, objinfo, joints, hydra_cfg):
 
     obj_prefix = Path(hydra_cfg.data_root) / hydra_cfg.dataset / 'meshes_bullet'
     scene.reset_env(joints=joints)
+    # TODO
     scene.env.add_object(objinfo['name'], trans, orn, obj_prefix=obj_prefix, abs_path=True)
+    # scene.env.add_object('006_mustard_bottle', trans, orn, obj_prefix='/home/thomasweng/projects/manifolds/OMG-Planner/data/objects', abs_path=True)
+    # scene.env.add_object('019_pitcher_base', trans, orn, obj_prefix='/home/thomasweng/projects/manifolds/OMG-Planner/data/objects', abs_path=True)
     scene.env.add_plane(np.array([0.05, 0, -0.17]), np.array([1, 0, 0, 0]))
     scene.env.combine_sdfs()
     if cfg.disable_target_collision:
         cfg.disable_collision_set = [objinfo['name']]
 
     # Set grasp selection method for planner
+    # TODO
     scene.env.set_target(objinfo['name'])
+    # scene.env.set_target('006_mustard_bottle')
+    # scene.env.set_target('019_pitcher_base')
     scene.reset(lazy=True)
     
 
@@ -166,15 +173,20 @@ def main(hydra_cfg):
 
     scenes = get_scenes(hydra_cfg)
     for objname in os.listdir(Path(hydra_cfg.data_root) / hydra_cfg.dataset / 'meshes_bullet'):
-        # if 'Bottle' not in objname: 
-        #     continue
+        if 'Mug' not in objname: 
+            continue
         scene = PlanningScene(cfg)
         for scene_idx in range(len(scenes)):
-            # if scene_idx != 6:
-            #     continue
+            # if scene_idx != 4:
+                # continue
             objinfo = get_object_info(env, objname, Path(hydra_cfg.data_root) / hydra_cfg.dataset)
             env.reset(init_joints=scenes[scene_idx]['joints'], no_table=not cfg.table, objinfo=objinfo)
-            place_object(env, cfg.tgt_pos, q=scenes[scene_idx]['obj_rot'], random=False, gravity=cfg.gravity)
+            # TODO for mustard
+            # tgt = cfg.tgt_pos
+            # tgt[0] -= 0.2
+            # q = [1, 0, 0, 0]
+            q = scenes[scene_idx]['obj_rot']
+            place_object(env, cfg.tgt_pos, q=q, random=False, gravity=cfg.gravity)
             obs = env._get_observation(get_pc=cfg.pc, single_view=False)
 
             set_scene_env(scene, env._objectUids[0], objinfo, scenes[scene_idx]['joints'], hydra_cfg)

@@ -235,10 +235,33 @@ class PandaEnv:
             self._panda = Panda(
                 stepsize=self._timeStep, init_joints=init_joints, base_shift=self._shift
             )
-        self._panda_viz = Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True)
-        # self._panda_vizs = []
+        # self._panda_viz = Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True)
+        self._panda_vizs = []
         # for i in range(self._traj_tsteps): # TODO update with config    
             # self._panda_vizs.append(Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True))
+
+        if False: # TODO mustard bottle
+            objects = sorted([m for m in os.listdir('/home/thomasweng/projects/manifolds/OMG-Planner/data/objects') if m.startswith("0")])
+            # obj = objects[10] # pitcher
+            obj = objects[4] # mustard bottle
+            uid = self._add_mesh(
+                os.path.join('/home/thomasweng/projects/manifolds/OMG-Planner/data/objects', obj, "model_normalized.urdf"), 
+                [0, 0, 0], [0, 0, 0, 1], scale=1
+            )  # xyzw
+            
+            mesh = trimesh.load(os.path.join('/home/thomasweng/projects/manifolds/OMG-Planner/data/objects', obj, "model_normalized.obj"))
+            T_ctr2obj_com = np.eye(4)
+            # T_ctr2obj_com[:3, 3] = -mesh.centroid
+            T_ctr2obj_com[:3, 3] = -mesh.center_mass
+            objinfo['T_ctr2obj_com'] = T_ctr2obj_com
+
+            self._objectUids = [uid] 
+            self.objinfos = [objinfo
+            #     {
+            #     'T_ctr2obj': T_ctr2obj,
+            #     'T_ctr2obj_com': T_ctr2obj_com 
+            # }
+            ]
 
         # Initialize objects
         fpath = Path(os.path.dirname(__file__))
@@ -259,20 +282,8 @@ class PandaEnv:
             0.0,
             0.707,
         )
-        # drawer_file = 'data/objects/kitchen_drawer'
-        # drawer_file = 'data/objects/kitchen_sektion_bottom_two_drawers'
-        # # rotate drawer in z axis
-        # self.drawer_id = p.loadURDF(
-        #     os.path.join(drawer_file, 'model_normalized.urdf'),
-        #     0.5 - self._shift[0],
-        #     0.0 - self._shift[1],
-        #     0,
-        #     0.0,
-        #     0.0,
-        #     0.0,
-        #     1.0,
-        # )
 
+        # TODO turn off for mustard bottle
         self.objinfos = [objinfo]
         self._objectUids = self.load_object(objinfo=objinfo)
         self._objectUids += [self.plane_id, self.table_id]
@@ -447,7 +458,14 @@ class PandaEnv:
         return [uid], poses
 
     def update_panda_viz(self, traj):
-        # for tstep in range(traj.data.shape[0]): 
+        # Visualize last k steps
+        k = 10
+        traj_len = traj.data.shape[0]
+        for tstep in range(traj_len - k, traj_len): 
+            self._panda_vizs.append(Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True))
+            self._panda_vizs[-1].reset(traj.data[tstep])
+            # self._panda_vizs.append(Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True))
+
         #     self._panda_vizs[tstep].reset(traj.data[tstep])
-        joints = traj.data[-1]
-        self._panda_viz.reset(joints)
+        # joints = traj.data[-1]
+        # self._panda_viz.reset(joints)

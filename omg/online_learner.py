@@ -107,7 +107,7 @@ class Learner(object):
                 self.traj.end = self.traj.goal_set[self.traj.goal_idx]  #
                 self.traj.interpolate_waypoints()
 
-        if self.env.cfg.method == 'GF_known':
+        if 'GF_known' in self.env.cfg.method:
             urdf_path = DifferentiableFrankaPanda().urdf_path.replace('_no_gripper', '')
             self.robot_model = th.eb.UrdfRobotModel(urdf_path)
 
@@ -221,7 +221,7 @@ class Learner(object):
         """
         Goal set projection 
         """
-        if self.env.cfg.method == 'GF_known':
+        if 'GF_known' in self.env.cfg.method:
             q_curr = torch.tensor(self.traj.data[-1], device='cpu', dtype=torch.float32).unsqueeze(0)
             pose_ee = self.robot_model.forward_kinematics(q_curr)['panda_hand']
 

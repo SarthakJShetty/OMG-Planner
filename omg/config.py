@@ -41,8 +41,8 @@ cfg.optim_steps = 500 # optimization steps for each planner call
  
 """ planner parameters """
 cfg.epsilon = 0.2  # the obstacle padding distance that has gradient
-cfg.target_epsilon = 0.03  # the obstacle padding distance for target object
-cfg.target_obj_collision = 0.0  # 0.0 scale factor for target object collision
+# cfg.target_epsilon = 0.03  # the obstacle padding distance for target object
+# cfg.target_obj_collision = 0.0  # 0.0 scale factor for target object collision
 cfg.collision_point_num = 15  # collision point sample number for each link
 cfg.time_interval = 0.1  # time inverval for computing velocity
 cfg.top_k_collision = 1000  # the number of closest point to penalize for each trajectory
@@ -53,7 +53,7 @@ cfg.clearance = 0.01  # clerance threshold for determining if a traj has collisi
 cfg.ik_clearance = 0.03  # clerance threshold for determining if an ik has collision
 cfg.target_size = 1.0  # target object's actual sdf resize ratio
 cfg.obstacle_size = 1  # obstacle's resize ratio
-cfg.obj_point_num = 800  # object points for KDTree in isf
+# cfg.obj_point_num = 800  # object points for KDTree in isf
 cfg.terminate_smooth_ratio = 4  # 35 terminate condition for trajectory
 cfg.terminate_grad_norm = 1.5  # terminate condition for smooth grad norm
 cfg.terminate_smooth_loss = 35  # terminate condition for trajectory

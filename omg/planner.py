@@ -21,7 +21,7 @@ from omg_bullet.utils import draw_pose, get_world2bot_transform
 import numpy as np
 # from .viz_trimesh import visualize_predicted_grasp, trajT_to_grasppredT, grasppredT_to_trajT
 # import pytorch3d.transforms as ptf
-# import pybullet as p
+import pybullet as p
 # from manifold_grasping.control_pts import *
 
 from manifold_grasping.utils import load_grasps, load_mesh
@@ -440,12 +440,6 @@ class Planner(object):
                                 grasps_v = [create_gripper_marker(color=[0, 0, 255]).apply_transform(T) for T in (T_ctr2obj @ Ts_obj2rotgrasp)[:50]]
                                 m = obj_mesh.apply_transform(T_ctr2obj)
                                 trimesh.Scene([m] + grasps_v).show()
-
-                            if False:
-                                T = get_world2bot_transform()
-                                T_b2o = pt.transform_from_pq(target_obj.pose)
-                                T_w2o = T @ T_b2o
-                                [draw_pose(T @ T_b2o @ x) for x in pose_grasp[:50]]
                         else:
                             simulator_path = (
                                 self.cfg.robot_model_path
@@ -464,6 +458,12 @@ class Planner(object):
                                     encoding="bytes",
                                 )
                                 pose_grasp = simulator_grasp.item()[b"transforms"]
+
+                        if False:
+                            T = get_world2bot_transform()
+                            T_b2o = pt.transform_from_pq(target_obj.pose)
+                            T_w2o = T @ T_b2o
+                            [draw_pose(T @ T_b2o @ x) for x in pose_grasp[:50]]
 
                         offset_pose = np.array(rotZ(np.pi / 2)) # rotate about z axis
                         pose_grasp = np.matmul(pose_grasp, offset_pose)  # flip x, y
@@ -765,6 +765,7 @@ class Planner(object):
             self.optim.init(self.traj)
 
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
+                print(f"plan step {t}")
                 start_time = time.time()
 
                 if (
@@ -857,9 +858,6 @@ class Planner(object):
 
                 info_t = self.optim.optimize(self.traj, force_update=True, tstep=t+1)
 
-                # if viz_env:
-                #     viz_env.update_panda_viz(self.traj)
-
                 if 'GF' in self.cfg.method:
                     info_t['pred_grasp'] = pose_b2g.to_matrix().detach().cpu().numpy()
                 self.info.append(info_t)
@@ -872,6 +870,60 @@ class Planner(object):
 
                 if self.cfg.report_time:
                     print("plan optimize:", time.time() - start_time)
+
+                if viz_env and False:
+                    p.removeAllUserDebugItems()
+
+                    # fngr_col_pts = info_t['collision_pts'][:, :, :, :3]
+                    fngr_col_idxs = np.where(info_t['collision_pts'][:, :, :, 3] == 255)
+                    # fngr_col_pts = info_t['collision_pts'][:, -2:, :, :3]
+                    # col_pts = fngr_col_pts.reshape(-1, 3)
+                    col_pts = info_t['collision_pts'][fngr_col_idxs][:, :3]
+                    for col_pt in col_pts:
+                        col_pt = np.concatenate((col_pt, [1]))
+                        w2col_pt = self.T_w2b_np @ col_pt
+                        p.addUserDebugLine(
+                            w2col_pt[:3], 
+                            w2col_pt[:3]+np.array([0.001, 0.001, 0.001]),
+                            lineWidth=5.0,
+                            lineColorRGB=(1.0, 0, 0))
+
+                    # viz_env.update_panda_viz(self.traj)
+
+                # if viz_env and \
+                    # (self.info[-1]["terminate"] or t == self.cfg.optim_steps + self.cfg.extra_smooth_steps - 1):
+                    # viz_env.update_panda_viz(self.traj)
+                    # robot = self.cost.env.robot
+                    # robot_pts = robot.collision_points.transpose([0, 2, 1])
+                    # (
+                    #     robot_poses,
+                    #     joint_origins,
+                    #     joint_axis,
+                    # ) = self.cost.env.robot.robot_kinematics.forward_kinematics_parallel(
+                    #     wrap_values(self.traj.data), return_joint_info=True)
+                    # ws_positions = self.cost.forward_points(
+                    #     robot_poses, robot_pts
+                    # )  # p x (m + 1) x n x 3
+                    # ws_pos = ws_positions.copy()
+                    # ws_pos = ws_pos.transpose([2, 1, 0, 3])
+                    # last_col_pts = ws_pos[-1]
+                    # fngr_col_pts = last_col_pts[-2:]
+
+                    # p.removeAllUserDebugItems()
+
+                    # for fngr_idx in range(fngr_col_pts.shape[0]):
+                    #     for col_pt in fngr_col_pts[fngr_idx]:
+                    #         col_pt = np.concatenate([col_pt, [1]])
+                    #         # T_col_pt = np.eye(4)
+                    #         # T_col_pt[:, 3] = col_pt
+                    #         # draw_pose(self.T_w2b_np @ col_pt)
+                    #         w2col_pt = self.T_w2b_np @ col_pt
+                    #         p.addUserDebugLine(
+                    #             w2col_pt[:3], 
+                    #             w2col_pt[:3]+np.array([0.001, 0.001, 0.001]),
+                    #             lineWidth=2.0,
+                    #             lineColorRGB=(1.0, 0, 0))
+
 
                 if self.info[-1]["terminate"] and t > 0:
                     break
@@ -887,8 +939,8 @@ class Planner(object):
                     #     f.write('')
                 else:
                     self.info.append(self.optim.optimize(self.traj, info_only=True))
-            else:
-                del self.history_trajectories[-1]
+            # else:
+                # del self.history_trajectories[-1]
 
             plan_time = time.time() - start_time_
             res = (

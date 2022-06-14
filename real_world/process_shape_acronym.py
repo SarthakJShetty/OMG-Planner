@@ -23,6 +23,8 @@ except:
     pass
 import platform
 import shutil
+import trimesh
+from pathlib import Path
 
 PYTHON2 = True
 if platform.python_version().startswith("3"):
@@ -90,7 +92,6 @@ parser = argparse.ArgumentParser(
     "grasp is required to be used as target "
 )
 parser.add_argument("--mesh_root", help="root directory for meshes", default="/data/manifolds/acronym/meshes/Book")
-parser.add_argument("--save_root", help="save directory for bullet outputs", default="/data/manifolds/acronym/bullet")
 parser.add_argument("-o", "--overwrite", help="overwrite save root", action="store_true")
 parser.add_argument(
     "-f",
@@ -118,14 +119,12 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-if not os.path.exists(args.save_root):
-    os.mkdir(args.save_root)
+save_root = f'{args.mesh_root}/../meshes_bullet'
+if not os.path.exists(save_root):
+    os.mkdir(save_root)
 
 # Iterate over all meshes in acronym/meshes and process them into /outdir/objname_meshid/
 for obj_name in os.listdir(args.mesh_root):
-    # if 'Book' not in obj_name: # debug
-    #     continue
-    # import IPython; IPython.embed()
     for mesh_file in os.listdir(f"{args.mesh_root}/{obj_name}"):
         mesh_id = mesh_file.replace('.obj', '')
 
@@ -133,7 +132,7 @@ for obj_name in os.listdir(args.mesh_root):
             if mesh_id in grasp_file:
                 scale = grasp_file.replace('.h5', '').split('_')[-1]
                 # mesh_path = f"{args.save_root}/{obj_name}_{mesh_id}"
-                mesh_path = f"{args.save_root}/{obj_name}_{mesh_id}_{scale}"
+                mesh_path = f"{save_root}/{obj_name}_{mesh_id}_{scale}"
 
                 if os.path.exists(mesh_path):
                     if not args.overwrite and len(os.listdir(mesh_path)) == 9:
@@ -143,7 +142,13 @@ for obj_name in os.listdir(args.mesh_root):
                     shutil.rmtree(mesh_path)
                 os.mkdir(mesh_path)
 
-                os.system(f"cp {args.mesh_root}/{obj_name}/{mesh_file} {mesh_path}/model_normalized.obj")
+                os.system(f"cp {args.mesh_root}/{obj_name}/{mesh_file} {mesh_path}/model_normalized_unscaled.obj")
+
+                # Acronym objects need to be scaled
+                mesh = trimesh.load(f'{mesh_path}/model_normalized_unscaled.obj')
+                scale = float(Path(mesh_path).parts[-1].split('_')[-1])
+                mesh = mesh.apply_scale(scale)
+                mesh.export(f'{mesh_path}/model_normalized.obj')
 
                 gen_xyz.generate_extents_points(random_paths=[mesh_path])
 

@@ -81,14 +81,14 @@ class Cost(object):
             np.amax(vis_pts[..., 6], axis=(-2, -1))[..., None, None],
             np.amin(vis_pts[..., 6], axis=(-2, -1))[..., None, None],
         )
-        vis_pts[..., 6] = 255 * safe_div(
+        vis_pts[..., 7] = 255 * safe_div(
             vis_pts[..., 6] - p_min, (p_max - p_min + 1e-8)
         )
-        vis_pts[..., 7] = 255 - vis_pts[..., 6]
+        vis_pts[..., 8] = 255 - vis_pts[..., 6]
         if type(collide) is torch.Tensor:
             collide = collide.detach().cpu().numpy()
         collide = collide.astype(np.bool)
-        vis_pts[collide, 6:9] = 255, 0, 0
+        vis_pts[collide, 3:6] = 255, 0, 0
 
     def compute_point_jacobian(
         self, joint_origin, x, joint_axis, potentials, type="revolute"
@@ -119,6 +119,11 @@ class Cost(object):
         robot_pts = robot.collision_points.transpose([0, 2, 1])  # m x 3 x p
         n, m = xi.shape[0], xi.shape[1]
         p = robot_pts.shape[2]
+        # vis_pts last dimension = 12
+        # dims 0-2 xyz
+        # dims 3-5 collision color rgb
+        # dim 6 potential, 7,8 normalizations
+        # dim 9-11 potential grads
         vis_pts = np.zeros([n, m + 1, p, 12])
         Js = []  # (m + 1) x n x p x j x 6
 
@@ -318,6 +323,30 @@ class Cost(object):
             epsilons[idx] = eps
             padding_scales[idx] = padding_scale
             poses[idx] = se3_inverse(obs.pose_mat)
+            # poses[idx] = obs.pose_mat
+            if False:
+                import pybullet as pb
+                T_w2b = np.array([[ 1.  ,  0.  ,  0.  , -0.55],
+                            [ 0.  ,  1.  ,  0.  , -0.5 ],
+                            [ 0.  ,  0.  ,  1.  , -1.15],
+                            [ 0.  ,  0.  ,  0.  ,  1.  ]])
+                
+                w2obj = T_w2b @ poses[0]
+                pb.addUserDebugLine(
+                    w2obj[:3, 3], 
+                    w2obj[:3, 3]+np.array([0.001, 0.001, 0.001]),
+                    lineWidth=5.0,
+                    lineColorRGB=(0.0, 0, 1.0))
+
+
+                for col_pt in points.cpu().numpy():
+                    col_pt = np.concatenate((col_pt, [1]))
+                    w2col_pt = T_w2b @ col_pt
+                    pb.addUserDebugLine(
+                        w2col_pt[:3], 
+                        w2col_pt[:3]+np.array([0.001, 0.001, 0.001]),
+                        lineWidth=5.0,
+                        lineColorRGB=(1.0, 0, 0))
 
         # forward layer
         poses = torch.from_numpy(poses).cuda()
@@ -394,7 +423,7 @@ class Cost(object):
                 topk[2][-self.cfg.top_k_collision :],
             )
             top_potentials = potentials[top_n, top_m, top_p]
-            vis_pts[top_n, top_m, top_p, 6:9] = [235, 52, 195]
+            vis_pts[top_n, top_m, top_p, 6:9] = [235, 52, 195] # TODO change cols
 
             if not self.cfg.consider_finger:
                 m = m - 2
@@ -499,7 +528,7 @@ class Cost(object):
                 + self.cfg.smoothness_weight * smoothness_loss[:-1]
             )
 
-        print(f"obstacle_cost {weighted_obs}, smoothness_cost {weighted_smooth}, goal_cost {weighted_goal_cost}, collision pts: {collide}")
+        print(f"wt obs cost {weighted_obs:.4f}, wt smth cost {weighted_smooth:.4f}, wt goal cost {weighted_goal_cost:.4f}, collision pts: {int(collide)}")
    
         # if ('Proj' in self.cfg.method or 'OMG' in self.cfg.method) and self.cfg.goal_set_proj:
         if self.cfg.goal_set_proj and 'GF_known' not in self.cfg.method:

@@ -10,8 +10,8 @@ except:
     import pickle
 import numpy as np
 import torch
-import IPython
 from subprocess import call
+import plotly.graph_objects as go
 
 
 class SignedDensityField(object):
@@ -138,13 +138,7 @@ class SignedDensityField(object):
         data["delta"] = self.delta
         pickle.dump(data, open(pkl_file, "wb"), protocol=2)
 
-    def visualize(self, max_dist=0.1):
-        try:
-            from mayavi import mlab
-        except:
-            print("mayavi is not installed!")
-
-        figure = mlab.figure("Signed Density Field")
+    def visualize(self, max_dist=0.07):
         SCALE = 100  # The dimensions will be expressed in cm for better visualization.
         data = np.copy(self.data)
         data = np.minimum(max_dist, data)
@@ -152,18 +146,40 @@ class SignedDensityField(object):
         xmax, ymax, zmax = SCALE * self.max_coords
         delta = SCALE * self.delta
         xi, yi, zi = np.mgrid[xmin:xmax:delta, ymin:ymax:delta, zmin:zmax:delta]
-        data[data <= 0] -= 0.5  # 0.2
+        data[data <= 0] -= 0.5 
 
         data = -data
         xi = xi[: data.shape[0], : data.shape[1], : data.shape[2]]
         yi = yi[: data.shape[0], : data.shape[1], : data.shape[2]]
         zi = zi[: data.shape[0], : data.shape[1], : data.shape[2]]
-        grid = mlab.pipeline.scalar_field(xi, yi, zi, data)
-        vmin = np.min(data)
-        vmax = np.max(data)
-        mlab.pipeline.volume(grid, vmin=vmin, vmax=(vmax + vmin) / 2)
-        mlab.axes()
-        mlab.show()
+
+        data_flat = data.flatten()
+        data_norm = (data_flat - data_flat.min()) / (data_flat.max() - data_flat.min()) 
+    
+        # max = 230000
+        skip = 1
+        fig = go.Figure(data=[go.Scatter3d(
+            x=xi.flatten()[::skip],
+            y=yi.flatten()[::skip],
+            z=zi.flatten()[::skip],
+            mode='markers',
+            marker=dict(
+                size=12,
+                # color=data.flatten(),                # set color to an array/list of desired values
+                color=data_norm[::skip],                # set color to an array/list of desired values
+                colorscale='Viridis',   # choose a colorscale
+                opacity=0.01
+            )
+        )])
+        fig.show()
+        import IPython; IPython.embed()
+
+        # import matplotlib.pyplot as plt
+        # fig = plt.figure()
+        # ax = fig.add_subplot(projection='3d')
+        # import IPython; IPython.embed()
+        # ax.scatter(xi, yi, zi, data, c=data, alpha=0.1)
+        # plt.show()
 
     @classmethod
     def from_sdf(cls, sdf_file):
