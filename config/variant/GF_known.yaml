@@ -2,7 +2,7 @@
 method: GF_known
 use_goal_grad: True
 ol_alg: null 
-use_min_cost_traj: True
+use_min_cost_traj: False
 filter_collision: False
 smooth_loss_on_endpoint: False
 start_end_equal: True

@@ -173,8 +173,8 @@ def main(hydra_cfg):
 
     scenes = get_scenes(hydra_cfg)
     for objname in os.listdir(Path(hydra_cfg.data_root) / hydra_cfg.dataset / 'meshes_bullet'):
-        if 'Mug' not in objname: 
-            continue
+        # if 'Mug' not in objname: 
+            # continue
         scene = PlanningScene(cfg)
         for scene_idx in range(len(scenes)):
             # if scene_idx != 4:
