@@ -139,7 +139,8 @@ class SignedDensityField(object):
         pickle.dump(data, open(pkl_file, "wb"), protocol=2)
 
     def visualize(self, max_dist=0.07):
-        SCALE = 100  # The dimensions will be expressed in cm for better visualization.
+        # SCALE = 100  # The dimensions will be expressed in cm for better visualization.
+        SCALE = 1  
         data = np.copy(self.data)
         data = np.minimum(max_dist, data)
         xmin, ymin, zmin = SCALE * self.origin
@@ -153,26 +154,23 @@ class SignedDensityField(object):
         yi = yi[: data.shape[0], : data.shape[1], : data.shape[2]]
         zi = zi[: data.shape[0], : data.shape[1], : data.shape[2]]
 
-        data_flat = data.flatten()
-        data_norm = (data_flat - data_flat.min()) / (data_flat.max() - data_flat.min()) 
-    
-        # max = 230000
-        skip = 1
+        zero_idxs = np.where(abs(data) - 0.01 < 0)
+        coords = np.array([xi[zero_idxs], yi[zero_idxs], zi[zero_idxs]]) # 3 x N
+        rand_idxs = np.random.choice(range(len(coords[0])), size=500)
+        coords = coords[:, rand_idxs].T # N x 3
+
         fig = go.Figure(data=[go.Scatter3d(
-            x=xi.flatten()[::skip],
-            y=yi.flatten()[::skip],
-            z=zi.flatten()[::skip],
+            x=coords[:, 0],
+            y=coords[:, 1],
+            z=coords[:, 2],
             mode='markers',
             marker=dict(
                 size=12,
-                # color=data.flatten(),                # set color to an array/list of desired values
-                color=data_norm[::skip],                # set color to an array/list of desired values
-                colorscale='Viridis',   # choose a colorscale
-                opacity=0.01
+                opacity=0.8
             )
         )])
         fig.show()
-        import IPython; IPython.embed()
+        return coords
 
         # import matplotlib.pyplot as plt
         # fig = plt.figure()

@@ -137,7 +137,6 @@ class Optimizer(object):
             return info
 
         if self.cfg.goal_set_proj:
-            #  and 'GF_known' not in self.cfg.method: # snap to goal unless debugging GF
             update = self.goal_set_projection(traj, grad)
         else:
             if self.cfg.chomp_adam:  # Adam
@@ -146,7 +145,6 @@ class Optimizer(object):
                 self.v = self.b2*self.v + (1 - self.b2)*np.square(Agrad)
                 hat_m = self.m / (1 - np.power(self.b1, tstep))
                 hat_v = self.v / (1 - np.power(self.b2, tstep))
-                # print(f"alpha: {self.alpha * (self.alpha_decay**tstep)}")
                 update = -self.cfg.step_size * (self.step_decay**tstep) * hat_m / (np.sqrt(hat_v) + self.eps)
             else:  # SGD
                 update = -self.cfg.step_size * self.cfg.Ainv.dot(grad)

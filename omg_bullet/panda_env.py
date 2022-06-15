@@ -630,10 +630,7 @@ class PandaEnv:
 
         obj_prefix = Path(hydra_cfg.data_root) / hydra_cfg.dataset / 'meshes_bullet'
         planning_scene.reset_env(joints=joints)
-        # TODO
         planning_scene.env.add_object(objinfo['name'], trans, orn, obj_prefix=obj_prefix, abs_path=True)
-        # scene.env.add_object('006_mustard_bottle', trans, orn, obj_prefix='/home/thomasweng/projects/manifolds/OMG-Planner/data/objects', abs_path=True)
-        # scene.env.add_object('019_pitcher_base', trans, orn, obj_prefix='/home/thomasweng/projects/manifolds/OMG-Planner/data/objects', abs_path=True)
         
         # TODO table flag 
         planning_scene.env.add_plane(np.array([0.05, 0, -0.17]), np.array([1, 0, 0, 0]))
@@ -642,8 +639,18 @@ class PandaEnv:
             cfg.disable_collision_set = [objinfo['name']]
 
         # Set grasp selection method for planner
-        # TODO
         planning_scene.env.set_target(objinfo['name'])
-        # scene.env.set_target('006_mustard_bottle')
-        # scene.env.set_target('019_pitcher_base')
         planning_scene.reset(lazy=True)
+
+        # coords = planning_scene.env.objects[self.target_idx].sdf.visualize()
+
+        # T_w2b = get_world2bot_transform()
+        # T_b2o = unpack_pose(planning_scene.env.objects[self.target_idx].pose)
+        # draw_pose(T_w2b @ T_b2o)
+
+        # for i in range(coords.shape[0]):
+        #     coord = coords[i]
+        #     coord = np.concatenate([coord, [1]])
+        #     T_c = np.eye(4)
+        #     T_c[:, 3] = coord
+        #     draw_pose(T_w2b @ T_b2o @ T_c)

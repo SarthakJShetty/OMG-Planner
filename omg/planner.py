@@ -143,6 +143,7 @@ class Planner(object):
         self.history_trajectories = []
         self.info = []
         self.ik_cache = []
+        self.dbg_ids = []
 
     def grasp_init(self, env=None):
         """
@@ -871,22 +872,25 @@ class Planner(object):
                 if self.cfg.report_time:
                     print("plan optimize:", time.time() - start_time)
 
-                if viz_env and False:
-                    p.removeAllUserDebugItems()
 
-                    # fngr_col_pts = info_t['collision_pts'][:, :, :, :3]
+                if viz_env and info_t['collide'] > 0 and False:
+                    while len(self.dbg_ids) > 0:
+                        dbg_id = self.dbg_ids.pop(0)
+                        p.removeUserDebugItem(dbg_id)
+                    # p.removeAllUserDebugItems()
+
                     fngr_col_idxs = np.where(info_t['collision_pts'][:, :, :, 3] == 255)
-                    # fngr_col_pts = info_t['collision_pts'][:, -2:, :, :3]
-                    # col_pts = fngr_col_pts.reshape(-1, 3)
-                    col_pts = info_t['collision_pts'][fngr_col_idxs][:, :3]
+                    col_pts = info_t['collision_pts'][fngr_col_idxs][:, :6]
                     for col_pt in col_pts:
-                        col_pt = np.concatenate((col_pt, [1]))
-                        w2col_pt = self.T_w2b_np @ col_pt
-                        p.addUserDebugLine(
-                            w2col_pt[:3], 
-                            w2col_pt[:3]+np.array([0.001, 0.001, 0.001]),
-                            lineWidth=5.0,
-                            lineColorRGB=(1.0, 0, 0))
+                        col_pt_h = np.concatenate((col_pt[:3], [1]))
+                        w2col_pt = self.T_w2b_np @ col_pt_h
+                        col_pt[3:6] /= 255.0
+                        dbg_id = p.addUserDebugLine(
+                                w2col_pt[:3], 
+                                w2col_pt[:3]+np.array([0.001, 0.001, 0.001]),
+                                lineWidth=5.0,
+                                lineColorRGB=col_pt[3:6])
+                        self.dbg_ids.append(dbg_id)
 
                     # viz_env.update_panda_viz(self.traj)
 

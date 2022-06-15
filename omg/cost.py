@@ -423,7 +423,7 @@ class Cost(object):
                 topk[2][-self.cfg.top_k_collision :],
             )
             top_potentials = potentials[top_n, top_m, top_p]
-            vis_pts[top_n, top_m, top_p, 6:9] = [235, 52, 195] # TODO change cols
+            # vis_pts[top_n, top_m, top_p, 3:6] = [235, 52, 195] 
 
             if not self.cfg.consider_finger:
                 m = m - 2

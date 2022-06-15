@@ -371,11 +371,25 @@ class PandaYCBEnv(PandaEnv):
         planning_scene.env.add_plane(np.array([0.05, 0, -0.17]), np.array([1, 0, 0, 0]))
         planning_scene.env.add_table(np.array([0.55, 0, -0.17]), np.array([0.707, 0.707, 0.0, 0]))
         planning_scene.env.combine_sdfs()
-
         planning_scene.env.set_target(self.obj_path[self.target_idx].split("/")[-1])
+        
         planning_scene.reset(lazy=True)
         obj_name = str(Path(self.obj_path[self.target_idx]).parts[-1])
         obs = self._get_observation()
+
+        # coords = planning_scene.env.objects[self.target_idx].sdf.visualize()
+
+        # T_w2b = get_world2bot_transform()
+        # T_b2o = unpack_pose(planning_scene.env.objects[self.target_idx].pose)
+        # draw_pose(T_w2b @ T_b2o)
+        
+        # for i in range(coords.shape[0]):
+        #     coord = coords[i]
+        #     coord = np.concatenate([coord, [1]])
+        #     T_c = np.eye(4)
+        #     T_c[:, 3] = coord
+        #     draw_pose(T_w2b @ T_b2o @ T_c)
+
         return obs, obj_name, scene
 
 

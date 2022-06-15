@@ -1,7 +1,4 @@
 eval_env: panda_ycb_env
-# eval_type: 1obj_float_rotpose_nograv
-# obj_csv: data/object_rotations.csv
-# table: 
 gravity: True
 cam_look: 
   - -0.05

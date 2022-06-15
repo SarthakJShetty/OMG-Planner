@@ -39,7 +39,6 @@ class Model(object):
         self.sdf.resize(config.cfg.target_size)
         self.sdf.data[self.sdf.data < 0] *= config.cfg.penalize_constant
         self.compute_grasp = compute_grasp
-        # self.sdf.visualize() # TODO remove
         self.grasps = []
         self.reach_grasps = []
         self.grasps_scores = []
