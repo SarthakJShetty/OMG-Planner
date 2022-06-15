@@ -634,6 +634,8 @@ class PandaEnv:
         planning_scene.env.add_object(objinfo['name'], trans, orn, obj_prefix=obj_prefix, abs_path=True)
         # scene.env.add_object('006_mustard_bottle', trans, orn, obj_prefix='/home/thomasweng/projects/manifolds/OMG-Planner/data/objects', abs_path=True)
         # scene.env.add_object('019_pitcher_base', trans, orn, obj_prefix='/home/thomasweng/projects/manifolds/OMG-Planner/data/objects', abs_path=True)
+        
+        # TODO table flag 
         planning_scene.env.add_plane(np.array([0.05, 0, -0.17]), np.array([1, 0, 0, 0]))
         planning_scene.env.combine_sdfs()
         if cfg.disable_target_collision:

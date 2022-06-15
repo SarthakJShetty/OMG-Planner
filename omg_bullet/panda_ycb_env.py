@@ -44,8 +44,8 @@ class PandaYCBEnv(PandaEnv):
         Load all YCB objects and set up (only work for single apperance)
         """
         obj_path = self._root_dir
-        objects = sorted([m for m in os.listdir(f'{obj_path}/objects') if m.startswith("0")])
-        paths = ['objects/' + objects[i] for i in self._all_objs]
+        objects = sorted([m for m in os.listdir(f'{obj_path}/data/objects') if m.startswith("0")])
+        paths = ['data/objects/' + objects[i] for i in self._all_objs]
         scales = [1 for i in range(len(paths))]
 
         pose = np.zeros([len(paths), 3])
@@ -113,15 +113,16 @@ class PandaYCBEnv(PandaEnv):
             )
 
         # Initialize objects
+        fpath = Path(os.path.dirname(__file__))
         plane_file = "data/objects/floor"
         table_file = "data/objects/table/models"
         self.plane_id = p.loadURDF(
-            os.path.join(plane_file, 'model_normalized.urdf'),
+            str(fpath / '..' / plane_file / 'model_normalized.urdf'),
             [0 - self._shift[0], 0 - self._shift[1], -0.82 - self._shift[2]]
         )
         table_z = -5 if no_table else -0.82 - self._shift[2]
         self.table_id = p.loadURDF(
-            os.path.join(table_file, 'model_normalized.urdf'),
+            str(fpath / '..' / table_file / 'model_normalized.urdf'),
             0.5 - self._shift[0],
             0.0 - self._shift[1],
             table_z,
@@ -338,6 +339,45 @@ class PandaYCBEnv(PandaEnv):
         else:
             scene_files = [None]
         return scene_files
+
+    def init_scene(self, scene, planning_scene, hydra_cfg):
+        full_name = Path(hydra_cfg.data_root) / 'data' / 'scenes' / f'{scene}.mat'
+        self.reset(reset_cache=True)
+        self.cache_reset(scene_file=full_name)
+        obj_names, obj_poses = self.get_env_info()
+        object_lists = [name.split("/")[-1].strip() for name in obj_names]
+        object_poses = [pack_pose(pose) for pose in obj_poses]
+
+        # load objects into planning scene
+        for i, name in enumerate(self.obj_path[:-2]):
+            name = name.split("/")[-1]
+            trans, orn = self.cache_object_poses[i]
+            planning_scene.env.add_object(name, trans, tf_quat(orn), compute_grasp=True)
+
+        exists_ids, placed_poses = [], []
+        for i, name in enumerate(object_lists[:-2]):  # update planning scene
+            planning_scene.env.update_pose(name, object_poses[i])
+            obj_idx = self.obj_path[:-2].index("data/objects/" + name)
+            exists_ids.append(obj_idx)
+            trans, orn = self.cache_object_poses[obj_idx]
+            placed_poses.append(np.hstack([trans, ros_quat(orn)]))
+        
+        cfg.disable_collision_set = [
+            name.split("/")[-2]
+            for obj_idx, name in enumerate(self.obj_path[:-2])
+            if obj_idx not in exists_ids
+        ]
+        
+        planning_scene.env.add_plane(np.array([0.05, 0, -0.17]), np.array([1, 0, 0, 0]))
+        planning_scene.env.add_table(np.array([0.55, 0, -0.17]), np.array([0.707, 0.707, 0.0, 0]))
+        planning_scene.env.combine_sdfs()
+
+        planning_scene.env.set_target(self.obj_path[self.target_idx].split("/")[-1])
+        planning_scene.reset(lazy=True)
+        obj_name = str(Path(self.obj_path[self.target_idx]).parts[-1])
+        obs = self._get_observation()
+        return obs, obj_name, scene
+
 
 if __name__ == '__main__':
     env = PandaYCBEnv(renders=True, gravity=True, root_dir='/data/manifolds/ycb_mini')

@@ -23,6 +23,12 @@ from omegaconf import OmegaConf
 from omegaconf.listconfig import ListConfig
 
 
+def set_seeds():
+    np.random.seed(0)
+    random.seed(0)
+    torch.manual_seed(0)
+
+
 def merge_cfgs(hydra_cfg, cfg):
     """Two different configs are being used, the config from omg, and hydra
     Hydra handles command line overrides and also redirects the working directory
@@ -95,61 +101,24 @@ def init_env(hydra_cfg):
     if cfg.eval_env == 'panda_env':
         env = PandaEnv(renders=hydra_cfg.render, gravity=cfg.gravity, cam_look=cfg.cam_look)
     elif cfg.eval_env == 'panda_ycb_env':
-        env = PandaYCBEnv(gravity=cfg.gravity)
+        env = PandaYCBEnv(renders=hydra_cfg.render, gravity=cfg.gravity)
     else:
         raise NotImplementedError
     return env
 
+
 @hydra.main(config_path=str(Path(os.path.dirname(__file__)) / '..' / 'config'), 
             config_name="panda_scene", version_base=None)
 def main(hydra_cfg):
-    np.random.seed(0)
-    random.seed(0)
-    torch.manual_seed(0)
-
+    set_seeds()
     merge_cfgs(hydra_cfg, cfg)
     init_dir(hydra_cfg)
     env = init_env(hydra_cfg)
-
-    # Change this so that scenes contains all object and scene permutations
-    # Then just run all the scenes. 
-    # This will streamline panda_env vs. panda_ycb_env as well. 
-
     scenes = env.get_scenes(hydra_cfg)
     for scene in scenes:
         planning_scene = PlanningScene(cfg)
-        
         obs, objname, scene_name = env.init_scene(scene, planning_scene, hydra_cfg)
 
-        # if cfg.eval_env == 'panda_env':
-        #     objinfo = get_object_info(env, objname, Path(hydra_cfg.data_root) / hydra_cfg.dataset)
-        #     env.reset(init_joints=scenes[scene_idx]['joints'], no_table=not cfg.table, objinfo=objinfo)
-        #     place_object(env, cfg.tgt_pos, q=scenes[scene_idx]['obj_rot'], random=False, gravity=cfg.gravity)
-        #     obs = env._get_observation(get_pc=cfg.pc, single_view=False)
-        #     set_scene_env(scene, env._objectUids[0], objinfo, scenes[scene_idx]['joints'], hydra_cfg)
-        # elif cfg.eval_env == 'panda_ycb_env':
-        #     full_name = Path(hydra_cfg.data_root) / 'data' / 'scenes' / f'{scenes[scene_idx]}.mat'
-        #     env.cache_reset(scene_file=full_name)
-        #     obj_names, obj_poses = env.get_env_info()
-        #     object_lists = [name.split("/")[-1].strip() for name in obj_names]
-        #     object_poses = [pack_pose(pose) for pose in obj_poses]
-
-        #     exists_ids, placed_poses = [], []
-        #     for i, name in enumerate(object_lists[:-2]):  # update planning scene
-        #         scene.env.update_pose(name, object_poses[i])
-        #         obj_idx = env.obj_path[:-2].index("data/objects/" + name)
-        #         exists_ids.append(obj_idx)
-        #         trans, orn = env.cache_object_poses[obj_idx]
-        #         placed_poses.append(np.hstack([trans, ros_quat(orn)]))
-            
-        #     cfg.disable_collision_set = [
-        #         name.split("/")[-2]
-        #         for obj_idx, name in enumerate(env.obj_path[:-2])
-        #         if obj_idx not in exists_ids
-        #     ]
-        #     scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
-        #     scene.reset(lazy=True)
-                
         pc = obs['points'] if cfg.pc else None
         info = planning_scene.step(pc=pc, viz_env=env)
         plan = planning_scene.planner.history_trajectories[-1]

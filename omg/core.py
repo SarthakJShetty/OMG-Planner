@@ -137,7 +137,6 @@ class Env(object):
         self.sdf_limits = None
         self.target_idx = 0
 
-        # and 'acronym_book' not in self.cfg.scene_file:
         if len(self.cfg.scene_file) > 0:
             full_path = self.cfg.scene_path + self.cfg.scene_file + ".mat"
             print('load from scene:', full_path)
