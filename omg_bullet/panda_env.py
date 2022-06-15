@@ -19,14 +19,30 @@ from .panda_gripper import Panda
 
 # import scipy.io as sio
 import pkgutil
-from .utils import depth2pc
+from omg_bullet.utils import depth2pc, draw_pose, get_world2bot_transform
 from copy import deepcopy
 import pytransform3d.rotations as pr
-from .utils import draw_pose
+import pytransform3d.transformations as pt
 
 import trimesh
 from acronym_tools import create_gripper_marker
 from pathlib import Path
+from hydra.utils import get_original_cwd
+import csv
+from manifold_grasping.utils import load_mesh
+
+
+def get_random_transform(pos, q=None, random=False):
+    T_rand = np.eye(4)
+    T_rand[:3, 3] = pos
+
+    if q is not None:
+        T_rand[:3, :3] = pr.matrix_from_quaternion(q)
+    elif random: 
+        q = pr.random_quaternion()
+        T_rand[:3, :3] = pr.matrix_from_quaternion(q)
+
+    return T_rand
 
 
 class PandaEnv:
@@ -469,3 +485,163 @@ class PandaEnv:
         #     self._panda_vizs[tstep].reset(traj.data[tstep])
         # joints = traj.data[-1]
         # self._panda_viz.reset(joints)
+    
+    def get_scenes(self, hydra_cfg):
+        objnames = os.listdir(Path(hydra_cfg.data_root) / hydra_cfg.dataset / 'meshes_bullet')
+        scenes = []
+        if hydra_cfg.run_scenes:
+            if hydra_cfg.eval.obj_csv is not None:
+                with open(Path(get_original_cwd()) / ".." / hydra_cfg.eval.obj_csv, 'r') as f:
+                    reader = csv.reader(f)
+                    for i, row in enumerate(reader):
+                        for objname in objnames:       
+                            scene = {
+                                'idx': i, 
+                                'obj_name': objname,
+                                'joints': [0.0, -1.285, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04],
+                                'obj_rot': pr.quaternion_wxyz_from_xyzw([float(x) for x in row[3:]])
+                            }
+                            scenes.append(scene)
+            elif hydra_cfg.eval.joints_csv is not None:
+                with open(Path(get_original_cwd()) / ".." / hydra_cfg.eval.joints_csv, 'r') as f:
+                    reader = csv.reader(f)
+                    for i, row in enumerate(reader):
+                        for objname in objnames:
+                            scene = {
+                                'idx': i, 
+                                'obj_name': objname,
+                                'joints': [float(x) for x in row],
+                                'obj_rot': [0, 0, 0, 1]
+                            }
+                            scenes.append(scene)
+        else:
+            for objname in objnames:
+                scenes.append({
+                    "idx": 0,
+                    "obj_name": objname,
+                    "joints": [0.0, -1.285, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04],
+                    "obj_rot": [0, 0, 0, 1]
+                })
+        return scenes
+    #     if 'Mug' not in objname: 
+    #         continue
+    #         if scene_idx != 4:
+    #             continue
+
+    
+    def init_scene(self, scene, planning_scene, hydra_cfg):
+        objinfo = self.get_object_info(scene['obj_name'], Path(hydra_cfg.data_root) / hydra_cfg.dataset)
+        self.reset(init_joints=scene['joints'], no_table=not cfg.table, objinfo=objinfo)
+        self.place_object(cfg.tgt_pos, q=scene['obj_rot'], random=False, gravity=cfg.gravity)
+        obs = self._get_observation(get_pc=cfg.pc, single_view=False)
+        self.set_scene_env(planning_scene, self._objectUids[0], objinfo, scene['joints'], hydra_cfg)
+        return obs, scene['obj_name'], scene['idx']
+
+    def get_object_info(self, objname, mesh_root):
+        """Used in multiple_views_acronym_bullet.py"""
+        grasp_h5 = Path(mesh_root) / 'grasps' / f'{objname}.h5'
+        scale = objname.split('_')[-1]
+        _, T_ctr2obj = load_mesh(str(grasp_h5), scale=scale, mesh_root_dir=mesh_root, load_for_bullet=True)
+        objinfo = {
+            'name': objname,
+            'urdf_dir': f'{mesh_root}/meshes_bullet/{objname}/model_normalized.urdf',
+            'scale': float(scale),
+            'T_ctr2obj': T_ctr2obj,
+            'T_ctr2obj_com': None
+        }
+        return objinfo
+
+    def place_object(self, target_pos, q=None, random=False, gravity=False):
+        """_summary_
+
+        Args:
+            env (_type_): _description_
+            target_pos (_type_): _description_
+            q (_type_, optional): _description_. Defaults to None. The object rotation as an wxyz quaternion
+            random (bool, optional): _description_. Defaults to False. Whether to sample a random rotation
+            gravity (bool, optional): _description_. Defaults to False.
+
+        Returns:
+            _type_: _description_
+        """
+        # place single object
+        T_w2b = get_world2bot_transform()
+    
+        T_rand = get_random_transform(target_pos, q=q, random=random)
+
+        # Apply object to centroid transform
+        T_ctr2obj = self.objinfos[0]['T_ctr2obj'] # TODO
+        # T_ctr2obj = env.objinfos[0]['T_ctr2obj_com']
+
+        T_w2o = T_w2b @ T_rand @ T_ctr2obj
+        # draw_pose(T_w2b @ T_rand)
+        # print(T_w2o)
+        pq_w2o = pt.pq_from_transform(T_w2o)  # wxyz
+
+        # p.resetBasePositionAndOrientation(
+        #     env._objectUids[0],
+        #     [0, 0, 0],
+        #     [0, 0, 0, 1]
+        # )
+
+        # pq_c2o = pt.pq_from_transform(T_ctr2obj)
+        # p.resetBasePositionAndOrientation(
+        #     env._objectUids[0],
+        #     -pq_c2o[:3],
+        #     pr.quaternion_xyzw_from_wxyz(pq_c2o[3:])
+        # )
+
+        # pq_c2o = pt.pq_from_transform(env.objinfos[0]['T_ctr2obj_com'])
+        # p.resetBasePositionAndOrientation(
+        #     env._objectUids[0],
+        #     -pq_c2o[:3],
+        #     pr.quaternion_xyzw_from_wxyz(pq_c2o[3:])
+        # )
+
+        p.resetBasePositionAndOrientation(
+            self._objectUids[0],
+            pq_w2o[:3],
+            pr.quaternion_xyzw_from_wxyz(pq_w2o[3:])
+        )
+        p.resetBaseVelocity(self._objectUids[0], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+
+        if gravity:
+            for i in range(10000):
+                p.stepSimulation()
+        
+        return T_w2o
+
+    def set_scene_env(self, planning_scene, uid, objinfo, joints, hydra_cfg):
+        # Scene has separate Env class which is used for planning
+        # Add object to planning scene env
+        trans_w2o, orn_w2o = p.getBasePositionAndOrientation(uid)  # xyzw
+
+        # change to world to object centroid so planning scene env only sees objects in centroid frame
+        T_b2w = np.linalg.inv(get_world2bot_transform())
+        T_w2o = np.eye(4)
+        T_w2o[:3, :3] = pr.matrix_from_quaternion(tf_quat(orn_w2o))
+        T_w2o[:3, 3] = trans_w2o
+        T_o2c = np.linalg.inv(objinfo['T_ctr2obj']) # TODO
+        # T_o2c = np.linalg.inv(objinfo['T_ctr2obj_com'])
+        T_b2c = T_b2w @ T_w2o @ T_o2c
+        trans = T_b2c[:3, 3]
+        orn = pr.quaternion_from_matrix(T_b2c[:3, :3])  # wxyz
+        draw_pose(T_w2o @ T_o2c)
+
+        obj_prefix = Path(hydra_cfg.data_root) / hydra_cfg.dataset / 'meshes_bullet'
+        planning_scene.reset_env(joints=joints)
+        # TODO
+        planning_scene.env.add_object(objinfo['name'], trans, orn, obj_prefix=obj_prefix, abs_path=True)
+        # scene.env.add_object('006_mustard_bottle', trans, orn, obj_prefix='/home/thomasweng/projects/manifolds/OMG-Planner/data/objects', abs_path=True)
+        # scene.env.add_object('019_pitcher_base', trans, orn, obj_prefix='/home/thomasweng/projects/manifolds/OMG-Planner/data/objects', abs_path=True)
+        planning_scene.env.add_plane(np.array([0.05, 0, -0.17]), np.array([1, 0, 0, 0]))
+        planning_scene.env.combine_sdfs()
+        if cfg.disable_target_collision:
+            cfg.disable_collision_set = [objinfo['name']]
+
+        # Set grasp selection method for planner
+        # TODO
+        planning_scene.env.set_target(objinfo['name'])
+        # scene.env.set_target('006_mustard_bottle')
+        # scene.env.set_target('019_pitcher_base')
+        planning_scene.reset(lazy=True)

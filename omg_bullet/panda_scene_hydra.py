@@ -4,13 +4,11 @@ import pybullet as p
 import numpy as np
 from omg.config import cfg
 from omg.core import PlanningScene
-from omg.util import tf_quat
 
 from omg_bullet.panda_env import PandaEnv
+from omg_bullet.panda_ycb_env import PandaYCBEnv
 
-# from acronym_tools import create_gripper_marker
-# from manifold_grasping.utils import load_mesh
-from omg_bullet.utils import get_world2bot_transform, draw_pose, bullet_execute_plan, get_object_info, place_object
+from omg_bullet.utils import bullet_execute_plan
 
 import torch
 import pytransform3d.rotations as pr
@@ -21,7 +19,6 @@ import cv2
 import subprocess
 import yaml
 import hydra
-from hydra.utils import get_original_cwd
 from omegaconf import OmegaConf
 from omegaconf.listconfig import ListConfig
 
@@ -76,35 +73,6 @@ def init_dir(hydra_cfg):
         writer.writeheader()
 
 
-def get_scenes(hydra_cfg):
-    scenes = []
-    if hydra_cfg.run_scenes:
-        if hydra_cfg.eval.obj_csv is not None:
-            with open(Path(get_original_cwd()) / ".." / hydra_cfg.eval.obj_csv, 'r') as f:
-                reader = csv.reader(f)
-                for row in reader:
-                    scene = {
-                        'joints': [0.0, -1.285, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04],
-                        'obj_rot': pr.quaternion_wxyz_from_xyzw([float(x) for x in row[3:]])
-                    }
-                    scenes.append(scene)
-        elif hydra_cfg.eval.joints_csv is not None:
-            with open(Path(get_original_cwd()) / ".." / hydra_cfg.eval.joints_csv, 'r') as f:
-                reader = csv.reader(f)
-                for row in reader:
-                    scene = {
-                        'joints': [float(x) for x in row],
-                        'obj_rot': [0, 0, 0, 1]
-                    }
-                    scenes.append(scene)
-    else:
-        scenes.append({
-            "joints": [0.0, -1.285, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04],
-            "obj_rot": [0, 0, 0, 1]
-        })
-    return scenes
-
-
 def save_metrics(objname, scene_idx, grasp_success, info):
     has_plan = info != []
     metrics = {
@@ -120,44 +88,17 @@ def save_metrics(objname, scene_idx, grasp_success, info):
     with open(cwd / 'metrics.csv', 'a', newline='') as csvfile:
         fieldnames = ['object_name', 'scene_idx', 'execution', 'planning', 'smoothness', 'collision', 'time']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writerow(metrics)
+        writer.writerow(metrics) 
 
 
-def set_scene_env(scene, uid, objinfo, joints, hydra_cfg):
-    # Scene has separate Env class which is used for planning
-    # Add object to planning scene env
-    trans_w2o, orn_w2o = p.getBasePositionAndOrientation(uid)  # xyzw
-
-    # change to world to object centroid so planning scene env only sees objects in centroid frame
-    T_b2w = np.linalg.inv(get_world2bot_transform())
-    T_w2o = np.eye(4)
-    T_w2o[:3, :3] = pr.matrix_from_quaternion(tf_quat(orn_w2o))
-    T_w2o[:3, 3] = trans_w2o
-    T_o2c = np.linalg.inv(objinfo['T_ctr2obj']) # TODO
-    # T_o2c = np.linalg.inv(objinfo['T_ctr2obj_com'])
-    T_b2c = T_b2w @ T_w2o @ T_o2c
-    trans = T_b2c[:3, 3]
-    orn = pr.quaternion_from_matrix(T_b2c[:3, :3])  # wxyz
-    draw_pose(T_w2o @ T_o2c)
-
-    obj_prefix = Path(hydra_cfg.data_root) / hydra_cfg.dataset / 'meshes_bullet'
-    scene.reset_env(joints=joints)
-    # TODO
-    scene.env.add_object(objinfo['name'], trans, orn, obj_prefix=obj_prefix, abs_path=True)
-    # scene.env.add_object('006_mustard_bottle', trans, orn, obj_prefix='/home/thomasweng/projects/manifolds/OMG-Planner/data/objects', abs_path=True)
-    # scene.env.add_object('019_pitcher_base', trans, orn, obj_prefix='/home/thomasweng/projects/manifolds/OMG-Planner/data/objects', abs_path=True)
-    scene.env.add_plane(np.array([0.05, 0, -0.17]), np.array([1, 0, 0, 0]))
-    scene.env.combine_sdfs()
-    if cfg.disable_target_collision:
-        cfg.disable_collision_set = [objinfo['name']]
-
-    # Set grasp selection method for planner
-    # TODO
-    scene.env.set_target(objinfo['name'])
-    # scene.env.set_target('006_mustard_bottle')
-    # scene.env.set_target('019_pitcher_base')
-    scene.reset(lazy=True)
-    
+def init_env(hydra_cfg):
+    if cfg.eval_env == 'panda_env':
+        env = PandaEnv(renders=hydra_cfg.render, gravity=cfg.gravity, cam_look=cfg.cam_look)
+    elif cfg.eval_env == 'panda_ycb_env':
+        env = PandaYCBEnv(gravity=cfg.gravity)
+    else:
+        raise NotImplementedError
+    return env
 
 @hydra.main(config_path=str(Path(os.path.dirname(__file__)) / '..' / 'config'), 
             config_name="panda_scene", version_base=None)
@@ -168,42 +109,61 @@ def main(hydra_cfg):
 
     merge_cfgs(hydra_cfg, cfg)
     init_dir(hydra_cfg)
+    env = init_env(hydra_cfg)
 
-    env = PandaEnv(renders=hydra_cfg.render, gravity=cfg.gravity, cam_look=cfg.cam_look)
+    # Change this so that scenes contains all object and scene permutations
+    # Then just run all the scenes. 
+    # This will streamline panda_env vs. panda_ycb_env as well. 
 
-    scenes = get_scenes(hydra_cfg)
-    for objname in os.listdir(Path(hydra_cfg.data_root) / hydra_cfg.dataset / 'meshes_bullet'):
-        # if 'Mug' not in objname: 
-            # continue
-        scene = PlanningScene(cfg)
-        for scene_idx in range(len(scenes)):
-            # if scene_idx != 4:
-                # continue
-            objinfo = get_object_info(env, objname, Path(hydra_cfg.data_root) / hydra_cfg.dataset)
-            env.reset(init_joints=scenes[scene_idx]['joints'], no_table=not cfg.table, objinfo=objinfo)
-            # TODO for mustard
-            # tgt = cfg.tgt_pos
-            # tgt[0] -= 0.2
-            # q = [1, 0, 0, 0]
-            q = scenes[scene_idx]['obj_rot']
-            place_object(env, cfg.tgt_pos, q=q, random=False, gravity=cfg.gravity)
-            obs = env._get_observation(get_pc=cfg.pc, single_view=False)
+    scenes = env.get_scenes(hydra_cfg)
+    for scene in scenes:
+        planning_scene = PlanningScene(cfg)
+        
+        obs, objname, scene_name = env.init_scene(scene, planning_scene, hydra_cfg)
 
-            set_scene_env(scene, env._objectUids[0], objinfo, scenes[scene_idx]['joints'], hydra_cfg)
-            pc = obs['points'] if cfg.pc else None
-            info = scene.step(pc=pc, viz_env=env)
-            plan = scene.planner.history_trajectories[-1]
+        # if cfg.eval_env == 'panda_env':
+        #     objinfo = get_object_info(env, objname, Path(hydra_cfg.data_root) / hydra_cfg.dataset)
+        #     env.reset(init_joints=scenes[scene_idx]['joints'], no_table=not cfg.table, objinfo=objinfo)
+        #     place_object(env, cfg.tgt_pos, q=scenes[scene_idx]['obj_rot'], random=False, gravity=cfg.gravity)
+        #     obs = env._get_observation(get_pc=cfg.pc, single_view=False)
+        #     set_scene_env(scene, env._objectUids[0], objinfo, scenes[scene_idx]['joints'], hydra_cfg)
+        # elif cfg.eval_env == 'panda_ycb_env':
+        #     full_name = Path(hydra_cfg.data_root) / 'data' / 'scenes' / f'{scenes[scene_idx]}.mat'
+        #     env.cache_reset(scene_file=full_name)
+        #     obj_names, obj_poses = env.get_env_info()
+        #     object_lists = [name.split("/")[-1].strip() for name in obj_names]
+        #     object_poses = [pack_pose(pose) for pose in obj_poses]
 
-            video_writer = init_video_writer(Path(os.getcwd()) / 'videos', objname, scene_idx) if hydra_cfg.write_video else None
-            grasp_success = bullet_execute_plan(env, plan, hydra_cfg.write_video, video_writer)
+        #     exists_ids, placed_poses = [], []
+        #     for i, name in enumerate(object_lists[:-2]):  # update planning scene
+        #         scene.env.update_pose(name, object_poses[i])
+        #         obj_idx = env.obj_path[:-2].index("data/objects/" + name)
+        #         exists_ids.append(obj_idx)
+        #         trans, orn = env.cache_object_poses[obj_idx]
+        #         placed_poses.append(np.hstack([trans, ros_quat(orn)]))
+            
+        #     cfg.disable_collision_set = [
+        #         name.split("/")[-2]
+        #         for obj_idx, name in enumerate(env.obj_path[:-2])
+        #         if obj_idx not in exists_ids
+        #     ]
+        #     scene.env.set_target(env.obj_path[env.target_idx].split("/")[-1])
+        #     scene.reset(lazy=True)
+                
+        pc = obs['points'] if cfg.pc else None
+        info = planning_scene.step(pc=pc, viz_env=env)
+        plan = planning_scene.planner.history_trajectories[-1]
 
-            save_metrics(objname, scene_idx, grasp_success, info)
-            cwd = Path(os.getcwd())
-            np.savez(cwd / 'info' / f'{objname}_{scene_idx}', info=info, trajs=scene.planner.history_trajectories)
+        video_writer = init_video_writer(Path(os.getcwd()) / 'videos', objname, scene_name) if hydra_cfg.write_video else None
+        grasp_success = bullet_execute_plan(env, plan, hydra_cfg.write_video, video_writer)
 
-            # Convert avi to high quality gif 
-            if hydra_cfg.write_video and info != []:
-                subprocess.Popen(['ffmpeg', '-y', '-i', cwd / 'videos' / f'{objname}_{scene_idx}.avi', '-vf', "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse", '-loop', '0', cwd / 'gifs' / f'{objname}_{scene_idx}.gif'])
+        save_metrics(objname, scene_name, grasp_success, info)
+        cwd = Path(os.getcwd())
+        np.savez(cwd / 'info' / f'{objname}_{scene_name}', info=info, trajs=planning_scene.planner.history_trajectories)
+
+        # Convert avi to high quality gif 
+        if hydra_cfg.write_video and info != []:
+            subprocess.Popen(['ffmpeg', '-y', '-i', cwd / 'videos' / f'{objname}_{scene_name}.avi', '-vf', "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse", '-loop', '0', cwd / 'gifs' / f'{objname}_{scene_name}.gif'])
 
 if __name__ == '__main__':
     main()

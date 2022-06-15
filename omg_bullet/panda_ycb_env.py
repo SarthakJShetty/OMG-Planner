@@ -22,7 +22,7 @@ import pytransform3d.rotations as pr
 
 from .panda_env import PandaEnv
 from pathlib import Path
-from bullet.utils import draw_pose, get_world2bot_transform
+from omg_bullet.utils import draw_pose, get_world2bot_transform
 
 class PandaYCBEnv(PandaEnv):
     """Class for panda environment.
@@ -331,6 +331,13 @@ class PandaYCBEnv(PandaEnv):
                 obj_dir.append(self.obj_path[idx])  # .encode("utf-8")
 
         return obj_dir, poses
+
+    def get_scenes(self, hydra_cfg):
+        if hydra_cfg.run_scenes:
+            scene_files = ['scene_{}'.format(i) for i in range(100)]
+        else:
+            scene_files = [None]
+        return scene_files
 
 if __name__ == '__main__':
     env = PandaYCBEnv(renders=True, gravity=True, root_dir='/data/manifolds/ycb_mini')
