@@ -24,6 +24,7 @@ except:
 import platform
 import shutil
 import trimesh
+import trimesh.transformations as tra
 from pathlib import Path
 
 PYTHON2 = True
@@ -148,6 +149,8 @@ for obj_name in os.listdir(args.mesh_root):
                 mesh = trimesh.load(f'{mesh_path}/model_normalized_unscaled.obj')
                 scale = float(Path(mesh_path).parts[-1].split('_')[-1])
                 mesh = mesh.apply_scale(scale)
+                mesh.apply_transform(tra.translation_matrix(-mesh.centroid))
+                # trimesh.Scene([mesh]).show()
                 mesh.export(f'{mesh_path}/model_normalized.obj')
 
                 gen_xyz.generate_extents_points(random_paths=[mesh_path])
@@ -158,9 +161,9 @@ for obj_name in os.listdir(args.mesh_root):
 
                 ####### These two are mainly for rendering and simulation, needs update urdf if used in bullet
                 ####### This can be used for meshes with broken topology and add textures uvs
-                blender_process.process_obj(mesh_path)
+                # blender_process.process_obj(mesh_path)
 
-                ####### The convex shape can be used for bullet.
+                # ####### The convex shape can be used for bullet.
                 try:
                     gen_convex_shape.convexify_model_subprocess([mesh_path])
                 except Exception as e:

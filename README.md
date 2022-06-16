@@ -99,6 +99,11 @@ Ubuntu 18.04, CUDA 11.1
     python eval_scripts/run_eval.py --exp_name=dbg --data_root=/home/thomasweng/data/manifolds --trials=1 --render
     ```
 
+* If processing new object models, you'll need to install additional packages
+    * SDFGen
+    * blenderpy https://blender.stackexchange.com/questions/126959/how-to-build-blender-as-python-module
+    
+
 
 
 ### Installation

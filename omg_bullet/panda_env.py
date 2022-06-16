@@ -642,15 +642,15 @@ class PandaEnv:
         planning_scene.env.set_target(objinfo['name'])
         planning_scene.reset(lazy=True)
 
-        # coords = planning_scene.env.objects[self.target_idx].sdf.visualize()
+        coords = planning_scene.env.objects[self.target_idx].sdf.visualize()
 
-        # T_w2b = get_world2bot_transform()
-        # T_b2o = unpack_pose(planning_scene.env.objects[self.target_idx].pose)
-        # draw_pose(T_w2b @ T_b2o)
+        T_w2b = get_world2bot_transform()
+        T_b2o = unpack_pose(planning_scene.env.objects[self.target_idx].pose)
+        draw_pose(T_w2b @ T_b2o)
 
-        # for i in range(coords.shape[0]):
-        #     coord = coords[i]
-        #     coord = np.concatenate([coord, [1]])
-        #     T_c = np.eye(4)
-        #     T_c[:, 3] = coord
-        #     draw_pose(T_w2b @ T_b2o @ T_c)
+        for i in range(coords.shape[0]):
+            coord = coords[i]
+            coord = np.concatenate([coord, [1]])
+            T_c = np.eye(4)
+            T_c[:, 3] = coord
+            draw_pose(T_w2b @ T_b2o @ T_c)
