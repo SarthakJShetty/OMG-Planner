@@ -174,7 +174,8 @@ class PandaEnv:
             return []
 
         uid = self._add_mesh(
-            objinfo['urdf_dir'], [0, 0, 0], [0, 0, 0, 1], scale=objinfo['scale']
+            # objinfo['urdf_dir'], [0, 0, 0], [0, 0, 0, 1], scale=objinfo['scale']
+            objinfo['urdf_dir'], [0, 0, 0], [0, 0, 0, 1], scale=1 # object is pre-scaled in .obj
         )  # xyzw
         p.setCollisionFilterPair(
             uid, self.plane_id, -1, -1, 0
@@ -255,29 +256,6 @@ class PandaEnv:
         self._panda_vizs = []
         # for i in range(self._traj_tsteps): # TODO update with config    
             # self._panda_vizs.append(Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True))
-
-        if False: # TODO mustard bottle
-            objects = sorted([m for m in os.listdir('/home/thomasweng/projects/manifolds/OMG-Planner/data/objects') if m.startswith("0")])
-            # obj = objects[10] # pitcher
-            obj = objects[4] # mustard bottle
-            uid = self._add_mesh(
-                os.path.join('/home/thomasweng/projects/manifolds/OMG-Planner/data/objects', obj, "model_normalized.urdf"), 
-                [0, 0, 0], [0, 0, 0, 1], scale=1
-            )  # xyzw
-            
-            mesh = trimesh.load(os.path.join('/home/thomasweng/projects/manifolds/OMG-Planner/data/objects', obj, "model_normalized.obj"))
-            T_ctr2obj_com = np.eye(4)
-            # T_ctr2obj_com[:3, 3] = -mesh.centroid
-            T_ctr2obj_com[:3, 3] = -mesh.center_mass
-            objinfo['T_ctr2obj_com'] = T_ctr2obj_com
-
-            self._objectUids = [uid] 
-            self.objinfos = [objinfo
-            #     {
-            #     'T_ctr2obj': T_ctr2obj,
-            #     'T_ctr2obj_com': T_ctr2obj_com 
-            # }
-            ]
 
         # Initialize objects
         fpath = Path(os.path.dirname(__file__))
@@ -642,15 +620,15 @@ class PandaEnv:
         planning_scene.env.set_target(objinfo['name'])
         planning_scene.reset(lazy=True)
 
-        coords = planning_scene.env.objects[self.target_idx].sdf.visualize()
+        # coords = planning_scene.env.objects[self.target_idx].sdf.visualize(plotly=False)
 
-        T_w2b = get_world2bot_transform()
-        T_b2o = unpack_pose(planning_scene.env.objects[self.target_idx].pose)
-        draw_pose(T_w2b @ T_b2o)
+        # T_w2b = get_world2bot_transform()
+        # T_b2o = unpack_pose(planning_scene.env.objects[self.target_idx].pose)
+        # draw_pose(T_w2b @ T_b2o)
 
-        for i in range(coords.shape[0]):
-            coord = coords[i]
-            coord = np.concatenate([coord, [1]])
-            T_c = np.eye(4)
-            T_c[:, 3] = coord
-            draw_pose(T_w2b @ T_b2o @ T_c)
+        # for i in range(coords.shape[0]):
+        #     coord = coords[i]
+        #     coord = np.concatenate([coord, [1]])
+        #     T_c = np.eye(4)
+        #     T_c[:, 3] = coord
+        #     draw_pose(T_w2b @ T_b2o @ T_c)

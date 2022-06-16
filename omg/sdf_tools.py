@@ -138,7 +138,7 @@ class SignedDensityField(object):
         data["delta"] = self.delta
         pickle.dump(data, open(pkl_file, "wb"), protocol=2)
 
-    def visualize(self, max_dist=0.07):
+    def visualize(self, max_dist=0.07, plotly=False):
         # SCALE = 100  # The dimensions will be expressed in cm for better visualization.
         SCALE = 1  
         data = np.copy(self.data)
@@ -159,17 +159,18 @@ class SignedDensityField(object):
         rand_idxs = np.random.choice(range(len(coords[0])), size=500)
         coords = coords[:, rand_idxs].T # N x 3
 
-        fig = go.Figure(data=[go.Scatter3d(
-            x=coords[:, 0],
-            y=coords[:, 1],
-            z=coords[:, 2],
-            mode='markers',
-            marker=dict(
-                size=12,
-                opacity=0.8
-            )
-        )])
-        fig.show()
+        if plotly:
+            fig = go.Figure(data=[go.Scatter3d(
+                x=coords[:, 0],
+                y=coords[:, 1],
+                z=coords[:, 2],
+                mode='markers',
+                marker=dict(
+                    size=12,
+                    opacity=0.8
+                )
+            )])
+            fig.show()
         return coords
 
         # import matplotlib.pyplot as plt
