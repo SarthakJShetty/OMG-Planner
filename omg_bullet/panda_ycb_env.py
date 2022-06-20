@@ -341,7 +341,7 @@ class PandaYCBEnv(PandaEnv):
         return scene_files
 
     def init_scene(self, scene, planning_scene, hydra_cfg):
-        full_name = Path(hydra_cfg.data_root) / 'data' / 'scenes' / f'{scene}.mat'
+        full_name = Path(os.path.dirname(__file__)) / '..' / 'data' / 'scenes' / f'{scene}.mat'
         self.reset(reset_cache=True)
         self.cache_reset(scene_file=full_name)
         obj_names, obj_poses = self.get_env_info()
