@@ -764,6 +764,7 @@ class Planner(object):
                 draw_pose(T_w2pc)
             
             self.optim.init(self.traj)
+            ran_initial_ik = False
 
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
                 print(f"plan step {t}")
@@ -830,32 +831,34 @@ class Planner(object):
                         T_o2g_np[:3, 3] = pq_o2g_np[:3]
                         T_b2g_np = np.linalg.inv(T_o2b_np) @ T_o2g_np
                         pose_b2g = th.SE3(data=torch.tensor(T_b2g_np[:3]).float().unsqueeze(0))
-
-                    # TODO initial ik
-
                     # Visualization
                     draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
 
-                    self.CHOMP_update(self.traj, pose_b2g, robot_model)
+                    # self.CHOMP_update(self.traj, pose_b2g, robot_model)
                 elif 'GF_known' in self.cfg.method:
                     q_goal = torch.tensor(self.traj.goal_set[self.traj.goal_idx], device='cpu', dtype=torch.float32)
                     pose_b2g = robot_model.forward_kinematics(q_goal)['panda_hand']
-
                     T_b2g_np = pose_b2g.to_matrix().squeeze(0).cpu().numpy()
                     draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
 
-                    if t == 0 and self.cfg.initial_ik:
-                        pq_b2g = pt.pq_from_transform(T_b2g_np) # wxyz
-                        seed = self.traj.start[:7]
-                        goal_ik = config.cfg.ROBOT.inverse_kinematics(
-                            pq_b2g[:3], ros_quat(pq_b2g[3:]), seed=seed
-                        )
-                        
+                # Update trajectory goal cost and gradient with either IK or differentiable robot model
+                if self.cfg.initial_ik and not ran_initial_ik:
+                    pq_b2g = pt.pq_from_transform(T_b2g_np) # wxyz
+                    seed = self.traj.start[:7]
+                    goal_ik = config.cfg.ROBOT.inverse_kinematics(
+                        pq_b2g[:3], ros_quat(pq_b2g[3:]), seed=seed
+                    )
+                    # if IK fails, just run CHOMP update and try again next iter
+                    if goal_ik is None:
+                        print(f"Initial IK failed in iter {t}")
+                        self.CHOMP_update(self.traj, pose_b2g, robot_model) 
+                    else:
                         traj.set_goal_and_interp(goal_ik)
                         traj.goal_cost = 0
                         traj.goal_grad = np.zeros((1, 7))
-                    else:
-                        self.CHOMP_update(self.traj, pose_b2g, robot_model)
+                        ran_initial_ik = True
+                else:
+                    self.CHOMP_update(self.traj, pose_b2g, robot_model)
 
                 info_t = self.optim.optimize(self.traj, force_update=True, tstep=t+1)
 
