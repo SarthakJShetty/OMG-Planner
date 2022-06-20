@@ -1,5 +1,6 @@
 # Evaluation configs
 method: GF_known
+use_standoff: False
 use_goal_grad: True
 ol_alg: null 
 use_min_cost_traj: False
