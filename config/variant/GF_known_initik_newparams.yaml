@@ -1,0 +1,22 @@
+# Evaluation configs
+method: GF_known_initik
+use_standoff: False
+use_goal_grad: True
+ol_alg: null 
+use_min_cost_traj: False
+filter_collision: False
+smooth_loss_on_endpoint: False
+start_end_equal: True
+initial_ik: True
+chomp_adam: True
+
+allow_collision_point: 0
+goal_set_proj: False
+remove_flip_grasp: False
+smoothness_base_weight: 0.01
+base_obstacle_weight: 1.0
+base_grasp_weight: 1.0
+cost_schedule_boost: 1.0
+base_step_size: 0.03
+optim_steps: 300
+pre_terminate: True

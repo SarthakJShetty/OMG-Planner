@@ -451,9 +451,8 @@ class PandaEnv:
         # return obj_dir, poses
         return [uid], poses
 
-    def update_panda_viz(self, traj):
+    def update_panda_viz(self, traj, k=1):
         # Visualize last k steps
-        k = 10
         traj_len = traj.data.shape[0]
         for tstep in range(traj_len - k, traj_len): 
             self._panda_vizs.append(Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True))

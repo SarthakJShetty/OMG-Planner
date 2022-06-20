@@ -870,6 +870,9 @@ class Planner(object):
                     print("plan optimize:", time.time() - start_time)
 
 
+                # if viz_env:
+                    # viz_env.update_panda_viz(self.traj, k=1)
+
                 if viz_env and info_t['collide'] > 0 and False:
                     while len(self.dbg_ids) > 0:
                         dbg_id = self.dbg_ids.pop(0)
@@ -889,7 +892,6 @@ class Planner(object):
                                 lineColorRGB=col_pt[3:6])
                         self.dbg_ids.append(dbg_id)
 
-                    # viz_env.update_panda_viz(self.traj)
 
                 # if viz_env and \
                     # (self.info[-1]["terminate"] or t == self.cfg.optim_steps + self.cfg.extra_smooth_steps - 1):
