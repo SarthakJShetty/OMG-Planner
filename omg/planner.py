@@ -836,7 +836,7 @@ class Planner(object):
                     draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
 
                 # Update trajectory goal cost and gradient with either IK or differentiable robot model
-                if self.cfg.initial_ik and not ran_initial_ik:
+                if 'GF' in self.cfg.method and self.cfg.initial_ik and not ran_initial_ik:
                     pq_b2g = pt.pq_from_transform(T_b2g_np) # wxyz
                     seed = self.traj.start[:7]
                     goal_ik = config.cfg.ROBOT.inverse_kinematics(
