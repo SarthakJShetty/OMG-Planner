@@ -144,6 +144,7 @@ cfg.chomp_adam = False
 cfg.smooth_loss_on_endpoint = True
 cfg.start_end_equal = False
 cfg.eval_env = ''
+cfg.float_obstacle = False
 
 """ global function """
 def get_derivative(data, start, end, diff_rule=1):

@@ -10,3 +10,4 @@ tgt_pos:
   - 0.0
   - 0.5
 gravity: False
+float_obstacle: True

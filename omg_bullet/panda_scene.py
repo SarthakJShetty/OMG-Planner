@@ -5,8 +5,8 @@ import numpy as np
 from omg.config import cfg
 from omg.core import PlanningScene
 
-from omg_bullet.panda_env import PandaEnv
-from omg_bullet.panda_ycb_env import PandaYCBEnv
+from omg_bullet.envs.acronym_env import PandaAcronymEnv
+from omg_bullet.envs.ycb_env import PandaYCBEnv
 
 from omg_bullet.utils import bullet_execute_plan
 
@@ -99,7 +99,7 @@ def save_metrics(objname, scene_idx, grasp_success, info):
 
 def init_env(hydra_cfg):
     if cfg.eval_env == 'panda_env':
-        env = PandaEnv(renders=hydra_cfg.render, gravity=cfg.gravity, cam_look=cfg.cam_look)
+        env = PandaAcronymEnv(renders=hydra_cfg.render, gravity=cfg.gravity, cam_look=cfg.cam_look)
     elif cfg.eval_env == 'panda_ycb_env':
         env = PandaYCBEnv(renders=hydra_cfg.render, gravity=cfg.gravity)
     else:

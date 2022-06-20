@@ -12,19 +12,19 @@ import numpy as np
 import pybullet_data
 
 # import glob
-from .panda_gripper import Panda
+from omg_bullet.panda_gripper import Panda
 
 import scipy.io as sio
 import pkgutil
-from .utils import depth2pc
+from omg_bullet.utils import depth2pc
 from copy import deepcopy
 import pytransform3d.rotations as pr
 
-from .panda_env import PandaEnv
+from omg_bullet.envs.acronym_env import PandaAcronymEnv
 from pathlib import Path
 from omg_bullet.utils import draw_pose, get_world2bot_transform
 
-class PandaYCBEnv(PandaEnv):
+class PandaYCBEnv(PandaAcronymEnv):
     """Class for panda environment.
     adapted from kukadiverse env in pybullet
     """

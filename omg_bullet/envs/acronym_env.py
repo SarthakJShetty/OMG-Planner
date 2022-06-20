@@ -15,7 +15,7 @@ import pybullet_data
 
 # from PIL import Image
 # import glob
-from .panda_gripper import Panda
+from omg_bullet.panda_gripper import Panda
 
 # import scipy.io as sio
 import pkgutil
@@ -44,8 +44,46 @@ def get_random_transform(pos, q=None, random=False):
 
     return T_rand
 
-
 class PandaEnv:
+    """Class for panda environment.
+    adapted from kukadiverse env in pybullet
+    """
+
+    def __init__(
+        self,
+        renders=False,
+        gui_debug=True,
+        egl_render=False,
+    ):
+        self._renders = renders
+        self._gui_debug = gui_debug
+        self._egl_render = egl_render
+        self.connect()
+
+    def connect(self):
+        if self._renders:
+            self.cid = p.connect(p.SHARED_MEMORY)
+            if self.cid < 0:
+                self.cid = p.connect(p.GUI)
+                p.resetDebugVisualizerCamera(1.3, 180, 0, [-0.35, -0.58, -0.88])
+            if not self._gui_debug:
+                p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
+
+        else:
+            self.cid = p.connect(p.DIRECT)
+
+        egl = pkgutil.get_loader("eglRenderer")
+        if self._egl_render and egl:
+            p.loadPlugin(egl.get_filename(), "_eglRendererPlugin")
+
+        self.connected = True
+
+    def disconnect(self):
+        p.disconnect()
+        self.connected = False
+
+
+class PandaAcronymEnv(PandaEnv):
     """Class for panda environment.
     adapted from kukadiverse env in pybullet
     """
@@ -55,7 +93,6 @@ class PandaEnv:
         urdfRoot=pybullet_data.getDataPath(),
         actionRepeat=130,
         isEnableSelfCollision=True,
-        renders=False,
         isDiscrete=False,
         maxSteps=800,
         dtheta=0.1,
@@ -66,11 +103,11 @@ class PandaEnv:
         numObjects=8,
         safeDistance=0.13,
         random_urdf=False,
-        egl_render=False,
-        gui_debug=True,
         gravity=True,
         root_dir=None,
-        cam_look=[-0.05, -0.5, -1.1]
+        cam_look=[-0.05, -0.5, -1.1],
+        *args,
+        **kwargs
     ):
         """Initializes the pandaYCBObjectEnv.
 
@@ -90,10 +127,10 @@ class PandaEnv:
             height: The observation image height.
             numObjects: The number of objects in the bin.
         """
+        super(PandaAcronymEnv, self).__init__(*args, **kwargs)
         self._timeStep = 1.0 / 1000.0
         self._urdfRoot = urdfRoot
         self._observation = []
-        self._renders = renders
         self._maxSteps = maxSteps
         self._actionRepeat = actionRepeat
         self._env_step = 0
@@ -141,33 +178,31 @@ class PandaEnv:
         self._cameraRandom = cameraRandom
         self._numObjects = numObjects
         self._shift = [0.5, 0.5, 0.5]  # to work without axis in DIRECT mode
-        self._egl_render = egl_render
 
-        self._gui_debug = gui_debug
         self.target_idx = 0
-        self.connect()
+        # self.connect()
 
-    def connect(self):
-        if self._renders:
-            self.cid = p.connect(p.SHARED_MEMORY)
-            if self.cid < 0:
-                self.cid = p.connect(p.GUI)
-                p.resetDebugVisualizerCamera(1.3, 180, 0, [-0.35, -0.58, -0.88])
-            if not self._gui_debug:
-                p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
+    # def connect(self):
+    #     if self._renders:
+    #         self.cid = p.connect(p.SHARED_MEMORY)
+    #         if self.cid < 0:
+    #             self.cid = p.connect(p.GUI)
+    #             p.resetDebugVisualizerCamera(1.3, 180, 0, [-0.35, -0.58, -0.88])
+    #         if not self._gui_debug:
+    #             p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
 
-        else:
-            self.cid = p.connect(p.DIRECT)
+    #     else:
+    #         self.cid = p.connect(p.DIRECT)
 
-        egl = pkgutil.get_loader("eglRenderer")
-        if self._egl_render and egl:
-            p.loadPlugin(egl.get_filename(), "_eglRendererPlugin")
+    #     egl = pkgutil.get_loader("eglRenderer")
+    #     if self._egl_render and egl:
+    #         p.loadPlugin(egl.get_filename(), "_eglRendererPlugin")
 
-        self.connected = True
+    #     self.connected = True
 
-    def disconnect(self):
-        p.disconnect()
-        self.connected = False
+    # def disconnect(self):
+    #     p.disconnect()
+    #     self.connected = False
 
     def load_object(self, objinfo=None):
         if objinfo is None:
@@ -262,12 +297,12 @@ class PandaEnv:
         plane_file = "data/objects/floor"
         table_file = "data/objects/table/models"
         self.plane_id = p.loadURDF(
-            str(fpath / '..' / plane_file / 'model_normalized.urdf'),
+            str(fpath / '..' / '..' / plane_file / 'model_normalized.urdf'),
             [0 - self._shift[0], 0 - self._shift[1], -0.82 - self._shift[2]]
         )
         table_z = -5 if no_table else -0.82 - self._shift[2]
         self.table_id = p.loadURDF(
-            str(fpath / '..' / table_file / 'model_normalized.urdf'),
+            str(fpath / '..' /  '..' / table_file / 'model_normalized.urdf'),
             0.5 - self._shift[0],
             0.0 - self._shift[1],
             table_z,
@@ -510,6 +545,9 @@ class PandaEnv:
         objinfo = self.get_object_info(scene['obj_name'], Path(hydra_cfg.data_root) / hydra_cfg.dataset)
         self.reset(init_joints=scene['joints'], no_table=not cfg.table, objinfo=objinfo)
         self.place_object(cfg.tgt_pos, q=scene['obj_rot'], random=False, gravity=cfg.gravity)
+        if planning_scene.cfg.float_obstacle:
+            # Add a floating obstacle
+            pass
         obs = self._get_observation(get_pc=cfg.pc, single_view=False)
         self.set_scene_env(planning_scene, self._objectUids[0], objinfo, scene['joints'], hydra_cfg)
         return obs, scene['obj_name'], scene['idx']
