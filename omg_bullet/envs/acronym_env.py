@@ -82,6 +82,80 @@ class PandaEnv:
         p.disconnect()
         self.connected = False
 
+    def retract(self, record=False):
+        """Retract step."""
+        cur_joint = np.array(self._panda.getJointStates()[0])
+        cur_joint[-2:] = 0
+
+        self.step(cur_joint.tolist())  # grasp
+        pos, orn = p.getLinkState(
+            self._panda.pandaUid, self._panda.pandaEndEffectorIndex
+        )[:2]
+        observations = []
+        for i in range(10):
+            pos = (pos[0], pos[1], pos[2] + 0.03)
+            jointPoses = np.array(
+                p.calculateInverseKinematics(
+                    self._panda.pandaUid, self._panda.pandaEndEffectorIndex, pos
+                )
+            )
+            jointPoses[-2:] = 0.0
+
+            self.step(jointPoses.tolist())
+            observation = self._get_observation()
+            if record:
+                observations.append(observation)
+        # wait in case gripper closes
+        for i in range(10):
+            self.step(jointPoses.tolist())
+        return (self._reward(), observations) if record else self._reward()
+
+    def step(self, action, obs=True):
+        """Environment step."""
+        self._env_step += 1
+        self._panda.setTargetPositions(action)
+        for _ in range(self._actionRepeat):
+            p.stepSimulation()
+            if self._renders:
+                time.sleep(self._timeStep)
+        if not obs:
+            observation = None
+        else:
+            observation = self._get_observation()
+        done = self._termination()
+        reward = self._reward()
+
+        return observation, reward, done, None
+
+    def _reward(self):
+        """Calculates the reward for the episode.
+
+        The reward is 1 if the gripper has significant width at the end of the episode.
+        """
+        reward = 0
+        grip_pos = self._panda.getJointStates()[0][-2:]
+        if (
+            min(grip_pos) > 0.001
+        ):
+            reward = 1
+        return reward
+
+    def _termination(self):
+        """Terminates the episode if we have tried to grasp or if we are above
+        maxSteps steps.
+        """
+        return self._env_step >= self._maxSteps
+
+    def _add_mesh(self, obj_file, trans, quat, scale=1):
+        try:
+            bid = p.loadURDF(obj_file, trans, quat, globalScaling=scale)
+            return bid
+        except:
+            print("load {} failed".format(obj_file))
+
+    def _get_target_obj_pose(self):
+        return p.getBasePositionAndOrientation(self._objectUids[self.target_idx])[0]
+
 
 class PandaAcronymEnv(PandaEnv):
     """Class for panda environment.
@@ -180,29 +254,6 @@ class PandaAcronymEnv(PandaEnv):
         self._shift = [0.5, 0.5, 0.5]  # to work without axis in DIRECT mode
 
         self.target_idx = 0
-        # self.connect()
-
-    # def connect(self):
-    #     if self._renders:
-    #         self.cid = p.connect(p.SHARED_MEMORY)
-    #         if self.cid < 0:
-    #             self.cid = p.connect(p.GUI)
-    #             p.resetDebugVisualizerCamera(1.3, 180, 0, [-0.35, -0.58, -0.88])
-    #         if not self._gui_debug:
-    #             p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
-
-    #     else:
-    #         self.cid = p.connect(p.DIRECT)
-
-    #     egl = pkgutil.get_loader("eglRenderer")
-    #     if self._egl_render and egl:
-    #         p.loadPlugin(egl.get_filename(), "_eglRendererPlugin")
-
-    #     self.connected = True
-
-    # def disconnect(self):
-    #     p.disconnect()
-    #     self.connected = False
 
     def load_object(self, objinfo=None):
         if objinfo is None:
@@ -320,51 +371,6 @@ class PandaAcronymEnv(PandaEnv):
         self._env_step = 0
         return self._get_observation()
 
-    def retract(self, record=False):
-        """Retract step."""
-        cur_joint = np.array(self._panda.getJointStates()[0])
-        cur_joint[-2:] = 0
-
-        self.step(cur_joint.tolist())  # grasp
-        pos, orn = p.getLinkState(
-            self._panda.pandaUid, self._panda.pandaEndEffectorIndex
-        )[:2]
-        observations = []
-        for i in range(10):
-            pos = (pos[0], pos[1], pos[2] + 0.03)
-            jointPoses = np.array(
-                p.calculateInverseKinematics(
-                    self._panda.pandaUid, self._panda.pandaEndEffectorIndex, pos
-                )
-            )
-            jointPoses[-2:] = 0.0
-
-            self.step(jointPoses.tolist())
-            observation = self._get_observation()
-            if record:
-                observations.append(observation)
-        # wait in case gripper closes
-        for i in range(10):
-            self.step(jointPoses.tolist())
-        return (self._reward(), observations) if record else self._reward()
-
-    def step(self, action, obs=True):
-        """Environment step."""
-        self._env_step += 1
-        self._panda.setTargetPositions(action)
-        for _ in range(self._actionRepeat):
-            p.stepSimulation()
-            if self._renders:
-                time.sleep(self._timeStep)
-        if not obs:
-            observation = None
-        else:
-            observation = self._get_observation()
-        done = self._termination()
-        reward = self._reward()
-
-        return observation, reward, done, None
-
     def _get_observation(self, get_pc=False, single_view=True):
         rgbs = []
         depths = []
@@ -441,35 +447,6 @@ class PandaAcronymEnv(PandaEnv):
             'joint_vel': joint_vel
         }
         return obs
-
-    def _get_target_obj_pose(self):
-        return p.getBasePositionAndOrientation(self._objectUids[self.target_idx])[0]
-
-    def _reward(self):
-        """Calculates the reward for the episode.
-
-        The reward is 1 if the gripper has significant width at the end of the episode.
-        """
-        reward = 0
-        grip_pos = self._panda.getJointStates()[0][-2:]
-        if (
-            min(grip_pos) > 0.001
-        ):
-            reward = 1
-        return reward
-
-    def _termination(self):
-        """Terminates the episode if we have tried to grasp or if we are above
-        maxSteps steps.
-        """
-        return self._env_step >= self._maxSteps
-
-    def _add_mesh(self, obj_file, trans, quat, scale=1):
-        try:
-            bid = p.loadURDF(obj_file, trans, quat, globalScaling=scale)
-            return bid
-        except:
-            print("load {} failed".format(obj_file))
 
     def get_env_info(self):
         pos, orn = p.getBasePositionAndOrientation(self._panda.pandaUid)
