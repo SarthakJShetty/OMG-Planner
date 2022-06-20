@@ -717,19 +717,13 @@ class Planner(object):
             return residual
         residual = fn(q_curr, vis=True) # 1 x 6
         mse = torch.linalg.norm(residual, ord='fro')
-        mse.backward()
-
-        # # get jacobian for LM
-        # def fn_wrapper(q):
-        #     return fn(q).data.squeeze(0) # [6]
-        # jac = jacobian(f=fn_wrapper, initial=torch.tensor(q_curr[0], device='cpu', dtype=torch.float32)) # 6 x 9
-        # traj.residual = residual.data.permute(1, 0) # 6 x 1
-        # traj.jac = jac
-        # traj.last_goal_cost = traj.goal_cost
-
-        traj.goal_cost = mse.item()
-        traj.goal_grad = q_curr.grad.cpu().numpy()[:, :7]
-        # print(f"cost: {traj.goal_cost}, grad: {traj.goal_grad}")
+        if mse.item() == 0:
+            traj.goal_cost = 0
+            traj.goal_grad = np.zeros((1, 7))
+        else:
+            mse.backward()
+            traj.goal_cost = mse.item()
+            traj.goal_grad = q_curr.grad.cpu().numpy()[:, :7]
 
     def plan(self, traj, pc=None, viz_env=None):
         """
