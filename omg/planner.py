@@ -708,13 +708,10 @@ class Planner(object):
             pose_ee = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
             if vis: # visualize
                 T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
-                # T_b2g_np = pose_goal.to_matrix().detach().squeeze().numpy()
                 draw_pose(self.T_w2b_np @ T_b2e_np) # ee in world frame
-                # draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
             residual = pose_goal.local(pose_ee) # SE(3) 1 x 6
-            # residual = pose_ee.local(pose_goal) # SE(3) 1 x 6
-            # residual[:, :3] = (1.0 / 0.08) * np.pi
-            return residual
+            residual_scaled = scale_logmap(residual, self.env.cfg.lm_trans_wt)
+            return residual_scaled
         residual = fn(q_curr, vis=True) # 1 x 6
         mse = torch.linalg.norm(residual, ord='fro')
         if mse.item() == 0:

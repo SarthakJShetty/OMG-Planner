@@ -374,3 +374,9 @@ def ycb_special_case(pose_grasp, name):
         rot_constraint = np.where(np.abs(top_down) > angle * np.pi / 180)
         pose_grasp = pose_grasp[rot_constraint[0]]
     return pose_grasp
+
+def scale_logmap(logmap, trans_wt=(1 / 0.08) * np.pi):
+    """Convert batch theseus pose to scaled logmap"""
+    scaled_logmap = logmap * torch.tensor([trans_wt, trans_wt, trans_wt, 1.0, 1.0, 1.0], 
+        device=logmap.device)
+    return scaled_logmap

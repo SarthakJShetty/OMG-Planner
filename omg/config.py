@@ -145,6 +145,7 @@ cfg.smooth_loss_on_endpoint = True
 cfg.start_end_equal = False
 cfg.eval_env = ''
 cfg.float_obstacle = False
+cfg.lm_trans_wt = 1.0
 
 """ global function """
 def get_derivative(data, start, end, diff_rule=1):

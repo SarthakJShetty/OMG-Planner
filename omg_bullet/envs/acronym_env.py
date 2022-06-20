@@ -245,7 +245,6 @@ class PandaAcronymEnv(PandaEnv):
 
         self._safeDistance = safeDistance
         self._root_dir = root_dir if root_dir is not None else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-        self._p = p
         self._window_width = width
         self._window_height = height
         self._blockRandom = blockRandom
@@ -318,7 +317,7 @@ class PandaAcronymEnv(PandaEnv):
         self._intr_matrix[0, 0] = focal_length
         self._intr_matrix[1, 1] = focal_length
 
-    def reset(self, init_joints=None, no_table=False, objinfo=None):
+    def reset(self, init_joints=None, no_table=False, objinfos=[]):
         """Environment reset"""
         self.reset_perception()
 
@@ -333,15 +332,10 @@ class PandaAcronymEnv(PandaEnv):
         if init_joints is None:
             self._panda = Panda(stepsize=self._timeStep, base_shift=self._shift)
         else:
-            # for _ in range(1000):
-                # p.stepSimulation()
             self._panda = Panda(
                 stepsize=self._timeStep, init_joints=init_joints, base_shift=self._shift
             )
-        # self._panda_viz = Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True)
         self._panda_vizs = []
-        # for i in range(self._traj_tsteps): # TODO update with config    
-            # self._panda_vizs.append(Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True))
 
         # Initialize objects
         fpath = Path(os.path.dirname(__file__))
@@ -364,8 +358,10 @@ class PandaAcronymEnv(PandaEnv):
         )
 
         # TODO turn off for mustard bottle
-        self.objinfos = [objinfo]
-        self._objectUids = self.load_object(objinfo=objinfo)
+        self.objinfos = objinfos
+        self._objectUids = []
+        for objinfo in objinfos:
+            self._objectUids += self.load_object(objinfo=objinfo)
         self._objectUids += [self.plane_id, self.table_id]
 
         self._env_step = 0
@@ -519,14 +515,30 @@ class PandaAcronymEnv(PandaEnv):
 
     
     def init_scene(self, scene, planning_scene, hydra_cfg):
+        objinfos = []
         objinfo = self.get_object_info(scene['obj_name'], Path(hydra_cfg.data_root) / hydra_cfg.dataset)
-        self.reset(init_joints=scene['joints'], no_table=not cfg.table, objinfo=objinfo)
-        self.place_object(cfg.tgt_pos, q=scene['obj_rot'], random=False, gravity=cfg.gravity)
+        objinfos.append(objinfo)
+
         if planning_scene.cfg.float_obstacle:
-            # Add a floating obstacle
-            pass
+            objinfo = self.get_object_info('Bottle_244894af3ba967ccd957eaf7f4edb205_0.012953570261294404', 
+                Path(hydra_cfg.data_root) / hydra_cfg.dataset)
+            objinfos.append(objinfo)
+    
+        self.reset(init_joints=scene['joints'], no_table=not cfg.table, objinfos=objinfos)
+        uids = []
+        uid = self._objectUids[0]
+        self.place_object(uid, cfg.tgt_pos, q=scene['obj_rot'], random=False, gravity=cfg.gravity)
+        uids.append(uid)
+
+        if planning_scene.cfg.float_obstacle:
+            obs_pos = deepcopy(cfg.tgt_pos)
+            obs_pos[0] -= 0.1
+            uid = self._objectUids[1]
+            self.place_object(uid, obs_pos, q=[1, 0, 0, 0], random=False, gravity=cfg.gravity)
+            uids.append(uid)
+
         obs = self._get_observation(get_pc=cfg.pc, single_view=False)
-        self.set_scene_env(planning_scene, self._objectUids[0], objinfo, scene['joints'], hydra_cfg)
+        self.set_scene_env(planning_scene, uids, objinfos, scene['joints'], hydra_cfg)
         return obs, scene['obj_name'], scene['idx']
 
     def get_object_info(self, objname, mesh_root):
@@ -543,7 +555,7 @@ class PandaAcronymEnv(PandaEnv):
         }
         return objinfo
 
-    def place_object(self, target_pos, q=None, random=False, gravity=False):
+    def place_object(self, uid, target_pos, q=None, random=False, gravity=False):
         """_summary_
 
         Args:
@@ -566,36 +578,14 @@ class PandaAcronymEnv(PandaEnv):
         # T_ctr2obj = env.objinfos[0]['T_ctr2obj_com']
 
         T_w2o = T_w2b @ T_rand @ T_ctr2obj
-        # draw_pose(T_w2b @ T_rand)
-        # print(T_w2o)
         pq_w2o = pt.pq_from_transform(T_w2o)  # wxyz
 
-        # p.resetBasePositionAndOrientation(
-        #     env._objectUids[0],
-        #     [0, 0, 0],
-        #     [0, 0, 0, 1]
-        # )
-
-        # pq_c2o = pt.pq_from_transform(T_ctr2obj)
-        # p.resetBasePositionAndOrientation(
-        #     env._objectUids[0],
-        #     -pq_c2o[:3],
-        #     pr.quaternion_xyzw_from_wxyz(pq_c2o[3:])
-        # )
-
-        # pq_c2o = pt.pq_from_transform(env.objinfos[0]['T_ctr2obj_com'])
-        # p.resetBasePositionAndOrientation(
-        #     env._objectUids[0],
-        #     -pq_c2o[:3],
-        #     pr.quaternion_xyzw_from_wxyz(pq_c2o[3:])
-        # )
-
         p.resetBasePositionAndOrientation(
-            self._objectUids[0],
+            uid,
             pq_w2o[:3],
             pr.quaternion_xyzw_from_wxyz(pq_w2o[3:])
         )
-        p.resetBaseVelocity(self._objectUids[0], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+        p.resetBaseVelocity(uid, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
 
         if gravity:
             for i in range(10000):
@@ -603,46 +593,33 @@ class PandaAcronymEnv(PandaEnv):
         
         return T_w2o
 
-    def set_scene_env(self, planning_scene, uid, objinfo, joints, hydra_cfg):
-        # Scene has separate Env class which is used for planning
-        # Add object to planning scene env
-        trans_w2o, orn_w2o = p.getBasePositionAndOrientation(uid)  # xyzw
-
-        # change to world to object centroid so planning scene env only sees objects in centroid frame
-        T_b2w = np.linalg.inv(get_world2bot_transform())
-        T_w2o = np.eye(4)
-        T_w2o[:3, :3] = pr.matrix_from_quaternion(tf_quat(orn_w2o))
-        T_w2o[:3, 3] = trans_w2o
-        T_o2c = np.linalg.inv(objinfo['T_ctr2obj']) # TODO
-        # T_o2c = np.linalg.inv(objinfo['T_ctr2obj_com'])
-        T_b2c = T_b2w @ T_w2o @ T_o2c
-        trans = T_b2c[:3, 3]
-        orn = pr.quaternion_from_matrix(T_b2c[:3, :3])  # wxyz
-        draw_pose(T_w2o @ T_o2c)
-
+    def set_scene_env(self, planning_scene, uids, objinfos, joints, hydra_cfg):
         obj_prefix = Path(hydra_cfg.data_root) / hydra_cfg.dataset / 'meshes_bullet'
         planning_scene.reset_env(joints=joints)
-        planning_scene.env.add_object(objinfo['name'], trans, orn, obj_prefix=obj_prefix, abs_path=True)
-        
-        # TODO table flag 
+        T_b2w = np.linalg.inv(get_world2bot_transform())
+        for i, objinfo in enumerate(objinfos):
+            # Scene has separate Env class which is used for planning
+            # Add object to planning scene env
+            trans_w2o, orn_w2o = p.getBasePositionAndOrientation(uids[i])  # xyzw
+
+            # change to world to object centroid so planning scene env only sees objects in centroid frame
+            T_w2o = np.eye(4)
+            T_w2o[:3, :3] = pr.matrix_from_quaternion(tf_quat(orn_w2o))
+            T_w2o[:3, 3] = trans_w2o
+            T_o2c = np.linalg.inv(objinfo['T_ctr2obj']) # TODO
+            # T_o2c = np.linalg.inv(objinfo['T_ctr2obj_com'])
+            T_b2c = T_b2w @ T_w2o @ T_o2c
+            trans = T_b2c[:3, 3]
+            orn = pr.quaternion_from_matrix(T_b2c[:3, :3])  # wxyz
+            draw_pose(T_w2o @ T_o2c)
+
+            planning_scene.env.add_object(objinfo['name'], trans, orn, obj_prefix=obj_prefix, abs_path=True)
+            
         planning_scene.env.add_plane(np.array([0.05, 0, -0.17]), np.array([1, 0, 0, 0]))
         planning_scene.env.combine_sdfs()
         if cfg.disable_target_collision:
-            cfg.disable_collision_set = [objinfo['name']]
+            cfg.disable_collision_set = [objinfos[0]['name']]
 
         # Set grasp selection method for planner
-        planning_scene.env.set_target(objinfo['name'])
+        planning_scene.env.set_target(objinfos[0]['name'])
         planning_scene.reset(lazy=True)
-
-        # coords = planning_scene.env.objects[self.target_idx].sdf.visualize(plotly=False)
-
-        # T_w2b = get_world2bot_transform()
-        # T_b2o = unpack_pose(planning_scene.env.objects[self.target_idx].pose)
-        # draw_pose(T_w2b @ T_b2o)
-
-        # for i in range(coords.shape[0]):
-        #     coord = coords[i]
-        #     coord = np.concatenate([coord, [1]])
-        #     T_c = np.eye(4)
-        #     T_c[:, 3] = coord
-        #     draw_pose(T_w2b @ T_b2o @ T_c)

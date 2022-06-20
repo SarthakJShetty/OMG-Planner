@@ -228,8 +228,8 @@ class Learner(object):
             q_goals = torch.tensor(self.traj.goal_set, device='cpu', dtype=torch.float32)
             pose_goals = self.robot_model.forward_kinematics(q_goals)['panda_hand']
             logmaps = pose_goals.local(pose_ee).data  # tensor # N x 6
-            # logmaps[:, :3] *= (1.0 / 0.08) * np.pi * 2
-            norms = torch.linalg.norm(logmaps, axis=1)
+            logmaps_scaled = scale_logmap(logmaps, self.env.cfg.lm_trans_wt)
+            norms = torch.linalg.norm(logmaps_scaled, axis=1)
             target_idx = torch.argmin(norms)
         else:
             cur_end_point = self.traj.data[-1]
