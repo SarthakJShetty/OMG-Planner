@@ -338,16 +338,15 @@ class PandaAcronymEnv(PandaEnv):
         self._panda_vizs = []
 
         # Initialize objects
-        fpath = Path(os.path.dirname(__file__))
         plane_file = "data/objects/floor"
         table_file = "data/objects/table/models"
         self.plane_id = p.loadURDF(
-            str(fpath / '..' / plane_file / 'model_normalized.urdf'),
+            str(Path(self._root_dir) / plane_file / 'model_normalized.urdf'),
             [0 - self._shift[0], 0 - self._shift[1], -0.82 - self._shift[2]]
         )
         table_z = -5 if no_table else -0.82 - self._shift[2]
         self.table_id = p.loadURDF(
-            str(fpath / '..' / table_file / 'model_normalized.urdf'),
+            str(Path(self._root_dir) / table_file / 'model_normalized.urdf'),
             0.5 - self._shift[0],
             0.0 - self._shift[1],
             table_z,
@@ -479,7 +478,7 @@ class PandaAcronymEnv(PandaEnv):
                 with open(Path(get_original_cwd()) / ".." / hydra_cfg.eval.obj_csv, 'r') as f:
                     reader = csv.reader(f)
                     for i, row in enumerate(reader):
-                        for objname in objnames:       
+                        for objname in objnames:   
                             scene = {
                                 'idx': i, 
                                 'obj_name': objname,
