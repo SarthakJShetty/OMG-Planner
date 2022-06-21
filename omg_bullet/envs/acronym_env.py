@@ -244,7 +244,7 @@ class PandaAcronymEnv(PandaEnv):
         ]
 
         self._safeDistance = safeDistance
-        self._root_dir = root_dir if root_dir is not None else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        self._root_dir = root_dir if root_dir is not None else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
         self._window_width = width
         self._window_height = height
         self._blockRandom = blockRandom
@@ -342,12 +342,12 @@ class PandaAcronymEnv(PandaEnv):
         plane_file = "data/objects/floor"
         table_file = "data/objects/table/models"
         self.plane_id = p.loadURDF(
-            str(fpath / '..' / '..' / plane_file / 'model_normalized.urdf'),
+            str(fpath / '..' / plane_file / 'model_normalized.urdf'),
             [0 - self._shift[0], 0 - self._shift[1], -0.82 - self._shift[2]]
         )
         table_z = -5 if no_table else -0.82 - self._shift[2]
         self.table_id = p.loadURDF(
-            str(fpath / '..' /  '..' / table_file / 'model_normalized.urdf'),
+            str(fpath / '..' / table_file / 'model_normalized.urdf'),
             0.5 - self._shift[0],
             0.0 - self._shift[1],
             table_z,

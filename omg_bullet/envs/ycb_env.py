@@ -113,16 +113,15 @@ class PandaYCBEnv(PandaAcronymEnv):
             )
 
         # Initialize objects
-        fpath = Path(os.path.dirname(__file__))
         plane_file = "data/objects/floor"
         table_file = "data/objects/table/models"
         self.plane_id = p.loadURDF(
-            str(fpath / '..' / plane_file / 'model_normalized.urdf'),
+            str(Path(self._root_dir) / plane_file / 'model_normalized.urdf'),
             [0 - self._shift[0], 0 - self._shift[1], -0.82 - self._shift[2]]
         )
         table_z = -5 if no_table else -0.82 - self._shift[2]
         self.table_id = p.loadURDF(
-            str(fpath / '..' / table_file / 'model_normalized.urdf'),
+            str(Path(self._root_dir)/ table_file / 'model_normalized.urdf'),
             0.5 - self._shift[0],
             0.0 - self._shift[1],
             table_z,
@@ -341,7 +340,7 @@ class PandaYCBEnv(PandaAcronymEnv):
         return scene_files
 
     def init_scene(self, scene, planning_scene, hydra_cfg):
-        full_name = Path(os.path.dirname(__file__)) / '..' / 'data' / 'scenes' / f'{scene}.mat'
+        full_name = Path(self._root_dir) / 'data' / 'scenes' / f'{scene}.mat'
         self.reset(reset_cache=True)
         self.cache_reset(scene_file=full_name)
         obj_names, obj_poses = self.get_env_info()
