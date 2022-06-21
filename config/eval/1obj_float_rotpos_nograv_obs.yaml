@@ -1,4 +1,4 @@
-eval_env: panda_env
+eval_env: acronym_obs
 obj_csv: data/object_rotations.csv
 table: False
 cam_look: 

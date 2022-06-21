@@ -1,4 +1,4 @@
-eval_env: panda_ycb_env
+eval_env: ycb
 gravity: True
 cam_look: 
   - -0.05

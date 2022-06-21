@@ -1,5 +1,5 @@
 # Evaluation configs
-method: GF_known_initik
+method: GF_known_initik_newparams
 use_standoff: False
 use_goal_grad: True
 ol_alg: null 

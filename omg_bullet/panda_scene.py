@@ -98,9 +98,9 @@ def save_metrics(objname, scene_idx, grasp_success, info):
 
 
 def init_env(hydra_cfg):
-    if cfg.eval_env == 'panda_env':
+    if 'acronym' in cfg.eval_env:
         env = PandaAcronymEnv(renders=hydra_cfg.render, gravity=cfg.gravity, cam_look=cfg.cam_look)
-    elif cfg.eval_env == 'panda_ycb_env':
+    elif 'ycb' in cfg.eval_env:
         env = PandaYCBEnv(renders=hydra_cfg.render, gravity=cfg.gravity)
     else:
         raise NotImplementedError

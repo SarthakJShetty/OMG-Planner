@@ -1,5 +1,5 @@
 # Evaluation configs
-method: GF_known
+method: GF_known_newparams_tailwt
 use_standoff: False
 use_goal_grad: True
 ol_alg: null 
@@ -9,7 +9,7 @@ smooth_loss_on_endpoint: False
 start_end_equal: True
 initial_ik: False
 chomp_adam: True
-obs_tail_weight: 1.0 # 0.1
+obs_tail_weight: 0.1
 
 allow_collision_point: 0
 goal_set_proj: False
@@ -19,7 +19,7 @@ base_obstacle_weight: 10.0
 base_grasp_weight: 100.0
 cost_schedule_boost: 1.0
 base_step_size: 0.03
-optim_steps: 300
+optim_steps: 500
 pre_terminate: True
 # lm_trans_wt: 6.283 # (1 / 0.5) * np.pi
 # lm_trans_wt: 39.270 # (1 / 0.08) * np.pi
