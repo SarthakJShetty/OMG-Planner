@@ -324,29 +324,6 @@ class Cost(object):
             padding_scales[idx] = padding_scale
             poses[idx] = se3_inverse(obs.pose_mat)
             # poses[idx] = obs.pose_mat
-            if False:
-                import pybullet as pb
-                T_w2b = np.array([[ 1.  ,  0.  ,  0.  , -0.55],
-                            [ 0.  ,  1.  ,  0.  , -0.5 ],
-                            [ 0.  ,  0.  ,  1.  , -1.15],
-                            [ 0.  ,  0.  ,  0.  ,  1.  ]])
-                
-                w2obj = T_w2b @ poses[0]
-                pb.addUserDebugLine(
-                    w2obj[:3, 3], 
-                    w2obj[:3, 3]+np.array([0.001, 0.001, 0.001]),
-                    lineWidth=5.0,
-                    lineColorRGB=(0.0, 0, 1.0))
-
-
-                for col_pt in points.cpu().numpy():
-                    col_pt = np.concatenate((col_pt, [1]))
-                    w2col_pt = T_w2b @ col_pt
-                    pb.addUserDebugLine(
-                        w2col_pt[:3], 
-                        w2col_pt[:3]+np.array([0.001, 0.001, 0.001]),
-                        lineWidth=5.0,
-                        lineColorRGB=(1.0, 0, 0))
 
         # forward layer
         poses = torch.from_numpy(poses).cuda()
@@ -373,6 +350,32 @@ class Cost(object):
             potentials[-self.cfg.reach_tail_length :] = 0
             potential_grads[-self.cfg.reach_tail_length :] = 0
             collides[-self.cfg.reach_tail_length :] = 0
+        else:
+            potentials[-self.cfg.reach_tail_length :] *= self.cfg.obs_tail_weight
+            potential_grads[-self.cfg.reach_tail_length :] *= self.cfg.obs_tail_weight
+            collides[-self.cfg.reach_tail_length :] *= self.cfg.obs_tail_weight
+
+        if False:
+            import pybullet as pb
+            T_w2b = np.array([[ 1.  ,  0.  ,  0.  , -0.55],
+                        [ 0.  ,  1.  ,  0.  , -0.5 ],
+                        [ 0.  ,  0.  ,  1.  , -1.15],
+                        [ 0.  ,  0.  ,  0.  ,  1.  ]])
+            
+            points_np = points.reshape([n, m, p, 3]).detach().cpu().numpy()
+            zeropoints_np = points_np[-self.cfg.reach_tail_length :]
+            zeropts = zeropoints_np.reshape((-1, 3))
+            zeropts_hm = np.concatenate([zeropts, np.ones((zeropts.shape[0], 1))], axis=1)
+
+            pb.removeAllUserDebugItems()
+            w2pts = (T_w2b @ zeropts_hm.T).T
+            for i in range(len(w2pts)):
+                w2pt = w2pts[i]
+                pb.addUserDebugLine(
+                    w2pt[:3], 
+                    w2pt[:3]+np.array([0.01, 0.01, 0.01]),
+                    lineWidth=5.0,
+                    lineColorRGB=(0.0, 0, 1.0))
 
         if uncheck_finger_collision == -1:
             potentials[:, -2:] *= 0.1  # soft
@@ -380,9 +383,9 @@ class Cost(object):
             collides[:, -2:] = 0
 
         if vis_pts is not None:
-            vis_pts[:, :m, :, :3] = points.reshape([n, m, p, 3]).detach().cpu().numpy()
-            vis_pts[:, :m:, :, 6] = potentials.detach().cpu().numpy()
-            vis_pts[:, :m:, :, 9:] = potential_grads.detach().cpu().numpy()
+            vis_pts[:, :, :, :3] = points.reshape([n, m, p, 3]).detach().cpu().numpy()
+            vis_pts[:, :, :, 6] = potentials.detach().cpu().numpy()
+            vis_pts[:, :, :, 9:] = potential_grads.detach().cpu().numpy()
 
         return potentials, potential_grads, collides
 
