@@ -848,7 +848,7 @@ class Planner(object):
                         traj.goal_cost = 0
                         traj.goal_grad = np.zeros((1, 7))
                         ran_initial_ik = True
-                else:
+                elif 'GF' in self.cfg.method:
                     self.CHOMP_update(self.traj, pose_b2g, robot_model)
 
                 info_t = self.optim.optimize(self.traj, force_update=True, tstep=t+1)
