@@ -133,6 +133,7 @@ def main(hydra_cfg):
         # Convert avi to high quality gif 
         if hydra_cfg.write_video and info != []:
             subprocess.Popen(['ffmpeg', '-y', '-i', cwd / 'videos' / f'{objname}_{scene_name}.avi', '-vf', "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse", '-loop', '0', cwd / 'gifs' / f'{objname}_{scene_name}.gif'])
+    env.disconnect()
 
 if __name__ == '__main__':
     main()
