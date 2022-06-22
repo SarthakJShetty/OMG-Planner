@@ -10,6 +10,7 @@ start_end_equal: True
 initial_ik: False
 chomp_adam: True
 
+allow_collision_point: 0
 goal_set_proj: False
 remove_flip_grasp: False
 smoothness_base_weight: 1.0
