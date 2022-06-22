@@ -11,7 +11,7 @@ hydra:
     chdir: True
   sweep:
     dir: ${data_root}/pybullet_eval/multirun/${experiment}/${variant.method}_${now:%Y-%m-%d_%H%M%S}
-    subdir: ${eval.eval_env}-${variant.method}
+    subdir: ${eval.eval_env}-${variant.method}-${hydra.job.num}
   run:
     dir: ${data_root}/pybullet_eval/${experiment}/${variant.method}_${now:%Y-%m-%d_%H%M%S}
 
