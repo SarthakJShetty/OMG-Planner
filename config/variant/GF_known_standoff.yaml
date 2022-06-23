@@ -1,5 +1,5 @@
 # Evaluation configs
-method: GF_known
+method: GF_known_standoff
 # use_standoff: False
 use_goal_grad: True
 ol_alg: null 
