@@ -332,7 +332,8 @@ class PandaYCBEnv(PandaAcronymEnv):
 
         return obj_dir, poses
 
-    def get_scenes(self, hydra_cfg):
+    @staticmethod
+    def get_scenes(hydra_cfg):
         if hydra_cfg.run_scenes:
             scene_files = ['scene_{}'.format(i) for i in range(100)]
         else:

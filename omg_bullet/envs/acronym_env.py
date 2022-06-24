@@ -470,7 +470,8 @@ class PandaAcronymEnv(PandaEnv):
         # joints = traj.data[-1]
         # self._panda_viz.reset(joints)
     
-    def get_scenes(self, hydra_cfg):
+    @staticmethod
+    def get_scenes(hydra_cfg):
         objnames = os.listdir(Path(hydra_cfg.data_root) / hydra_cfg.dataset / 'meshes_bullet')
         scenes = []
         if hydra_cfg.run_scenes:
