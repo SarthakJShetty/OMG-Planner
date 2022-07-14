@@ -14,6 +14,7 @@ import theseus as th
 from differentiable_robot_model.robot_model import (
     DifferentiableFrankaPanda,
 )
+from manifold_grasping.control_pts import *
 
 np.set_printoptions(4)
 
@@ -227,9 +228,16 @@ class Learner(object):
 
             q_goals = torch.tensor(self.traj.goal_set, device='cpu', dtype=torch.float32)
             pose_goals = self.robot_model.forward_kinematics(q_goals)['panda_hand']
-            logmaps = pose_goals.local(pose_ee).data  # tensor # N x 6
-            logmaps_scaled = scale_logmap(logmaps, self.env.cfg.lm_trans_wt)
-            norms = torch.linalg.norm(logmaps_scaled, axis=1)
+            if self.env.cfg.dist_func == 'logmap':
+                logmaps = pose_goals.local(pose_ee).data  # tensor # N x 6
+                logmaps_scaled = scale_logmap(logmaps, self.env.cfg.lm_trans_wt)
+                norms = torch.linalg.norm(logmaps_scaled, axis=1)
+            elif self.env.cfg.dist_func == 'control_points':
+                T_ee = pose_ee.to_matrix()
+                T_goals = pose_goals.to_matrix()
+                ee_control_pts = transform_control_points(T_ee, batch_size=T_ee.shape[0], mode='rt', device='cpu') # N x 6 x 4
+                goal_control_pts = transform_control_points(T_goals, batch_size=T_goals.shape[0], mode='rt', device='cpu') # N x 6 x 4
+                norms = control_point_l1_loss(ee_control_pts, goal_control_pts, mean_batch=False)
             target_idx = torch.argmin(norms)
         else:
             cur_end_point = self.traj.data[-1]

@@ -147,6 +147,7 @@ cfg.eval_env = ''
 cfg.float_obstacle = False
 cfg.lm_trans_wt = 1.0
 cfg.obs_tail_weight = 1.0
+cfg.dist_func = 'logmap'
 
 """ global function """
 def get_derivative(data, start, end, diff_rule=1):
