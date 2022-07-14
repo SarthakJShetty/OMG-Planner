@@ -22,7 +22,7 @@ import numpy as np
 # from .viz_trimesh import visualize_predicted_grasp, trajT_to_grasppredT, grasppredT_to_trajT
 # import pytorch3d.transforms as ptf
 import pybullet as p
-# from manifold_grasping.control_pts import *
+from manifold_grasping.control_pts import *
 
 from manifold_grasping.utils import load_grasps, load_mesh
 
@@ -709,17 +709,24 @@ class Planner(object):
             if vis: # visualize
                 T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
                 draw_pose(self.T_w2b_np @ T_b2e_np) # ee in world frame
-            residual = pose_goal.local(pose_ee) # SE(3) 1 x 6
-            residual_scaled = scale_logmap(residual, self.env.cfg.lm_trans_wt)
-            return residual_scaled
-        residual = fn(q_curr, vis=True) # 1 x 6
-        mse = torch.linalg.norm(residual, ord='fro')
-        if mse.item() == 0:
+            if self.cfg.dist_func == 'logmap':
+                residual_unscaled = pose_goal.local(pose_ee) # SE(3) 1 x 6
+                residual = scale_logmap(residual_unscaled, self.env.cfg.lm_trans_wt)
+                loss = torch.linalg.norm(residual, ord='fro') # mse
+            elif self.cfg.dist_func == 'control_points':
+                T_ee = pose_ee.to_matrix()
+                T_goal = pose_goal.to_matrix()
+                ee_control_pts = transform_control_points(T_ee, batch_size=T_ee.shape[0], mode='rt', device='cpu') # N x 6 x 4
+                goal_control_pts = transform_control_points(T_goal, batch_size=T_goal.shape[0], mode='rt', device='cpu') # N x 6 x 4
+                loss = control_point_l1_loss(ee_control_pts, goal_control_pts, mean_batch=False)
+            return loss
+        loss = fn(q_curr, vis=True) # 1 x 6
+        if loss.item() == 0:
             traj.goal_cost = 0
             traj.goal_grad = np.zeros((1, 7))
         else:
-            mse.backward()
-            traj.goal_cost = mse.item()
+            loss.backward()
+            traj.goal_cost = loss.item()
             traj.goal_grad = q_curr.grad.cpu().numpy()[:, :7]
 
     def plan(self, traj, pc=None, viz_env=None):

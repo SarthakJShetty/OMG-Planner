@@ -27,6 +27,7 @@ import pytransform3d.transformations as pt
 import trimesh
 from acronym_tools import create_gripper_marker
 from pathlib import Path
+import hydra
 from hydra.utils import get_original_cwd
 import csv
 from manifold_grasping.utils import load_mesh
@@ -470,7 +471,8 @@ class PandaAcronymEnv(PandaEnv):
         # joints = traj.data[-1]
         # self._panda_viz.reset(joints)
     
-    def get_scenes(self, hydra_cfg):
+    @staticmethod
+    def get_scenes(hydra_cfg):
         objnames = os.listdir(Path(hydra_cfg.data_root) / hydra_cfg.dataset / 'meshes_bullet')
         scenes = []
         if hydra_cfg.run_scenes:
