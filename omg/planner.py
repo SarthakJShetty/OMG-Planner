@@ -704,7 +704,7 @@ class Planner(object):
         q_curr = torch.tensor(traj.data[-1], device='cpu', dtype=torch.float32).unsqueeze(0)
         q_curr.requires_grad = True
 
-        def fn(q, vis=False):
+        def fn(q, pose_goal_, vis=False):
             pose_ee = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
             if vis: # visualize
                 T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
@@ -712,19 +712,19 @@ class Planner(object):
             if 'logmap' in self.cfg.dist_func:
                 if 'tip' in self.cfg.dist_func:
                     pose_tip = th.SE3(data=wrist_to_tip_T()[np.newaxis, :3])
-                    pose_goal = pose_goal.compose(pose_tip)
+                    pose_goal_ = pose_goal_.compose(pose_tip)
                     pose_ee = pose_ee.compose(pose_tip)
-                residual_unscaled = pose_goal.local(pose_ee) # SE(3) 1 x 6
+                residual_unscaled = pose_goal_.local(pose_ee) # SE(3) 1 x 6
                 residual = scale_logmap(residual_unscaled, self.env.cfg.lm_trans_wt)
                 loss = torch.linalg.norm(residual, ord='fro') # mse
             elif self.cfg.dist_func == 'control_points':
                 T_ee = pose_ee.to_matrix()
-                T_goal = pose_goal.to_matrix()
+                T_goal = pose_goal_.to_matrix()
                 ee_control_pts = transform_control_points(T_ee, batch_size=T_ee.shape[0], mode='rt', device='cpu') # N x 6 x 4
                 goal_control_pts = transform_control_points(T_goal, batch_size=T_goal.shape[0], mode='rt', device='cpu') # N x 6 x 4
                 loss = control_point_l1_loss(ee_control_pts, goal_control_pts, mean_batch=False)
             return loss
-        loss = fn(q_curr, vis=True) # 1 x 6
+        loss = fn(q_curr, pose_goal, vis=True) # 1 x 6
         if loss.item() == 0:
             traj.goal_cost = 0
             traj.goal_grad = np.zeros((1, 7))
