@@ -228,7 +228,11 @@ class Learner(object):
 
             q_goals = torch.tensor(self.traj.goal_set, device='cpu', dtype=torch.float32)
             pose_goals = self.robot_model.forward_kinematics(q_goals)['panda_hand']
-            if self.env.cfg.dist_func == 'logmap':
+            if 'logmap' in self.env.cfg.dist_func:
+                if 'tip' in self.env.cfg.dist_func:
+                    pose_tip = th.SE3(data=wrist_to_tip_T()[np.newaxis, :3])
+                    pose_goals = pose_goals.compose(pose_tip)
+                    pose_ee = pose_ee.compose(pose_tip)
                 logmaps = pose_goals.local(pose_ee).data  # tensor # N x 6
                 logmaps_scaled = scale_logmap(logmaps, self.env.cfg.lm_trans_wt)
                 norms = torch.linalg.norm(logmaps_scaled, axis=1)

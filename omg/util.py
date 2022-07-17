@@ -380,3 +380,8 @@ def scale_logmap(logmap, trans_wt=(1 / 0.08) * np.pi):
     scaled_logmap = logmap * torch.tensor([trans_wt, trans_wt, trans_wt, 1.0, 1.0, 1.0], 
         device=logmap.device)
     return scaled_logmap
+
+def wrist_to_tip_T():
+    T_tip = torch.eye(4)
+    T_tip[2, 3] = 0.10527314245700836
+    return T_tip
