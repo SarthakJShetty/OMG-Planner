@@ -37,10 +37,10 @@ class Trajectory(object):
         """
         Update trajectory based on functional gradient.
         """
-        if config.cfg.consider_finger:
-            self.data += grad
-        else:
-            self.data[:, :-2] += grad[:, :-2]
+        # if config.cfg.consider_finger:
+            # self.data += grad
+        # else:
+        self.data[:, :-2] += grad[:, :-2]
         self.data[:, -2:] = np.minimum(np.maximum(self.data[:, -2:], 0), 0.04)
 
     def set(self, new_traj):

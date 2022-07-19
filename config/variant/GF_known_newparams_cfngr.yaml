@@ -21,5 +21,8 @@ base_step_size: 0.03
 optim_steps: 500
 pre_terminate: True
 lm_trans_wt: 3.0
+consider_finger: True
+# penalize_constant: 50
+
 # lm_trans_wt: 6.283 # (1 / 0.5) * np.pi
 # lm_trans_wt: 39.270 # (1 / 0.08) * np.pi
