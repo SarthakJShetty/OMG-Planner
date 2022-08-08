@@ -215,11 +215,9 @@ if __name__ == "__main__":
 
                 # Linear shaking
                 if err_info == '':
-                    # obs = linear_shake(env, 1000, -0.15/1000.)
                     dur = 150
                     obs = linear_shake(env, dur, -args.lin/dur)
                     observations += obs
-                    # obs = linear_shake(env, 1000, 0.15/1000.)
                     obs = linear_shake(env, dur, args.lin/dur)
                     observations += obs
                     rew = env._reward()
@@ -229,10 +227,8 @@ if __name__ == "__main__":
                 # Angular shaking
                 if err_info == '':
                     dur = 150
-                    # obs = rot_shake(env, 1000, (np.pi/32.)*15.)
                     obs = rot_shake(env, dur, np.deg2rad(args.rot))
                     observations += obs
-                    # obs = rot_shake(env, 1000, -(np.pi/32.)*15.)
                     obs = rot_shake(env, dur, -np.deg2rad(args.rot))
                     observations += obs
                     rew = env._reward()
@@ -240,11 +236,9 @@ if __name__ == "__main__":
                         err_info = 'shake'
 
                 if err_info == '':
-                    # obs = linear_shake(env, 1000, -0.15/1000.)
                     dur = 150
                     obs = linear_shake(env, dur, -args.lin/dur, second_shake=True)
                     observations += obs
-                    # obs = linear_shake(env, 1000, 0.15/1000.)
                     obs = linear_shake(env, dur, args.lin/dur, second_shake=True)
                     observations += obs
                     rew = env._reward()

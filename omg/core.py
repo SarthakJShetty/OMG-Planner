@@ -358,7 +358,7 @@ class PlanningScene(object):
                             cam_pos=self.cam_pos,
                             V=self.cam_V,
                             shifted_pose=np.eye(4),
-                            ret_mask=False if traj_idx is None else True
+                            ret_mask=True
                         )
 
         def fast_vis_end(poses, cls_indexes, nonstop):

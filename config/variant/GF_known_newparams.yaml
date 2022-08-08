@@ -20,6 +20,8 @@ cost_schedule_boost: 1.0
 base_step_size: 0.03
 optim_steps: 500
 pre_terminate: True
+dist_func: logmap
 lm_trans_wt: 3.0
+consider_finger: False
 # lm_trans_wt: 6.283 # (1 / 0.5) * np.pi
 # lm_trans_wt: 39.270 # (1 / 0.08) * np.pi

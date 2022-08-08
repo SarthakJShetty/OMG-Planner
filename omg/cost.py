@@ -428,6 +428,7 @@ class Cost(object):
             top_potentials = potentials[top_n, top_m, top_p]
             # vis_pts[top_n, top_m, top_p, 3:6] = [235, 52, 195] 
 
+            # Even if fingers don't move in optimization, the cost of colliding with the fingers should still be considered
             if not self.cfg.consider_finger:
                 m = m - 2
 

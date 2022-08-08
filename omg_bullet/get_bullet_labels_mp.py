@@ -38,7 +38,8 @@ from collections import namedtuple
 import pytransform3d.rotations as pr
 import pytransform3d.transformations as pt
 
-from acronym_tools import load_grasps, load_mesh, create_gripper_marker
+from acronym_tools import load_grasps, create_gripper_marker
+from manifold_grasping.utils import load_mesh
 
 import csv
 from copy import deepcopy
@@ -48,7 +49,7 @@ import h5py
 import trimesh
 
 sys.path.append(os.path.dirname(__file__))
-from .panda_env import PandaEnv
+from omg_bullet.envs.acronym_env import PandaEnv
 from utils import *
 
 def linear_shake(env, timeSteps, delta_z, record=False, second_shake=False):
@@ -62,10 +63,10 @@ def linear_shake(env, timeSteps, delta_z, record=False, second_shake=False):
         jointPoses[-2:] = [0.0, 0.0]
         env._panda.setTargetPositions(jointPoses)
         p.stepSimulation()
-        if second_shake:  # wait longer
+        if second_shake: 
             p.stepSimulation()
-        # if env._renders:
-            # time.sleep(env._timeStep)
+        if env._renders:
+            time.sleep(env._timeStep)
         if record and t % 100 == 0:
             observation = env._get_observation()
             observations.append(observation)
@@ -80,8 +81,8 @@ def rot_shake(env, timeSteps, delta_a, record=False):
         jointPoses[-4] += delta_a / timeSteps
         env._panda.setTargetPositions(jointPoses)
         p.stepSimulation()
-        # if env._renders:
-            # time.sleep(env._timeStep)
+        if env._renders:
+            time.sleep(env._timeStep)
         if record and t % 100 == 0:
             observation = env._get_observation()
             observations.append(observation)
@@ -205,7 +206,6 @@ def collect_grasps(margs):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    # parser.add_argument("-v", "--vis", help="render", action="store_true")
     parser.add_argument("--render", help="render", action="store_true")
     parser.add_argument("--egl", help="use egl render", action="store_true")
     parser.add_argument("--mesh_root", help="mesh root", type=str, default="/data/manifolds/acronym")

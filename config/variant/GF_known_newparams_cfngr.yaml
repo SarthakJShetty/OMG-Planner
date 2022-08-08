@@ -20,6 +20,7 @@ cost_schedule_boost: 1.0
 base_step_size: 0.03
 optim_steps: 500
 pre_terminate: True
+dist_func: logmap
 lm_trans_wt: 3.0
 consider_finger: True
 # penalize_constant: 50

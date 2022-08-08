@@ -21,6 +21,7 @@ import yaml
 import hydra
 from omegaconf import OmegaConf
 from omegaconf.listconfig import ListConfig
+# from moviepy.editor import ImageClip, TextClip, CompositeVideoClip, concatenate_videoclips
 
 
 def set_seeds():
@@ -67,6 +68,7 @@ def init_dir(hydra_cfg):
     (cwd / 'info').mkdir() 
     (cwd / 'videos').mkdir() 
     (cwd / 'gifs').mkdir() 
+    # (cwd / 'trajs').mkdir() 
     with open(cwd / 'hydra_config.yaml', 'w') as yaml_file:
         OmegaConf.save(config=hydra_cfg, f=yaml_file.name)
     with open(cwd / 'config.yaml', 'w') as yaml_file:
@@ -133,6 +135,44 @@ def main(hydra_cfg):
         # Convert avi to high quality gif 
         if hydra_cfg.write_video and info != []:
             subprocess.Popen(['ffmpeg', '-y', '-i', cwd / 'videos' / f'{objname}_{scene_name}.avi', '-vf', "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse", '-loop', '0', cwd / 'gifs' / f'{objname}_{scene_name}.gif'])
+
+        # if not cfg.render:
+        #     cfg.window_height = 200
+        #     cfg.window_width = 200
+        #     planning_scene.setup_renderer()
+        #     # planning_scene.cfg.output_video_name = f'{cwd}/trajs/{objname}_{scene_name}.avi'
+
+        #     import time
+        #     fps = 24
+        #     duration = 0.2
+        #     comps = []
+        #     for i, traj in enumerate(planning_scene.planner.history_trajectories):
+        #         start = time.time()
+        #         traj_im = planning_scene.fast_debug_vis(traj=traj, interact=0, write_video=False,
+        #                                         nonstop=False, collision_pt=False, goal_set=False, traj_idx=i)
+        #         print(f"fast debug vis: {time.time() - start}")
+        #         traj_im = cv2.cvtColor(traj_im, cv2.COLOR_RGB2BGR)
+        #         start = time.time()
+        #         clip = ImageClip(traj_im).set_duration(duration).set_fps(fps)
+        #         # https://github.com/Zulko/moviepy/issues/401
+        #         txt_clip = (TextClip(f"iter {i}", fontsize=50, color='black')
+        #             .set_position('bottom')
+        #             .set_duration(duration))
+        #         comp = CompositeVideoClip([clip, txt_clip]).set_fps(fps).set_duration(duration)
+        #         print(f"video clip: {time.time() - start}")
+        #         comps.append(comp)
+        #         # cv2.imwrite(f"{args.output_dir}/{exp_name}/{scene_file}/traj_{i+1}.png", traj_im)
+        #     for _ in range(3): # add more frames to the end
+        #         txt_clip = (TextClip(f"iter {i}*", fontsize=50, color='black')
+        #             .set_position('bottom')
+        #             .set_duration(duration))
+        #         comp = CompositeVideoClip([clip, txt_clip]).set_fps(fps).set_duration(duration)
+        #         comps.append(comp)
+        #     result = concatenate_videoclips(comps)
+        #     result.write_gif(f"{cwd}/trajs/{objname}_{scene_name}.gif")
+        #     # result.write_gif(f"{args.output_dir}/{exp_name}/{scene_file}/traj.gif")
+        #     result.close()
+
     env.disconnect()
 
 if __name__ == '__main__':
