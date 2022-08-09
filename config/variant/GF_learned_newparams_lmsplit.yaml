@@ -1,0 +1,30 @@
+# Evaluation configs
+method: GF_learned_newparams_ctrlpts
+use_standoff: False
+use_goal_grad: True
+ol_alg: null 
+use_min_cost_traj: False
+filter_collision: False
+smooth_loss_on_endpoint: False
+start_end_equal: True
+initial_ik: False
+chomp_adam: True
+grasp_weights: /media/thomasweng/manifolds/clust_multirun/3obj_lmsplit2pi_pc_rot/outdist_lmsplitlm2pi-augrot/default_default_grasp-manifolds/69_69_1s9wb1rt/checkpoints/epoch=68-step=369663.ckpt
+pc: True
+goal_thresh: 0.0001
+
+allow_collision_point: 0
+goal_set_proj: False
+remove_flip_grasp: False
+smoothness_base_weight: 0.0
+base_obstacle_weight: 0.0 
+base_grasp_weight: 1.0
+cost_schedule_boost: 1.0
+base_step_size: 0.03
+optim_steps: 500
+pre_terminate: True
+dist_func: logmap_split
+# lm_trans_wt: 3.0
+consider_finger: False
+# lm_trans_wt: 6.283 # (1 / 0.5) * np.pi
+# lm_trans_wt: 39.270 # (1 / 0.08) * np.pi

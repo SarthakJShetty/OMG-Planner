@@ -1,5 +1,4 @@
 import torch
-import pytorch_lightning
 from manifold_grasping.networks import Decoder
 
 from pathlib import Path
@@ -10,63 +9,34 @@ import pytorch3d.ops
 
 
 class LearnedGrasp:
-    def __init__(self, ckpt_path, single_shape_code=False, dset_root=''):
+    def __init__(self, ckpt_path):
         self.ckpt_path = ckpt_path
-        self.single_shape_code = single_shape_code
-
-        # import IPython; IPython.embed()
-        if 'hpc' in self.ckpt_path:
-            cfg_path = Path(self.ckpt_path).parent / ".hydra" / "config.yaml"
-        else:
-            cfg_path = Path(self.ckpt_path).parents[3] / ".hydra" / "config.yaml"
+        cfg_path = Path(self.ckpt_path).parents[3] / ".hydra" / "config.yaml"
         self.cfg = OmegaConf.load(cfg_path)
 
-        # Cluster vs. local
-        if 'project_root' not in self.cfg or 'private' in self.cfg.project_root:
-            self.cfg.project_root = '/home/exx/projects/manifolds'
-            self.cfg.data_root = '/data/manifolds'
+        # update project_root
+        hydra_cfg = OmegaConf.load(Path(__file__).parents[4] / "config" / "panda_scene.yaml")
+        self.cfg.project_root = hydra_cfg.project_root
+        self.cfg.data_root = hydra_cfg.data_root
 
         self.model = Decoder(**self.cfg.net).cuda()
         ckpt = torch.load(ckpt_path)
         self.model.load_state_dict(ckpt['state_dict'])
         self.model.eval()
 
-        # Load shape dataset
-        if self.single_shape_code:
-            self.shape_codes = {}
-            self.dset_shape = h5py.File(f'{self.cfg.shape_data_path}/dataset.hdf5', 'r')
-            for key in list(self.dset_shape.keys()):
-                code = self.dset_shape[key]['0']['shape_code']  # 1 x 256 x 3
-                self.shape_codes[key] = code
-
-            # pass  # already handled inside self.model, refactor
-
-            # cfg_path = Path(ckpt_path).parents[3] / ".hydra" / "config.yaml"
-            # self.cfg = OmegaConf.load(cfg_path)
-
-            # self.shape_codes = {}
-            # if self.cfg.net.latent.size > 1:
-                # import IPython; IPython.embed()
-
-                                
-
-                # dset_parent = str(Path(dset_root).parent)
-                # shape_data_path = self.cfg.shape_data_path.replace(self.cfg.data_root, dset_parent)
-
-                # # For debugging
-                # # shape_data_path = '/data/manifolds/acronym_mini_relabel/shape-dataset_05-18-22_00-18-55'
-                # shape_data_path = '/data/manifolds/acronym_mini_relabel/shape-dataset_05-15-22_00-40-42'
-                
-                # self.dset_shape = h5py.File(f'{shape_data_path}/dataset.hdf5', 'r')
-                # for key in list(self.dset_shape.keys()):
-                #     code = self.dset_shape[key]['0']['shape_code']  # 1 x 256 x 3
-                #     self.shape_codes[key] = code
-        else:  # Init onehot index
-            self.onehot = [
-                'Book_b1611143b4da5c783143cfc9128d0843_0.023835858278933857',
-                'Bottle_244894af3ba967ccd957eaf7f4edb205_0.012953570261294404',
-                'Bowl_9a52843cc89cd208362be90aaa182ec6_0.0008104428339208306',
-                'Mug_40f9a6cc6b2c3b3a78060a3a3a55e18f_0.0006670441940038386']
+        # # Load shape dataset
+        # if self.single_shape_code:
+        #     self.shape_codes = {}
+        #     self.dset_shape = h5py.File(f'{self.cfg.shape_data_path}/dataset.hdf5', 'r')
+        #     for key in list(self.dset_shape.keys()):
+        #         code = self.dset_shape[key]['0']['shape_code']  # 1 x 256 x 3
+        #         self.shape_codes[key] = code
+        # else:  # Init onehot index
+        #     self.onehot = [
+        #         'Book_b1611143b4da5c783143cfc9128d0843_0.023835858278933857',
+        #         'Bottle_244894af3ba967ccd957eaf7f4edb205_0.012953570261294404',
+        #         'Bowl_9a52843cc89cd208362be90aaa182ec6_0.0008104428339208306',
+        #         'Mug_40f9a6cc6b2c3b3a78060a3a3a55e18f_0.0006670441940038386']
 
 
     def forward(self, pq, shape_info):
@@ -74,19 +44,20 @@ class LearnedGrasp:
         pq (torch.Tensor): xyz, wxyz
         objname for known object model
         """
-        if '1hot' in shape_info:
-            objname = shape_info['1hot']
-            latent = torch.tensor([self.onehot.index(objname)], device=pq.device).unsqueeze(0)
-        elif 'shape_key' in shape_info:
-            objname = shape_info['shape_key']
-            latent = torch.tensor(self.shape_codes[objname], device=pq.device)
-            latent = torch.reshape(latent, (1, -1))
-        elif 'shape_code' in shape_info:
-            latent = shape_info['shape_code']
+        # if '1hot' in shape_info:
+        #     objname = shape_info['1hot']
+        #     latent = torch.tensor([self.onehot.index(objname)], device=pq.device).unsqueeze(0)
+        # elif 'shape_key' in shape_info:
+        #     objname = shape_info['shape_key']
+        #     latent = torch.tensor(self.shape_codes[objname], device=pq.device)
+        #     latent = torch.reshape(latent, (1, -1))
+        # elif 'shape_code' in shape_info:
+        #     latent = shape_info['shape_code']
+        latent = shape_info['shape_code']
+        # pq.requires_grad = True
         input_x = torch.cat([pq.unsqueeze(0), latent], axis=1)
 
-        with torch.no_grad():
-            outpose = self.model(input_x)
+        dist = self.model(input_x)
 
         # if self.use_shape_code:
         #     shape_code = torch.tensor(self.shape_codes[objname][0], device=pq.device).flatten()
@@ -96,8 +67,8 @@ class LearnedGrasp:
 
         # with torch.no_grad():
         #     outpose = self.model(input_x.unsqueeze(0))
-        outpose = outpose.squeeze(0)
-        return outpose
+        dist = dist.squeeze(0)
+        return dist
 
     def get_shape_code(self, pc):
         """input is not mean_centered"""
@@ -112,7 +83,6 @@ class LearnedGrasp:
         # mean center the point cloud
         mean_pc = pc_fps.mean(axis=1)
         pc_fps -= mean_pc
-        # import IPython; IPython.embed()
 
         # Run VN-OccNets
         shape_mi = {'point_cloud': pc_fps.cuda()}

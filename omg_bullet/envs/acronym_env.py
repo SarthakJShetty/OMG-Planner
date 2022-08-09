@@ -462,9 +462,12 @@ class PandaAcronymEnv(PandaEnv):
     def update_panda_viz(self, traj, k=1):
         # Visualize last k steps
         traj_len = traj.data.shape[0]
+        count = 0
         for tstep in range(traj_len - k, traj_len): 
-            self._panda_vizs.append(Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True))
-            self._panda_vizs[-1].reset(traj.data[tstep])
+            if len(self._panda_vizs) < k:
+                self._panda_vizs.append(Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True))
+            self._panda_vizs[count].reset(traj.data[tstep])
+            count += 1
             # self._panda_vizs.append(Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True))
 
         #     self._panda_vizs[tstep].reset(traj.data[tstep])

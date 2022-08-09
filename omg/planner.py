@@ -13,7 +13,6 @@ import multiprocessing
 from copy import deepcopy
 
 import torch
-# from liegroups.torch import SE3
 import pytransform3d.rotations as pr
 import pytransform3d.transformations as pt
 
@@ -24,7 +23,7 @@ import numpy as np
 import pybullet as p
 from manifold_grasping.control_pts import *
 
-from manifold_grasping.utils import load_grasps, load_mesh
+from manifold_grasping.utils import load_grasps, load_mesh, wrist_to_tip
 
 import pathlib
 
@@ -33,6 +32,14 @@ from differentiable_robot_model.robot_model import (
     DifferentiableFrankaPanda,
 )
 
+import pytorch3d.transforms as p3t
+
+def pose_to_pq(pose):
+    pq = torch.zeros(7)
+    mat = pose.to_matrix()
+    pq[:3] = mat[:, :3, 3]
+    pq[3:] = p3t.matrix_to_quaternion(mat[:, :3, :3])
+    return pq
 
 def solve_one_pose_ik(input):
     """
@@ -129,11 +136,11 @@ class Planner(object):
             self.setup_time = time.time() - start_time_
             self.learner = Learner(env, self.traj, self.cost)
         elif 'learned' in self.cfg.method:
-            from bullet.methods.learnedgrasp import LearnedGrasp
-            self.grasp_predictor = LearnedGrasp(ckpt_path=self.cfg.learnedgrasp_weights, single_shape_code=self.cfg.single_shape_code, dset_root=self.cfg.dset_root)
+            from omg_bullet.methods.learnedgrasp import LearnedGrasp
+            self.grasp_predictor = LearnedGrasp(ckpt_path=self.cfg.grasp_weights)
             self.setup_time = 0
         elif 'CG' in self.cfg.method:
-            from bullet.methods.contact_graspnet import ContactGraspNetInference
+            from omg_bullet.methods.contact_graspnet import ContactGraspNetInference
             self.grasp_predictor = ContactGraspNetInference()
             # Run grasp predictor to set up grasp set
             self.setup_time = 0
@@ -782,24 +789,15 @@ class Planner(object):
                 if 'GF_learned' in self.cfg.method:
                     # Get input pose to network as position+quaternion in object frame
                     q = torch.tensor(self.traj.data[-1], device='cpu').unsqueeze(0)
-                    pose_b2e = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
-                    T_b2e_np = pose_b2e.to_matrix().detach().squeeze().numpy()
-
-                    # object frame is known in 1hot encoding
-                    # object frame is estimated with shape codes
-
+                    q.requires_grad = True
+                    pose_b2h = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
                     T_o2b_np = self.get_T_obj2bot()
-                    T_o2e_np = T_o2b_np @ T_b2e_np
-                    try:
-                        pr.check_matrix(T_o2e_np[:3, :3])
-                    except ValueError as e:
-                        print(e)
-                        print("normalizing matrix")
-                        T_o2e_np[:3, :3] = pr.norm_matrix(T_o2e_np[:3, :3])
-                    pq_o2e_np = pt.pq_from_transform(T_o2e_np) # xyz wxyz
-                        
-                    input_pq = torch.tensor(pq_o2e_np, device='cuda', dtype=torch.float32)
-
+                    pose_o2b = th.SE3(tensor=torch.tensor(T_o2b_np, dtype=torch.float32)[:3].unsqueeze(0))
+                    T_h2t = wrist_to_tip()
+                    pose_h2t = th.SE3(tensor=torch.tensor(T_h2t, dtype=torch.float32)[:3].unsqueeze(0))
+                    pose_o2t = pose_o2b.compose(pose_b2h).compose(pose_h2t)
+                    input_pq = pose_to_pq(pose_o2t).cuda()
+                    
                     # Run network
                     shape_info = {}
                     if pc is not None:  # shape code
@@ -810,33 +808,13 @@ class Planner(object):
                     else:  # 1 hot
                         objname = self.env.objects[0].name
                         shape_info['1hot'] = objname
-                    output = self.grasp_predictor.forward(input_pq, shape_info)
+                    dist = self.grasp_predictor.forward(input_pq, shape_info)
+                    loss = torch.abs(dist.mean())
+                    print(f"iter: {t} loss: {loss}")
+                    loss.backward()
 
-                    if pc is not None:
-                        pq_pc2g = output
-                        pq_pc2g_np = pq_pc2g.detach().cpu().numpy()
-
-                        # Get predicted grasp in bot frame
-                        T_pc2g_np = np.eye(4)
-                        T_pc2g_np[:3, :3] = pr.matrix_from_quaternion(pq_pc2g_np[3:8])
-                        T_pc2g_np[:3, 3] = pq_pc2g_np[:3]
-                        T_b2g_np = T_b2pc @ T_pc2g_np
-                        # draw_pose(self.T_w2b_np @ np.linalg.inv(T_o2b_np) @ T_pc2g_np)
-                        pose_b2g = th.SE3(data=torch.tensor(T_b2g_np[:3]).float().unsqueeze(0))
-                    else:  # 1 hot
-                        pq_o2g = output
-                        pq_o2g_np = pq_o2g.detach().cpu().numpy()
-
-                        # Get predicted grasp in bot frame
-                        T_o2g_np = np.eye(4)
-                        T_o2g_np[:3, :3] = pr.matrix_from_quaternion(pq_o2g_np[3:8])
-                        T_o2g_np[:3, 3] = pq_o2g_np[:3]
-                        T_b2g_np = np.linalg.inv(T_o2b_np) @ T_o2g_np
-                        pose_b2g = th.SE3(data=torch.tensor(T_b2g_np[:3]).float().unsqueeze(0))
-                    # Visualization
-                    draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
-
-                    # self.CHOMP_update(self.traj, pose_b2g, robot_model)
+                    traj.goal_cost = loss
+                    traj.goal_grad = q.grad.float().squeeze()[:7].cpu().numpy()
                 elif 'GF_known' in self.cfg.method:
                     q_goal = torch.tensor(self.traj.goal_set[self.traj.goal_idx], device='cpu', dtype=torch.float32)
                     pose_b2g = robot_model.forward_kinematics(q_goal)['panda_hand']
@@ -844,7 +822,7 @@ class Planner(object):
                     draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
 
                 # Update trajectory goal cost and gradient with either IK or differentiable robot model
-                if 'GF' in self.cfg.method and self.cfg.initial_ik and not ran_initial_ik:
+                if 'GF_known' in self.cfg.method and self.cfg.initial_ik and not ran_initial_ik: # GF
                     pq_b2g = pt.pq_from_transform(T_b2g_np) # wxyz
                     seed = self.traj.start[:7]
                     goal_ik = config.cfg.ROBOT.inverse_kinematics(
@@ -859,12 +837,12 @@ class Planner(object):
                         traj.goal_cost = 0
                         traj.goal_grad = np.zeros((1, 7))
                         ran_initial_ik = True
-                elif 'GF' in self.cfg.method:
+                elif 'GF_known' in self.cfg.method: # GF
                     self.CHOMP_update(self.traj, pose_b2g, robot_model)
 
                 info_t = self.optim.optimize(self.traj, force_update=True, tstep=t+1)
 
-                if 'GF' in self.cfg.method:
+                if 'GF_known' in self.cfg.method: # GF
                     info_t['pred_grasp'] = pose_b2g.to_matrix().detach().cpu().numpy()
                 self.info.append(info_t)
                 self.history_trajectories.append(np.copy(traj.data))
@@ -878,8 +856,8 @@ class Planner(object):
                     print("plan optimize:", time.time() - start_time)
 
 
-                # if viz_env:
-                    # viz_env.update_panda_viz(self.traj, k=1)
+                if viz_env:
+                    viz_env.update_panda_viz(self.traj, k=1)
 
                 if viz_env and info_t['collide'] > 0 and False:
                     while len(self.dbg_ids) > 0:

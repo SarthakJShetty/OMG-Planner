@@ -1,4 +1,5 @@
 data_root: /home/thomasweng/data/manifolds
+project_root: /home/thomasweng/projects/manifolds
 experiment: dbg
 dataset: acronym_mini_relabel
 
