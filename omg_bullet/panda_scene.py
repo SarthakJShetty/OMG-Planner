@@ -120,6 +120,8 @@ def main(hydra_cfg):
     for scene in scenes:
         planning_scene = PlanningScene(cfg)
         obs, objname, scene_name = env.init_scene(scene, planning_scene, hydra_cfg)
+        if 'Book' in objname: 
+            continue
 
         pc = obs['points'] if cfg.pc else None
         info = planning_scene.step(pc=pc, viz_env=env)

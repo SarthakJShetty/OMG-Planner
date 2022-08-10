@@ -814,10 +814,9 @@ class Planner(object):
                     loss = fn(q)
                     print(f"iter: {t} loss: {loss}")
                     loss.backward()
-
                     # output = jacobian(fn, q.squeeze()) # note this function may change q.grad
 
-                    traj.goal_cost = loss
+                    traj.goal_cost = loss.item()
                     traj.goal_grad = q.grad.float().squeeze()[:7].cpu().numpy()
                 elif 'GF_known' in self.cfg.method:
                     q_goal = torch.tensor(self.traj.goal_set[self.traj.goal_idx], device='cpu', dtype=torch.float32)

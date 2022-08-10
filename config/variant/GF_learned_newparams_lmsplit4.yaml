@@ -1,5 +1,5 @@
 # Evaluation configs
-method: GF_learned_newparams_ctrlpts
+method: GF_learned_newparams_lmsplit4
 use_standoff: False
 use_goal_grad: True
 ol_alg: null 
@@ -9,7 +9,7 @@ smooth_loss_on_endpoint: False
 start_end_equal: True
 initial_ik: False
 chomp_adam: True
-grasp_weights: /media/thomasweng/manifolds/clust_multirun/3obj_cpd_pc_rot/outdist_cpd-augrot/default_default_grasp-manifolds/50_50_2st6e01o/checkpoints/epoch=49-step=276100.ckpt
+grasp_weights: /media/thomasweng/manifolds/clust_multirun/3obj_lmsplit4_pc_rot/outdist_lmsplitlm4-augrot/default_default_grasp-manifolds/70_70_2gh2ptay/checkpoints/epoch=69-step=376417.ckpt
 pc: True
 goal_thresh: 0.0001
 
@@ -23,7 +23,7 @@ cost_schedule_boost: 1.0
 base_step_size: 0.03
 optim_steps: 500
 pre_terminate: True
-dist_func: control_points
+dist_func: logmap_split
 # lm_trans_wt: 3.0
 consider_finger: False
 # lm_trans_wt: 6.283 # (1 / 0.5) * np.pi
