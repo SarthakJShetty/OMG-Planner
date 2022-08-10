@@ -35,16 +35,15 @@ util_anchor_seeds = np.array(
     ]
 )
 
-def jacobian(f, initial, delta=1e-6):
+def jacobian(f, initial, delta=1e-7):
     """
     https://rh8liuqy.github.io/Finite_Difference.html
     https://discuss.pytorch.org/t/how-to-compute-the-finite-difference-jacobian-matrix/112713 
     It makes a big difference whether the model and inputs are floats vs. doubles
     """
     with torch.no_grad():
-        # out_init = f(initial.unsqueeze(0)).squeeze(0) # add and remove batch dim
         out_init = f(initial) # n x m output
-        nrow = len(out_init) 
+        nrow = len(out_init)
         ncol = len(initial)
         output = torch.zeros(nrow*ncol, dtype=initial.dtype, device=initial.device)
         output = output.reshape(nrow,ncol)

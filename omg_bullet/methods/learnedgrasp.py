@@ -9,8 +9,9 @@ import pytorch3d.ops
 
 
 class LearnedGrasp:
-    def __init__(self, ckpt_path):
+    def __init__(self, ckpt_path, use_double=False):
         self.ckpt_path = ckpt_path
+        self.use_double = use_double
         cfg_path = Path(self.ckpt_path).parents[3] / ".hydra" / "config.yaml"
         self.cfg = OmegaConf.load(cfg_path)
 
@@ -22,6 +23,8 @@ class LearnedGrasp:
         self.model = Decoder(**self.cfg.net).cuda()
         ckpt = torch.load(ckpt_path)
         self.model.load_state_dict(ckpt['state_dict'])
+        if self.use_double: 
+            self.model.double()
         self.model.eval()
 
         # # Load shape dataset
@@ -67,7 +70,7 @@ class LearnedGrasp:
 
         # with torch.no_grad():
         #     outpose = self.model(input_x.unsqueeze(0))
-        dist = dist.squeeze(0)
+        # dist = dist.squeeze(0)
         return dist
 
     def get_shape_code(self, pc):
@@ -85,11 +88,16 @@ class LearnedGrasp:
         pc_fps -= mean_pc
 
         # Run VN-OccNets
+        if self.use_double:
+            pc_fps = pc_fps.double()
         shape_mi = {'point_cloud': pc_fps.cuda()}
         with torch.no_grad():
             latent = self.model.shape_model.extract_latent(shape_mi)
             latent = torch.reshape(latent, (latent.shape[0], -1))
         return latent, mean_pc.squeeze().cpu().numpy()
+    
+    def device(self):
+        return self.model.device
 
 
 # class ImplicitGrasp_NoVision:

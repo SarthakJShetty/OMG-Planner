@@ -35,7 +35,7 @@ from differentiable_robot_model.robot_model import (
 import pytorch3d.transforms as p3t
 
 def pose_to_pq(pose):
-    pq = torch.zeros(7)
+    pq = torch.zeros(7, dtype=pose.tensor.dtype, device=pose.device)
     mat = pose.to_matrix()
     pq[:3] = mat[:, :3, 3]
     pq[3:] = p3t.matrix_to_quaternion(mat[:, :3, :3])
@@ -137,7 +137,9 @@ class Planner(object):
             self.learner = Learner(env, self.traj, self.cost)
         elif 'learned' in self.cfg.method:
             from omg_bullet.methods.learnedgrasp import LearnedGrasp
-            self.grasp_predictor = LearnedGrasp(ckpt_path=self.cfg.grasp_weights)
+            self.use_double = True
+            torch.set_default_tensor_type(torch.cuda.DoubleTensor)
+            self.grasp_predictor = LearnedGrasp(ckpt_path=self.cfg.grasp_weights, use_double=self.use_double)
             self.setup_time = 0
         elif 'CG' in self.cfg.method:
             from omg_bullet.methods.contact_graspnet import ContactGraspNetInference
@@ -759,7 +761,7 @@ class Planner(object):
             self.T_w2b_np = get_world2bot_transform()
 
             urdf_path = DifferentiableFrankaPanda().urdf_path.replace('_no_gripper', '')
-            robot_model = th.eb.UrdfRobotModel(urdf_path)
+            robot_model = th.eb.UrdfRobotModel(urdf_path, device='cuda')
 
             # Get shape code for point cloud
             if pc is not None:
@@ -775,6 +777,15 @@ class Planner(object):
             self.optim.init(self.traj)
             ran_initial_ik = False
 
+            if 'GF_learned' in self.cfg.method:
+                dtype = torch.float32 if not self.use_double else torch.float64
+                device = self.grasp_predictor.device()
+                T_o2b_np = self.get_T_obj2bot()
+                T_o2b = torch.tensor(T_o2b_np, dtype=dtype, device=device)
+                pose_o2b = th.SE3(tensor=T_o2b[:3].unsqueeze(0))
+                T_h2t = wrist_to_tip(dtype=dtype, device=device)
+                pose_h2t = th.SE3(tensor=T_h2t[:3].unsqueeze(0))
+
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
                 print(f"plan step {t}")
                 start_time = time.time()
@@ -787,31 +798,24 @@ class Planner(object):
                     self.selected_goals.append(self.traj.goal_idx)
 
                 if 'GF_learned' in self.cfg.method:
-                    # Get input pose to network as position+quaternion in object frame
-                    q = torch.tensor(self.traj.data[-1], device='cpu').unsqueeze(0)
+                    q = torch.tensor(self.traj.data[-1], dtype=dtype, device=device).unsqueeze(0)
                     q.requires_grad = True
-                    pose_b2h = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
-                    T_o2b_np = self.get_T_obj2bot()
-                    pose_o2b = th.SE3(tensor=torch.tensor(T_o2b_np, dtype=torch.float32)[:3].unsqueeze(0))
-                    T_h2t = wrist_to_tip()
-                    pose_h2t = th.SE3(tensor=torch.tensor(T_h2t, dtype=torch.float32)[:3].unsqueeze(0))
-                    pose_o2t = pose_o2b.compose(pose_b2h).compose(pose_h2t)
-                    input_pq = pose_to_pq(pose_o2t).cuda()
+
+                    def fn(q):
+                        pose_b2h = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
+                        if self.use_double:
+                            pose_b2h = th.SE3(tensor=pose_b2h.tensor.double())
+                        pose_o2t = pose_o2b.compose(pose_b2h).compose(pose_h2t)
+                        input_pq = pose_to_pq(pose_o2t)
+                        dist = self.grasp_predictor.forward(input_pq, {'shape_code': shape_code})
+                        loss = torch.abs(dist.mean(dim=1, keepdim=True))
+                        return loss
                     
-                    # Run network
-                    shape_info = {}
-                    if pc is not None:  # shape code
-                        shape_info['shape_code'] = shape_code
-                    elif self.cfg.single_shape_code: # single shape code
-                        objname = self.env.objects[0].name
-                        shape_info['shape_key'] = objname
-                    else:  # 1 hot
-                        objname = self.env.objects[0].name
-                        shape_info['1hot'] = objname
-                    dist = self.grasp_predictor.forward(input_pq, shape_info)
-                    loss = torch.abs(dist.mean())
+                    loss = fn(q)
                     print(f"iter: {t} loss: {loss}")
                     loss.backward()
+
+                    # output = jacobian(fn, q.squeeze()) # note this function may change q.grad
 
                     traj.goal_cost = loss
                     traj.goal_grad = q.grad.float().squeeze()[:7].cpu().numpy()
