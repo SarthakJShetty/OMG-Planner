@@ -38,8 +38,7 @@ from collections import namedtuple
 import pytransform3d.rotations as pr
 import pytransform3d.transformations as pt
 
-from acronym_tools import load_grasps, create_gripper_marker
-from manifold_grasping.utils import load_mesh
+import acronym_tools
 
 import csv
 from copy import deepcopy
@@ -49,8 +48,10 @@ import h5py
 import trimesh
 
 sys.path.append(os.path.dirname(__file__))
-from omg_bullet.envs.acronym_env import PandaEnv
+from omg_bullet.envs.acronym_env import PandaAcronymEnv
 from utils import *
+from acronym_tools import load_grasps, create_gripper_marker, load_mesh
+# from manifold_grasping.utils import load_mesh
 
 def linear_shake(env, timeSteps, delta_z, record=False, second_shake=False):
     pos, orn = p.getLinkState(
@@ -103,8 +104,9 @@ def collect_grasps(margs):
                 0.0399,]
 
     # setup bullet env
-    env = PandaEnv(renders=args.render, egl_render=args.egl, gravity=False, root_dir=f"{args.mesh_root}/meshes_bullet")
-    env.reset(init_joints=init_joints, no_table=True, objinfo=objinfo)
+    # env = PandaAcronymEnv(renders=args.render, egl_render=args.egl, gravity=False, root_dir=f"{args.mesh_root}/meshes_bullet")
+    env = PandaAcronymEnv(renders=args.render, egl_render=args.egl, gravity=False)
+    env.reset(init_joints=init_joints, no_table=True, objinfos=[objinfo])
 
     # load grasps
     obj2rotgrasp_Ts, successes = load_grasps(f"{args.mesh_root}/grasps/{graspfile}")
@@ -128,26 +130,27 @@ def collect_grasps(margs):
             pos, orn = p.getLinkState(env._panda.pandaUid, env._panda.pandaEndEffectorIndex)[:2]
             world2ee_T = pt.transform_from_pq(np.concatenate([pos, pr.quaternion_wxyz_from_xyzw(orn)]))
 
+            # trimesh and bullet panda gripper convention difference 
             # Correct for panda gripper rotation about z axis in bullet
             rotgrasp2grasp_T = pt.transform_from(pr.matrix_from_axis_angle([0, 0, 1, -np.pi/2]), [0, 0, 0]) # correct wrist rotation
             obj2grasp_T = obj2rotgrasp_T @ rotgrasp2grasp_T
-            grasp2obj_T = np.linalg.inv(obj2grasp_T)
 
             # Move object frame to centroid
+            mesh = objinfo['mesh']
             obj2ctr_T = np.eye(4)
-            # if args.grasp_eval != '':
-            obj2ctr_T[:3, 3] = -obj_mesh.centroid
+            obj2ctr_T[:3, 3] = -mesh.centroid
 
-            # if args.debug: # Debugging plot
-                # pos_grasp = [create_gripper_marker(color=[0, 255, 0]).apply_transform(obj2rotgrasp_T)]
-                # obj_mesh = obj_mesh.apply_transform(obj2ctr_T)
-                # trimesh.Scene([obj_mesh] + pos_grasp).show()
+            if args.debug: # Debugging plot
+                # grasps = [create_gripper_marker(color=[0, 255, 0], tube_radius=0.003).apply_transform(T) for T in obj2rotgrasp_Ts]
+                grasp = [create_gripper_marker(color=[0, 255, 0], tube_radius=0.003).apply_transform(obj2rotgrasp_T)]
+                # trimesh.Scene([mesh] + grasps[:50]).show()
+                trimesh.Scene([mesh] + grasp).show()
 
-            world2ctr_T = world2ee_T @ grasp2obj_T @ obj2ctr_T
+            world2ctr_T = world2ee_T @ np.linalg.inv(obj2grasp_T) 
             # draw_pose(world2ctr_T)
 
             # Place single object
-            pq = pt.pq_from_transform(world2ctr_T)
+            pq = pt.pq_from_transform(world2ctr_T) # mesh still object centered
             p.resetBasePositionAndOrientation(
                 env._objectUids[0],
                 pq[:3],
@@ -213,6 +216,7 @@ if __name__ == "__main__":
     parser.add_argument("--workers", help="Pool workers", type=int, default=1)
     parser.add_argument("--lin", help="How far to linear shake in a second", default=0.15, type=float)
     parser.add_argument("--rot", help="How far to angular shake in a second, in degrees", default=180, type=float)
+    parser.add_argument("--debug", help="show debug visualizations", action="store_true")
 
     args = parser.parse_args()
 
@@ -232,7 +236,9 @@ if __name__ == "__main__":
             grasp_id = grasp_h5.replace('.h5', '')
             scale = float(grasp_id.split('_')[-1])
             try:
-                obj_mesh, T_ctr2obj = load_mesh(f'{args.mesh_root}/grasps/{grasp_h5}', scale=scale, mesh_root_dir=args.mesh_root, load_for_bullet=True)
+                # obj_mesh, T_ctr2obj = load_mesh(f'{args.mesh_root}/grasps/{grasp_h5}', scale=scale, mesh_root_dir=args.mesh_root, load_for_bullet=True)
+                # mesh is not mean-centered
+                obj_mesh = load_mesh(f'{args.mesh_root}/grasps/{grasp_h5}', mesh_root_dir=args.mesh_root, load_for_bullet=True)
             except Exception as e:
                 print(e)
                 continue
@@ -240,7 +246,8 @@ if __name__ == "__main__":
                 'name': grasp_h5,
                 'urdf_dir': f'{args.mesh_root}/meshes_bullet/{grasp_id}/model_normalized.urdf',
                 'scale': scale,
-                'T_ctr2obj': T_ctr2obj
+                # 'T_ctr2obj': T_ctr2obj,
+                'mesh': obj_mesh
             }
             grasp_and_object = (grasp_h5, objinfo)
 

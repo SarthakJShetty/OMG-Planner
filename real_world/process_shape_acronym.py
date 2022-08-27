@@ -149,7 +149,7 @@ for obj_name in os.listdir(args.mesh_root):
                 mesh = trimesh.load(f'{mesh_path}/model_normalized_unscaled.obj')
                 scale = float(Path(mesh_path).parts[-1].split('_')[-1])
                 mesh = mesh.apply_scale(scale)
-                mesh.apply_transform(tra.translation_matrix(-mesh.centroid))
+                # mesh.apply_transform(tra.translation_matrix(-mesh.centroid))
                 # trimesh.Scene([mesh]).show()
                 mesh.export(f'{mesh_path}/model_normalized.obj')
 
@@ -161,7 +161,7 @@ for obj_name in os.listdir(args.mesh_root):
 
                 ####### These two are mainly for rendering and simulation, needs update urdf if used in bullet
                 ####### This can be used for meshes with broken topology and add textures uvs
-                # blender_process.process_obj(mesh_path)
+                blender_process.process_obj(mesh_path)
 
                 # ####### The convex shape can be used for bullet.
                 try:
