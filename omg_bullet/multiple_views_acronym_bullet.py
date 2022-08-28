@@ -59,7 +59,8 @@ def main(args):
     for obj_name in os.listdir(f"{args.mesh_root}/grasps"):
         obj_mesh_paths.append(f"{args.mesh_root}/grasps/{obj_name}")
 
-    save_dir = f"{args.mesh_root}/shape-dataset_{datetime.now().strftime('%m-%d-%y_%H-%M-%S')}"
+    suffix = '_rotate' if args.rotate else ''
+    save_dir = f"{args.mesh_root}/shape-dataset_{datetime.now().strftime('%m-%d-%y_%H-%M-%S')}_{args.n_samples / 1000}k{suffix}"
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
@@ -69,6 +70,8 @@ def main(args):
     with h5py.File(f'{save_dir}/dataset.hdf5', 'a') as hf:
         
         for mesh_idx, mesh_path in enumerate(obj_mesh_paths):
+            # if mesh_idx != 3:
+            #     continue
             print(mesh_idx)
             obj_name = mesh_path.split('/')[-1].replace('.h5', '')
             if obj_name in hf:
@@ -99,13 +102,16 @@ def main(args):
                 print(f"{i}th sample of {obj_name}")
 
                 env.reset(no_table=True, objinfos=[objinfo])
-                T_world_obj = env.place_object(env._objectUids[0], target_pos=[0.5, 0.0, 0.5], random=False, gravity=False)
+                T_world_obj = env.place_object(env._objectUids[0], target_pos=[0.5, 0.0, 0.5], random=args.rotate, gravity=False)
+                # T_world_obj = env.place_object(env._objectUids[0], target_pos=[0.0, 0.0, 0.0], random=args.rotate, gravity=False)
                 obs = env._get_observation(get_pc=True, single_view=False)
                 pc_world = obs['points']
 
                 # Sample the data randomly and with farthest point sampling
                 # pc_world_rnd = regularize_pc_point_count(pc_world, npoints=1500, use_farthest_point=False)  # 3.69s
                 pc_world_t = torch.tensor(pc_world, dtype=torch.float32, device='cuda')
+                if len(pc_world_t) == 0:
+                    continue
                 pc_world_fps_t, pc_world_fps_idxs = pytorch3d.ops.sample_farthest_points(pc_world_t.unsqueeze(0), K=1500, random_start_point=True)  # 0.12s
                 pc_world_fps_t = pc_world_fps_t.squeeze()
                 pc_world_fps_idxs = pc_world_fps_idxs.squeeze()
@@ -158,6 +164,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--target_pc_size", default=1500,
         help="Size of downsampled point cloud"
+    )
+    parser.add_argument(
+        "--rotate", 
+        action="store_true",
+        help="Randomly rotate object before capturing point cloud"
     )
     args = parser.parse_args()
     main(args)
