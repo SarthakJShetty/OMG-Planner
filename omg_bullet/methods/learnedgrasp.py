@@ -18,6 +18,12 @@ class LearnedGrasp:
             category, ckpt_path = item.split(':')
             self.models[category] = self.load_model(ckpt_path)
 
+    def init_model(self):
+        if self.arch == 'deepsdf':
+            return Decoder(**self.cfg.net).cuda()
+        elif self.arch == 'pointnet2_seg':
+            return PointNet2_Seg(**self.cfg.net).cuda()
+
     def load_model(self, ckpt_path):
         # load separate models for each object
         self.ckpt_path = ckpt_path
@@ -28,6 +34,7 @@ class LearnedGrasp:
         hydra_cfg = OmegaConf.load(Path(__file__).parents[4] / "config" / "panda_scene.yaml")
         self.cfg.project_root = hydra_cfg.project_root
         self.cfg.data_root = hydra_cfg.data_root
+        self.arch = self.cfg.net.arch
 
         model = self.init_model()
         ckpt = torch.load(ckpt_path)
@@ -37,85 +44,116 @@ class LearnedGrasp:
         model.eval()
         return model
     
-    def device(self):
-        return self.model.device
-
-    def init_model(self):
-        if self.cfg.net == 'deepsdf':
-            return Decoder(**self.cfg.net).cuda()
-        elif self.cfg.net == 'pointnet2_seg':
-            return PointNet2_Seg(**self.cfg.net).cuda()
-
-    def forward(self, x_dict={}):
-        raise NotImplementedError
-
-    def get_shape_code(self, pc, category='All'):
-        raise NotImplementedError
-
-
-class LearnedGrasp_PointNet2Seg(LearnedGraspBase):
-    def __init__(self): 
-        super().__init__()
-
-    def init_model(self):
-        return PointNet2_Seg(**self.cfg.net).cuda()
+    def get_input(self, x_dict={}):
+        if self.arch == 'deepsdf':
+            pq = x_dict['pq']
+            latent = x_dict['shape_code']
+            input_x = torch.cat([pq.unsqueeze(0), latent], axis=1)
+        elif self.arch == 'pointnet2_seg':
+            raise NotImplementedError
+        return input_x
 
     def forward(self, x_dict={}):
-        """
-        pq (torch.Tensor): xyz, wxyz
-        objname for known object model
-        """
-        # TODO
-        raise NotImplementedError
-        # query_pose = x_dict['pq']
-        # pc = 
-        # category = x_dict['category']
-        # input_x = torch.cat([pq.unsqueeze(0), latent], axis=1)
-        # dist = self.models[category](input_x)
-        # return dist
-
-
-class LearnedGrasp_DeepSDF(LearnedGraspBase):
-    def __init__(self): 
-        super().__init__()
-
-    def init_model(self):
-        return Decoder(**self.cfg.net).cuda()
-
-    def forward(self, x_dict={}):
-        """
-        pq (torch.Tensor): xyz, wxyz
-        objname for known object model
-        """
-        pq = x_dict['pq']
-        latent = x_dict['shape_code']
+        input_x = self.get_input(x_dict)
         category = x_dict['category']
-        input_x = torch.cat([pq.unsqueeze(0), latent], axis=1)
-        dist = self.models[category](input_x)
-        return dist
+        output = self.models[category](input_x)
+        # TODO get dist from output
+        return output
 
     def get_shape_code(self, pc, category='All'):
-        """input is not mean_centered, point cloud is in world frame"""
-        # Farthest point sampling
-        pc_t = torch.tensor(pc[:, :3]).unsqueeze(0)  # 1 x N x 3
-        try:
-            pc_fps, pc_fps_idxs = pytorch3d.ops.sample_farthest_points(pc_t, K=1500, random_start_point=True)
-        except Exception as e:
-            print(e)
-            import IPython; IPython.embed()
+        if self.arch == 'deepsdf':
+            """input is not mean_centered, point cloud is in world frame"""
+            # Farthest point sampling
+            pc_t = torch.tensor(pc[:, :3]).unsqueeze(0)  # 1 x N x 3
+            try:
+                pc_fps, pc_fps_idxs = pytorch3d.ops.sample_farthest_points(pc_t, K=1500, random_start_point=True)
+            except Exception as e:
+                print(e)
+                import IPython; IPython.embed()
 
-        # mean center the point cloud
-        mean_pc = pc_fps.mean(axis=1)
-        pc_fps -= mean_pc
+            # mean center the point cloud
+            mean_pc = pc_fps.mean(axis=1)
+            pc_fps -= mean_pc
 
-        # Run VN-OccNets
-        if self.use_double:
-            pc_fps = pc_fps.double()
-        shape_mi = {'point_cloud': pc_fps.cuda()}
-        with torch.no_grad():
-            latent = self.models[category].shape_model.extract_latent(shape_mi)
-            latent = torch.reshape(latent, (latent.shape[0], -1))
-        return latent, mean_pc.squeeze().cpu().numpy()
+            # Run VN-OccNets
+            if self.use_double:
+                pc_fps = pc_fps.double()
+            shape_mi = {'point_cloud': pc_fps.cuda()}
+            with torch.no_grad():
+                latent = self.models[category].shape_model.extract_latent(shape_mi)
+                latent = torch.reshape(latent, (latent.shape[0], -1))
+            return latent, mean_pc.squeeze().cpu().numpy()
+        elif self.arch == 'pointnet2_seg':
+            raise NotImplementedError
+
+    def device(self):
+        return self.models[list(self.models.keys())[0]].device # all models should be on the same device
+
+
+
+# class LearnedGrasp_PointNet2Seg(LearnedGraspBase):
+#     def __init__(self): 
+#         super().__init__()
+
+#     def init_model(self):
+#         return PointNet2_Seg(**self.cfg.net).cuda()
+
+#     def forward(self, x_dict={}):
+#         """
+#         pq (torch.Tensor): xyz, wxyz
+#         objname for known object model
+#         """
+#         # TODO
+#         raise NotImplementedError
+#         # query_pose = x_dict['pq']
+#         # pc = 
+#         # category = x_dict['category']
+#         # input_x = torch.cat([pq.unsqueeze(0), latent], axis=1)
+#         # dist = self.models[category](input_x)
+#         # return dist
+
+
+# class LearnedGrasp_DeepSDF(LearnedGraspBase):
+#     def __init__(self): 
+#         super().__init__()
+
+#     def init_model(self):
+#         return Decoder(**self.cfg.net).cuda()
+
+#     def forward(self, x_dict={}):
+#         """
+#         pq (torch.Tensor): xyz, wxyz
+#         objname for known object model
+#         """
+#         pq = x_dict['pq']
+#         latent = x_dict['shape_code']
+#         category = x_dict['category']
+#         input_x = torch.cat([pq.unsqueeze(0), latent], axis=1)
+#         dist = self.models[category](input_x)
+#         return dist
+
+#     def get_shape_code(self, pc, category='All'):
+#         """input is not mean_centered, point cloud is in world frame"""
+#         # Farthest point sampling
+#         pc_t = torch.tensor(pc[:, :3]).unsqueeze(0)  # 1 x N x 3
+#         try:
+#             pc_fps, pc_fps_idxs = pytorch3d.ops.sample_farthest_points(pc_t, K=1500, random_start_point=True)
+#         except Exception as e:
+#             print(e)
+#             import IPython; IPython.embed()
+
+#         # mean center the point cloud
+#         mean_pc = pc_fps.mean(axis=1)
+#         pc_fps -= mean_pc
+
+#         # Run VN-OccNets
+#         if self.use_double:
+#             pc_fps = pc_fps.double()
+#         shape_mi = {'point_cloud': pc_fps.cuda()}
+#         with torch.no_grad():
+#             latent = self.models[category].shape_model.extract_latent(shape_mi)
+#             latent = torch.reshape(latent, (latent.shape[0], -1))
+#         return latent, mean_pc.squeeze().cpu().numpy()
 
 
 

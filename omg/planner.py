@@ -138,12 +138,8 @@ class Planner(object):
         elif 'learned' in self.cfg.method:
             self.use_double = True
             torch.set_default_tensor_type(torch.cuda.DoubleTensor)
-            if self.cfg.arch == 'deepsdf':
-                from omg_bullet.methods.learnedgrasp import LearnedGrasp_DeepSDF
-                self.grasp_predictor = LearnedGrasp_DeepSDF(ckpt_paths=self.cfg.grasp_weights, use_double=self.use_double)
-            elif self.cfg.arch == 'pointnet2_seg':
-                from omg_bullet.methods.learnedgrasp import LearnedGrasp_PointNet2Seg
-                self.grasp_predictor = LearnedGrasp_PointNet2Seg(ckpt_paths=self.cfg.grasp_weights, use_double=self.use_double)
+            from omg_bullet.methods.learnedgrasp import LearnedGrasp
+            self.grasp_predictor = LearnedGrasp(ckpt_paths=self.cfg.grasp_weights, use_double=self.use_double)
             self.setup_time = 0
         elif 'CG' in self.cfg.method:
             from omg_bullet.methods.contact_graspnet import ContactGraspNetInference
@@ -765,8 +761,8 @@ class Planner(object):
             robot_model = th.eb.UrdfRobotModel(urdf_path, device='cuda')
 
             # Get shape code for point cloud
-            if 'GF' in self.cfg.method and self.cfg.arch == 'deepsdf' and pc_dict is not {}: # deepsdf
-                shape_code, mean_pc = self.grasp_predictor.get_shape_code(pc_dict['points_world'])
+            if 'GF' in self.cfg.method and self.grasp_predictor.arch == 'deepsdf' and pc_dict is not {}: # deepsdf
+                shape_code, mean_pc = self.grasp_predictor.get_shape_code(pc_dict['points_world'], category=category)
                 T_w2pc = np.eye(4)
                 T_w2pc[:3, 3] = mean_pc[:3]
                 T_b2pc = np.linalg.inv(self.T_w2b_np) @ T_w2pc
@@ -821,7 +817,7 @@ class Planner(object):
                     self.learner.update_goal()
                     self.selected_goals.append(self.traj.goal_idx)
 
-                if 'GF_learned' in self.cfg.method and self.cfg.arch == 'deepsdf':
+                if 'GF_learned' in self.cfg.method and self.grasp_predictor.arch == 'deepsdf':
                     q = torch.tensor(self.traj.data[-1], dtype=dtype, device=device).unsqueeze(0)
                     q.requires_grad = True
 
@@ -847,7 +843,7 @@ class Planner(object):
 
                     traj.goal_cost = loss.item()
                     traj.goal_grad = q.grad.float().squeeze()[:7].cpu().numpy()
-                elif 'GF_learned' in self.cfg.method and self.cfg.arch == 'pointnet2_seg':
+                elif 'GF_learned' in self.cfg.method and self.grasp_predictor.arch == 'pointnet2_seg':
                     raise NotImplementedError
                 elif 'GF_known' in self.cfg.method:
                     q_goal = torch.tensor(self.traj.goal_set[self.traj.goal_idx], device='cpu', dtype=torch.float32)
