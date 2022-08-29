@@ -74,7 +74,7 @@ def init_dir(hydra_cfg):
     with open(cwd / 'config.yaml', 'w') as yaml_file:
         save_cfg = cfg.copy()
         save_cfg['ROBOT'] = None
-        yaml.dump(save_cfg, yaml_file)
+        yaml.dump(save_cfg, yaml_file) 
     with open(cwd / 'metrics.csv', 'w', newline='') as csvfile:
         fieldnames = ['object_name', 'scene_idx', 'execution', 'planning', 'smoothness', 'collision', 'time']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -123,8 +123,15 @@ def main(hydra_cfg):
         if 'Book' in objname: 
             continue
 
-        pc = obs['points'] if cfg.pc else None
-        info = planning_scene.step(pc=pc, viz_env=env)
+        if cfg.pc:
+            pc_dict = {
+                'points_world': obs['points'],
+                'points_cam2': obs['points_cam2']
+            }
+        else:
+            pc_dict = {}
+        category = objname.split('_')[0] if cfg.per_class_models else 'All'
+        info = planning_scene.step(category=category, pc_dict=pc_dict, viz_env=env)
         plan = planning_scene.planner.history_trajectories[-1]
 
         video_writer = init_video_writer(Path(os.getcwd()) / 'videos', objname, scene_name) if hydra_cfg.write_video else None

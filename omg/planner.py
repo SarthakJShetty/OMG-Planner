@@ -136,16 +136,18 @@ class Planner(object):
             self.setup_time = time.time() - start_time_
             self.learner = Learner(env, self.traj, self.cost)
         elif 'learned' in self.cfg.method:
-            from omg_bullet.methods.learnedgrasp import LearnedGrasp
             self.use_double = True
             torch.set_default_tensor_type(torch.cuda.DoubleTensor)
-            self.grasp_predictor = LearnedGrasp(ckpt_path=self.cfg.grasp_weights, use_double=self.use_double)
+            if self.cfg.arch == 'deepsdf':
+                from omg_bullet.methods.learnedgrasp import LearnedGrasp_DeepSDF
+                self.grasp_predictor = LearnedGrasp_DeepSDF(ckpt_paths=self.cfg.grasp_weights, use_double=self.use_double)
+            elif self.cfg.arch == 'pointnet2_seg':
+                from omg_bullet.methods.learnedgrasp import LearnedGrasp_PointNet2Seg
+                self.grasp_predictor = LearnedGrasp_PointNet2Seg(ckpt_paths=self.cfg.grasp_weights, use_double=self.use_double)
             self.setup_time = 0
         elif 'CG' in self.cfg.method:
             from omg_bullet.methods.contact_graspnet import ContactGraspNetInference
             self.grasp_predictor = ContactGraspNetInference()
-            # Run grasp predictor to set up grasp set
-            self.setup_time = 0
         else:
             raise NotImplementedError
 
@@ -742,7 +744,7 @@ class Planner(object):
             traj.goal_cost = loss.item()
             traj.goal_grad = q_curr.grad.cpu().numpy()[:, :7]
 
-    def plan(self, traj, pc=None, viz_env=None):
+    def plan(self, traj, category='All', pc_dict={}, viz_env=None):
         """
         Run chomp optimizer to do trajectory optmization
         """
@@ -753,7 +755,6 @@ class Planner(object):
         start_time_ = time.time()
         alg_switch = self.cfg.ol_alg != "Baseline" and 'GF_learned' not in self.cfg.method
 
-        best_traj_idx = -1
         best_traj = None # Save lowest cost trajectory
         best_cost = 1000
         if (not self.cfg.goal_set_proj) or len(self.traj.goal_set) > 0 \
@@ -764,15 +765,38 @@ class Planner(object):
             robot_model = th.eb.UrdfRobotModel(urdf_path, device='cuda')
 
             # Get shape code for point cloud
-            if pc is not None:
-                # mean_pc = np.mean(pc, axis=0)
-                # pc_obj = deepcopy(pc)
-                # pc_obj[:, :3] -= mean_pc[:3]
-                shape_code, mean_pc = self.grasp_predictor.get_shape_code(pc)
+            if 'GF' in self.cfg.method and self.cfg.arch == 'deepsdf' and pc_dict is not {}: # deepsdf
+                shape_code, mean_pc = self.grasp_predictor.get_shape_code(pc_dict['points_world'])
                 T_w2pc = np.eye(4)
                 T_w2pc[:3, 3] = mean_pc[:3]
                 T_b2pc = np.linalg.inv(self.T_w2b_np) @ T_w2pc
                 draw_pose(T_w2pc)
+
+                if False: # visualize pc in world frame
+                    self.dbg_ids = []
+                    while len(self.dbg_ids) > 0:
+                        dbg_id = self.dbg_ids.pop(0)
+                        p.removeUserDebugItem(dbg_id)
+
+                    pc_idx_sample = np.random.choice(range(len(pc)), 100)
+                    for pc_idx in pc_idx_sample:
+                        w2pc = pc[pc_idx]
+                        dbg_id = p.addUserDebugLine(
+                                w2pc[:3], 
+                                w2pc[:3]+np.array([0.001, 0.001, 0.001]),
+                                lineWidth=5.0,
+                                lineColorRGB=(255., 0, 0))
+                        self.dbg_ids.append(dbg_id)
+            elif 'CG' in self.cfg.method and pc_dict is not None:
+                # TODO Set up grasp set
+                pred_grasps_cam, scores, contact_pts = self.grasp_predictor.inference(pc_dict['points_cam2'])
+                start_time_ = time.time()
+                self.grasp_predictor.inference()
+                self.load_grasp_set(self.env)
+                self.setup_goal_set(self.env, filter_collision=self.cfg.filter_collision)
+                self.grasp_init(self.env)
+                self.setup_time = time.time() - start_time_
+                self.learner = Learner(self.env, self.traj, self.cost)
             
             self.optim.init(self.traj)
             ran_initial_ik = False
@@ -797,7 +821,7 @@ class Planner(object):
                     self.learner.update_goal()
                     self.selected_goals.append(self.traj.goal_idx)
 
-                if 'GF_learned' in self.cfg.method:
+                if 'GF_learned' in self.cfg.method and self.cfg.arch == 'deepsdf':
                     q = torch.tensor(self.traj.data[-1], dtype=dtype, device=device).unsqueeze(0)
                     q.requires_grad = True
 
@@ -807,7 +831,12 @@ class Planner(object):
                             pose_b2h = th.SE3(tensor=pose_b2h.tensor.double())
                         pose_o2t = pose_o2b.compose(pose_b2h).compose(pose_h2t)
                         input_pq = pose_to_pq(pose_o2t)
-                        dist = self.grasp_predictor.forward(input_pq, {'shape_code': shape_code})
+                        x_dict = {
+                            'pq': pose_to_pq(pose_o2t),
+                            'shape_code': shape_code,
+                            'category': category
+                        }
+                        dist = self.grasp_predictor.forward(x_dict)
                         loss = torch.abs(dist.mean(dim=1, keepdim=True))
                         return loss
                     
@@ -818,6 +847,8 @@ class Planner(object):
 
                     traj.goal_cost = loss.item()
                     traj.goal_grad = q.grad.float().squeeze()[:7].cpu().numpy()
+                elif 'GF_learned' in self.cfg.method and self.cfg.arch == 'pointnet2_seg':
+                    raise NotImplementedError
                 elif 'GF_known' in self.cfg.method:
                     q_goal = torch.tensor(self.traj.goal_set[self.traj.goal_idx], device='cpu', dtype=torch.float32)
                     pose_b2g = robot_model.forward_kinematics(q_goal)['panda_hand']
@@ -850,10 +881,9 @@ class Planner(object):
                 self.info.append(info_t)
                 self.history_trajectories.append(np.copy(traj.data))
                 if self.cfg.use_min_cost_traj:
-                    if info_t['cost'] < best_cost:
-                        best_cost = info_t['cost']
+                    if info_t['collide'] <= self.cfg.allow_collision_point and info_t['grasp'] < best_cost:
+                        best_cost = info_t['grasp']
                         best_traj = np.copy(traj.data)
-                        best_traj_idx = t
 
                 if self.cfg.report_time:
                     print("plan optimize:", time.time() - start_time)
@@ -919,6 +949,9 @@ class Planner(object):
 
                 if self.info[-1]["terminate"] and t > 0:
                     break
+
+            if viz_env:
+                viz_env.remove_panda_viz()
 
             # compute information for the final
             if not self.info[-1]["terminate"]:

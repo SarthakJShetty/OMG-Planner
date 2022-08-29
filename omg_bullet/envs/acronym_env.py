@@ -414,6 +414,9 @@ class PandaAcronymEnv(PandaEnv):
 
             T_cams = []
             pcs_world = []
+            pcs_cam2 = []
+            T_world_cam2_rot = self._extrinsics[1] @ T_rotx
+            T_cam2_rot_world = np.linalg.inv(T_world_cam2_rot)
             for i, pc_cam in enumerate(pcs):
                 T_world_cam = self._extrinsics[i]
                 T_world_cam_rot = T_world_cam @ T_rotx
@@ -421,23 +424,30 @@ class PandaAcronymEnv(PandaEnv):
                 T_cams.append(T_world_cam_rot)
                 pc_world = (T_world_cam_rot @ pc_cam.T).T
                 pcs_world.append(pc_world)
+                pc_cam2 = (T_cam2_rot_world @ T_world_cam_rot @ pc_cam.T).T
+                pcs_cam2.append(pc_cam2)
+                
             pc_world = np.concatenate(pcs_world, axis=0)
+            pc_cam2 = np.concatenate(pcs_cam2, axis=0)
 
             if False:  # Debug visualization
-                pcd_world = trimesh.points.PointCloud(pc_world[:, :3], colors=np.array([0, 0, 255, 255]))
-                # camera poses represented using the gripper marker
-                cams = [create_gripper_marker(color=[255, 0, 0]).apply_transform(T_cam) for T_cam in T_cams]
-                trimesh.Scene([pcd_world] + cams).show()
+                # TODO make point cloud utility func
+                import plotly.graph_objects as go
+                import plotly.offline as py
+                fig = go.Figure()
+                data = go.Scatter3d(x=pc_cam2[:, 0], y=pc_cam2[:, 1], z=pc_cam2[:, 2], mode='markers')
+                fig.add_traces(data)
+                fig.update_layout(coloraxis_showscale=False)
+                py.iplot(fig)
         else:
             pc_world = None
+            pc_cam2 = None
 
         obs = {
             'rgb': rgbs,
             'depth': depths,
             'mask': masks,
-            # 'rgb': rgb,
-            # 'depth': depth,
-            # 'mask': mask,
+            'points_cam2': pc_cam2,
             'points': pc_world,
             'joint_pos': joint_pos,
             'joint_vel': joint_vel
@@ -473,6 +483,12 @@ class PandaAcronymEnv(PandaEnv):
         #     self._panda_vizs[tstep].reset(traj.data[tstep])
         # joints = traj.data[-1]
         # self._panda_viz.reset(joints)
+    
+    def remove_panda_viz(self):
+        for i in range(len(self._panda_vizs)):
+            self._panda_vizs[i]._base_position = [0, 0, -50]
+            self._panda_vizs[i].reset()
+            del self._panda_vizs[i]
     
     @staticmethod
     def get_scenes(hydra_cfg):
@@ -549,7 +565,8 @@ class PandaAcronymEnv(PandaEnv):
         """Used in multiple_views_acronym_bullet.py"""
         grasp_h5 = Path(mesh_root) / 'grasps' / f'{objname}.h5'
         scale = objname.split('_')[-1]
-        _, T_ctr2obj = load_mesh(str(grasp_h5), scale=scale, mesh_root_dir=mesh_root, load_for_bullet=True)
+        # _, T_ctr2obj = load_mesh(str(grasp_h5), scale=scale, mesh_root_dir=mesh_root, load_for_bullet=True)
+        _, T_ctr2obj = load_mesh(str(grasp_h5), mesh_root_dir=mesh_root, load_for_bullet=True)
         objinfo = {
             'name': objname,
             'urdf_dir': f'{mesh_root}/meshes_bullet/{objname}/model_normalized.urdf',
@@ -578,7 +595,7 @@ class PandaAcronymEnv(PandaEnv):
         T_rand = get_random_transform(target_pos, q=q, random=random)
 
         # Apply object to centroid transform
-        T_ctr2obj = self.objinfos[0]['T_ctr2obj'] # TODO
+        T_ctr2obj = self.objinfos[0]['T_ctr2obj']
         # T_ctr2obj = env.objinfos[0]['T_ctr2obj_com']
 
         T_w2o = T_w2b @ T_rand @ T_ctr2obj

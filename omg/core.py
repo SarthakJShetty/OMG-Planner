@@ -531,11 +531,11 @@ class PlanningScene(object):
         resize = [self.env.objects[-1].resize]
         self.renderer.load_objects(models, scale=resize, add=True)
 
-    def step(self, pc=None, viz_env=None):
+    def step(self, category='All', pc_dict={}, viz_env=None):
         """
         Run an optimization step
         """
-        plan = self.planner.plan(self.traj, pc=pc, viz_env=viz_env)
+        plan = self.planner.plan(self.traj, category=category, pc_dict=pc_dict, viz_env=viz_env)
         return plan
 
     def prepare_render_list(self, joints):

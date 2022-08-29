@@ -148,6 +148,7 @@ cfg.float_obstacle = False
 cfg.lm_trans_wt = 1.0
 cfg.obs_tail_weight = 1.0
 cfg.dist_func = 'logmap'
+cfg.per_class_models = True # separate models per object class
 cfg.grasp_weights = None
 
 """ global function """
