@@ -141,7 +141,7 @@ cfg.initial_ik = False # Use IK at the start of trajectory optimization (for our
 cfg.filter_collision = True
 cfg.pc = False
 cfg.chomp_adam = False
-cfg.smooth_loss_on_endpoint = True
+cfg.no_endpoint_smoothing = True # no smooth loss on endpoint
 cfg.start_end_equal = False
 cfg.eval_env = ''
 cfg.float_obstacle = False
@@ -233,7 +233,7 @@ def get_global_param(steps=cfg.timesteps):
             cfg.time_interval,
             cfg.diff_rule_length,
             i + 1,
-            cfg.smooth_loss_on_endpoint
+            cfg.no_endpoint_smoothing
         )
         for i in range(cfg.diff_rule.shape[0])
     ]

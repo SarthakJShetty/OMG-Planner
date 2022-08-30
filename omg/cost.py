@@ -464,7 +464,7 @@ class Cost(object):
             * start
             / self.cfg.time_interval
         )
-        if self.cfg.smooth_loss_on_endpoint:
+        if self.cfg.no_endpoint_smoothing:
             ed[-1] = (
                 self.cfg.diff_rule[0][self.cfg.diff_rule_length // 2]
                 * end
