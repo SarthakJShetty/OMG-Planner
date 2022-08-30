@@ -126,7 +126,8 @@ def main(hydra_cfg):
         if cfg.pc:
             pc_dict = {
                 'points_world': obs['points'],
-                'points_cam2': obs['points_cam2']
+                'points_cam2': obs['points_cam2'],
+                'T_world_cam2': obs['T_world_cam2']
             }
         else:
             pc_dict = {}

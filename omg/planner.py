@@ -422,6 +422,27 @@ class Planner(object):
         )
         return list(reach_goal_set), list(standoff_goal_set), list(score_set), list(grasp_set)
 
+    def load_grasp_set_cg(self, env, pred_grasps_cam, scores, T_world_cam2): # TODO move this to within contact_graspnet
+        """
+        Process predicted contact graspnet grasps
+        """
+        target_obj = env.objects[env.target_idx]
+
+        T_b2w = np.linalg.inv(get_world2bot_transform())
+        pose_grasp = T_b2w @ T_world_cam2 @ pred_grasps_cam # pose_grasp is in bot frame
+        target_obj.grasps_poses = pose_grasp
+        target_obj.grasp_scores = scores
+
+        # target_obj.pose is in bot frame
+        z_upsample = False
+        target_obj.reach_grasps, target_obj.grasps, _, _ = self.solve_goal_set_ik(
+            target_obj, env, pose_grasp, z_upsample=z_upsample, y_upsample=self.cfg.y_upsample,
+            in_global_coords=True
+        )
+
+        # TODO grasp_potentials (collision)
+        target_obj.grasp_potentials = [0 for _ in range(len(target_obj.grasps))]
+
     def load_grasp_set(self, env):
         """
         Example to load precomputed grasps for YCB Objects.
@@ -749,7 +770,9 @@ class Planner(object):
         self.info = []
         self.selected_goals = []
         start_time_ = time.time()
-        alg_switch = self.cfg.ol_alg != "Baseline" and 'GF_learned' not in self.cfg.method
+        alg_switch = self.cfg.ol_alg != "Baseline" \
+            and 'GF_learned' not in self.cfg.method \
+            and 'CG' not in self.cfg.method
 
         best_traj = None # Save lowest cost trajectory
         best_cost = 1000
@@ -765,7 +788,6 @@ class Planner(object):
                 shape_code, mean_pc = self.grasp_predictor.get_shape_code(pc_dict['points_world'], category=category)
                 T_w2pc = np.eye(4)
                 T_w2pc[:3, 3] = mean_pc[:3]
-                T_b2pc = np.linalg.inv(self.T_w2b_np) @ T_w2pc
                 draw_pose(T_w2pc)
 
                 if False: # visualize pc in world frame
@@ -774,9 +796,9 @@ class Planner(object):
                         dbg_id = self.dbg_ids.pop(0)
                         p.removeUserDebugItem(dbg_id)
 
-                    pc_idx_sample = np.random.choice(range(len(pc)), 100)
+                    pc_idx_sample = np.random.choice(range(len(pc_dict['points_world'])), 100)
                     for pc_idx in pc_idx_sample:
-                        w2pc = pc[pc_idx]
+                        w2pc = pc_dict['points_world'][pc_idx]
                         dbg_id = p.addUserDebugLine(
                                 w2pc[:3], 
                                 w2pc[:3]+np.array([0.001, 0.001, 0.001]),
@@ -784,15 +806,26 @@ class Planner(object):
                                 lineColorRGB=(255., 0, 0))
                         self.dbg_ids.append(dbg_id)
             elif 'CG' in self.cfg.method and pc_dict is not None:
-                # TODO Set up grasp set
-                pred_grasps_cam, scores, contact_pts = self.grasp_predictor.inference(pc_dict['points_cam2'])
                 start_time_ = time.time()
-                self.grasp_predictor.inference()
-                self.load_grasp_set(self.env)
-                self.setup_goal_set(self.env, filter_collision=self.cfg.filter_collision)
+                pred_grasps_cam, scores, contact_pts = self.grasp_predictor.inference(pc_dict['points_cam2'])
+                T_world_cam2 = pc_dict['T_world_cam2']
+
+                # Visualize predicted grasps
+                if False: # visualize pc in world frame
+                    if self.dbg_ids is None:
+                        self.dbg_ids = []
+                    while len(self.dbg_ids) > 0:
+                        dbg_id = self.dbg_ids.pop(0)
+                        p.removeUserDebugItem(dbg_id)
+
+                    for pred_grasp in pred_grasps_cam[:100]:
+                        dbg_ids = draw_pose(T_world_cam2 @ pred_grasp)
+                        self.dbg_ids += dbg_ids
+
+                self.load_grasp_set_cg(self.env, pred_grasps_cam, scores, T_world_cam2)
                 self.grasp_init(self.env)
                 self.setup_time = time.time() - start_time_
-                self.learner = Learner(self.env, self.traj, self.cost)
+                # self.learner = Learner(self.env, self.traj, self.cost)
             
             self.optim.init(self.traj)
             ran_initial_ik = False
@@ -803,8 +836,13 @@ class Planner(object):
                 T_o2b_np = self.get_T_obj2bot()
                 T_o2b = torch.tensor(T_o2b_np, dtype=dtype, device=device)
                 pose_o2b = th.SE3(tensor=T_o2b[:3].unsqueeze(0))
-                T_h2t = wrist_to_tip(dtype=dtype, device=device)
-                pose_h2t = th.SE3(tensor=T_h2t[:3].unsqueeze(0))
+                T_rotgrasp2grasp = pt.transform_from(pr.matrix_from_axis_angle([0, 0, 1, -np.pi/2]), [0, 0, 0])  # correct wrist rotation
+                # offset_pose = np.array(rotZ(np.pi / 2)) # rotate about z axis
+                # T_h2t = wrist_to_tip(dtype=dtype, device=device) # TODO transform if use_tip
+                pose_h2t = th.SE3(tensor=torch.tensor(T_rotgrasp2grasp)[:3].unsqueeze(0))
+
+            # Floating gripper evaluation
+            # from manifold_grasping.evaluate import 
 
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
                 print(f"plan step {t}")
@@ -826,7 +864,7 @@ class Planner(object):
                         if self.use_double:
                             pose_b2h = th.SE3(tensor=pose_b2h.tensor.double())
                         pose_o2t = pose_o2b.compose(pose_b2h).compose(pose_h2t)
-                        input_pq = pose_to_pq(pose_o2t)
+                        # pose_o2t = pose_o2b.compose(pose_b2h)
                         x_dict = {
                             'pq': pose_to_pq(pose_o2t),
                             'shape_code': shape_code,
@@ -834,6 +872,19 @@ class Planner(object):
                         }
                         dist = self.grasp_predictor.forward(x_dict)
                         loss = torch.abs(dist.mean(dim=1, keepdim=True))
+
+                        if False: # visualize pc in world frame
+                            if self.dbg_ids is None:
+                                self.dbg_ids = []
+                            while len(self.dbg_ids) > 0:
+                                dbg_id = self.dbg_ids.pop(0)
+                                p.removeUserDebugItem(dbg_id)
+
+                            T_w2b = get_world2bot_transform()
+                            T_o2b_np = self.get_T_obj2bot()
+                            dbg_ids = draw_pose(T_w2b @ np.linalg.inv(T_o2b_np) @ pose_o2t.to_matrix().detach().cpu().squeeze().numpy())
+                            self.dbg_ids += dbg_ids
+
                         return loss
                     
                     loss = fn(q)
@@ -842,7 +893,7 @@ class Planner(object):
                     # output = jacobian(fn, q.squeeze()) # note this function may change q.grad
 
                     traj.goal_cost = loss.item()
-                    traj.goal_grad = q.grad.float().squeeze()[:7].cpu().numpy()
+                    traj.goal_grad = q.grad.float().squeeze()[:7].cpu().numpy() 
                 elif 'GF_learned' in self.cfg.method and self.grasp_predictor.arch == 'pointnet2_seg':
                     raise NotImplementedError
                 elif 'GF_known' in self.cfg.method:
@@ -872,7 +923,7 @@ class Planner(object):
 
                 info_t = self.optim.optimize(self.traj, force_update=True, tstep=t+1)
 
-                if 'GF_known' in self.cfg.method: # GF
+                if 'GF_known' in self.cfg.method:
                     info_t['pred_grasp'] = pose_b2g.to_matrix().detach().cpu().numpy()
                 self.info.append(info_t)
                 self.history_trajectories.append(np.copy(traj.data))
@@ -979,6 +1030,10 @@ class Planner(object):
 
         else:
             if not self.cfg.silent: print("planning not run...")
+
+        if 'CG' in self.cfg.method:
+            self.grasp_predictor.delete()
+
         return self.info
 
 

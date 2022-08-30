@@ -19,6 +19,7 @@ def add_line(start, end, color=BLACK, width=1, lifetime=0, parent=NULL_ID, paren
 
 def draw_pose(T, length=0.1, d=3, alt_color=False, **kwargs):
     origin_world = T @ np.array((0., 0., 0., 1.))
+    dbg_ids = []
     for k in range(d):
         axis = np.array((0., 0., 0., 1.))
         axis[k] = 1*length
@@ -31,8 +32,10 @@ def draw_pose(T, length=0.1, d=3, alt_color=False, **kwargs):
             color[(k+1)%(d)] = 1
         else:
             color[k] = 1
-        add_line(origin_pt, axis_pt, color=color, **kwargs)
- 
+        dbg_id = add_line(origin_pt, axis_pt, color=color, **kwargs)
+        dbg_ids.append(dbg_id)
+    return dbg_ids
+
 def depth2pc(depth, K, rgb=None):
     """
     Convert depth and intrinsics to point cloud and optionally point cloud color

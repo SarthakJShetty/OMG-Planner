@@ -535,7 +535,7 @@ class Cost(object):
         print(f"wt obs cost {weighted_obs:.4f}, wt smth cost {weighted_smooth:.4f}, wt goal cost {weighted_goal_cost:.4f}, collision pts: {int(collide)}")
    
         # if ('Proj' in self.cfg.method or 'OMG' in self.cfg.method) and self.cfg.goal_set_proj:
-        if self.cfg.goal_set_proj and 'GF_known' not in self.cfg.method:
+        if (self.cfg.goal_set_proj and 'GF_known' not in self.cfg.method) or 'CG' in self.cfg.method:
             goal_dist = np.linalg.norm(traj.data[-1] - traj.goal_set[traj.goal_idx])
             goal_dist_thresh = 0.01
         elif 'GF' in self.cfg.method:

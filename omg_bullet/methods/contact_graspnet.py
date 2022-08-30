@@ -4,6 +4,7 @@ import contact_graspnet
 from contact_graspnet import config_utils
 from contact_graspnet.inference import inference as cg_inference
 from contact_graspnet.inference import init as cg_init
+from keras import backend as K 
 
 class ContactGraspNetInference:
     def __init__(self, save_results=False, visualize=False):
@@ -50,3 +51,8 @@ class ContactGraspNetInference:
         parser.add_argument('--arg_configs', nargs="*", type=str, default=[], help='overwrite config parameters')
         args = parser.parse_args([])
         return args
+
+    def delete(self):
+        K.clear_session()
+        del self.grasp_estimator
+        del self.sess

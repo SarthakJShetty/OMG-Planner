@@ -442,12 +442,14 @@ class PandaAcronymEnv(PandaEnv):
         else:
             pc_world = None
             pc_cam2 = None
+            T_world_cam2_rot = None
 
         obs = {
             'rgb': rgbs,
             'depth': depths,
             'mask': masks,
             'points_cam2': pc_cam2,
+            'T_world_cam2': T_world_cam2_rot,
             'points': pc_world,
             'joint_pos': joint_pos,
             'joint_vel': joint_vel
