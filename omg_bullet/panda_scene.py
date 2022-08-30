@@ -118,10 +118,10 @@ def main(hydra_cfg):
     env = init_env(hydra_cfg)
     scenes = env.get_scenes(hydra_cfg)
     for scene in scenes:
+        if 'Book' in scene['obj_name']:
+            continue
         planning_scene = PlanningScene(cfg)
         obs, objname, scene_name = env.init_scene(scene, planning_scene, hydra_cfg)
-        if 'Book' in objname: 
-            continue
 
         if cfg.pc:
             pc_dict = {
