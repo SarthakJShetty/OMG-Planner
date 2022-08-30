@@ -2,37 +2,89 @@ import os
 import argparse
 import contact_graspnet
 from contact_graspnet import config_utils
-from contact_graspnet.inference import inference as cg_inference
-from contact_graspnet.inference import init as cg_init
+# from contact_graspnet.inference import inference as cg_inference
+# from contact_graspnet.inference import init as cg_init
 from keras import backend as K 
+import numpy as np
+import pytransform3d.rotations as pr
+import pytransform3d.transformations as pt
+
+
+# import multiprocessing
+
+import tensorflow.compat.v1 as tf
+tf.disable_eager_execution()
+physical_devices = tf.config.experimental.list_physical_devices('GPU')
+tf.config.experimental.set_memory_growth(physical_devices[0], True)
+
+# def run_inference(args, global_config, pc):
+#     # args, global_config, pc = margs
+
+#     sess, grasp_estimator = cg_init(global_config, args.ckpt_dir)
+
+#     print('Generating Grasps...')
+#     pc_full = pc[:, :3]
+#     pred_grasps_cam, scores, contact_pts, _ = grasp_estimator.predict_scene_grasps(sess, pc_full, 
+#                                                                                     local_regions=args.local_regions, filter_grasps=args.filter_grasps, 
+#                                                                                     forward_passes=args.forward_passes)  
+#                                                                                     #   pc_segments=pc_segments, 
+
+#     # Correct wrist rotation convention discrepancy
+#     T_rotgrasp2grasp = pt.transform_from(pr.matrix_from_axis_angle([0, 0, 1, -np.pi/2]), [0, 0, 0])  # correct wrist rotation
+#     pred_grasps = pred_grasps_cam[-1]
+#     pred_grasps = pred_grasps @ T_rotgrasp2grasp
+
+#     # tf.reset_default_graph()
+#     # self.delete()
+
+#     return pred_grasps, scores[-1], contact_pts[-1]
+
 
 class ContactGraspNetInference:
     def __init__(self, save_results=False, visualize=False):
         self.args = self.get_args()
         self.global_config = config_utils.load_config(self.args.ckpt_dir, batch_size=self.args.forward_passes, arg_configs=self.args.arg_configs)
 
-        # move some of inference to init
-        sess, grasp_estimator = cg_init(self.global_config, self.args.ckpt_dir)
-        self.sess = sess
-        self.grasp_estimator = grasp_estimator
+    # def inference1(self, pc):
+    #     # https://github.com/tensorflow/tensorflow/issues/19731
+    #     manager = multiprocessing.Manager()
+    #     return_dict = manager.dict()
+    #     p = multiprocessing.Process(
+    #         target=run_inference,
+    #         args=(self.args, self.global_config, pc)
+    #     )
+    #     p.start()
+    #     p.join()
+    #     print(return_dict.values())
 
-    def inference(self, pc, 
-        # save_results=False, visualize=False
-        ):
-        # pred_grasps_cam, scores, contact_pts = cg_inference(self.sess, self.grasp_estimator, pc, z_range=eval(str(self.args.z_range)),
-        #                                                     K=self.args.K, local_regions=self.args.local_regions, filter_grasps=self.args.filter_grasps, segmap_id=self.args.segmap_id, 
-        #                                                     forward_passes=self.args.forward_passes, skip_border_objects=self.args.skip_border_objects,
-        #                                                     save_results=save_results, visualize=visualize)
-        
-        print('Generating Grasps...')
-        pc_full = pc[:, :3]
-        pred_grasps_cam, scores, contact_pts, _ = self.grasp_estimator.predict_scene_grasps(self.sess, pc_full, 
-                                                                                          local_regions=self.args.local_regions, filter_grasps=self.args.filter_grasps, 
-                                                                                          forward_passes=self.args.forward_passes)  
-                                                                                        #   pc_segments=pc_segments, 
+    def inference(self, pc):
+        config = tf.ConfigProto()
+        # config.gpu_options.allow_growth = True
+        config.gpu_options.per_process_gpu_memory_fraction = 0.3
+        with tf.Graph().as_default(), tf.Session(config=config) as sess:
+            from contact_graspnet.contact_grasp_estimator import GraspEstimator
+            grasp_estimator = GraspEstimator(self.global_config)
+            grasp_estimator.build_network()
 
+            # Add ops to save and restore all the variables.
+            saver = tf.train.Saver(save_relative_paths=True)
 
-        return pred_grasps_cam[-1], scores[-1], contact_pts[-1]
+            # Load weights
+            grasp_estimator.load_weights(sess, saver, self.args.ckpt_dir, mode='test')
+
+            print('Generating Grasps...')
+            pc_full = pc[:, :3]
+            pred_grasps_cam, scores, contact_pts, _ = grasp_estimator.predict_scene_grasps(sess, pc_full, 
+                                                                                            local_regions=self.args.local_regions, filter_grasps=self.args.filter_grasps, 
+                                                                                            forward_passes=self.args.forward_passes)  
+                                                                                            #   pc_segments=pc_segments, 
+
+            # Correct wrist rotation convention discrepancy
+            T_rotgrasp2grasp = pt.transform_from(pr.matrix_from_axis_angle([0, 0, 1, -np.pi/2]), [0, 0, 0])  # correct wrist rotation
+            pred_grasps = pred_grasps_cam[-1]
+            pred_grasps = pred_grasps @ T_rotgrasp2grasp
+
+            return pred_grasps, scores[-1], contact_pts[-1]
 
     def get_args(self):
         parser = argparse.ArgumentParser()
@@ -51,8 +103,3 @@ class ContactGraspNetInference:
         parser.add_argument('--arg_configs', nargs="*", type=str, default=[], help='overwrite config parameters')
         args = parser.parse_args([])
         return args
-
-    def delete(self):
-        K.clear_session()
-        del self.grasp_estimator
-        del self.sess

@@ -312,7 +312,7 @@ class Planner(object):
                 standoff_goal_set.extend(standoff_goal_set_i)
                 if grasp_scores != []:
                     score_set.extend([grasp_scores[grasp_idx] for _ in range(len(standoff_goal_set_i))])
-                    grasp_set.extend([pose_grasp_global[grasp_idx] for _ in range(len(standoff_goal_set_i))])
+                grasp_set.extend([pose_grasp_global[grasp_idx] for _ in range(len(standoff_goal_set_i))])
 
                 if not any_ik:
                     cnt += 1
@@ -389,16 +389,16 @@ class Planner(object):
                             ),
                             axis=0,
                         )
-                        new_grasp_set = np.concatenate(
-                                    [[pack_pose(pose_grasp_global[i+idx]) for _ in range(len(s[1]))]
-                                        for idx, s in enumerate(res) if len(s[1]) > 0], axis=0)
-                        grasp_set = np.concatenate(
-                            (
-                                grasp_set,
-                                new_grasp_set
-                            ),
-                            axis=0
-                        )
+                    new_grasp_set = np.concatenate(
+                                [[pack_pose(pose_grasp_global[i+idx]) for _ in range(len(s[1]))]
+                                    for idx, s in enumerate(res) if len(s[1]) > 0], axis=0)
+                    grasp_set = np.concatenate(
+                        (
+                            grasp_set,
+                            new_grasp_set
+                        ),
+                        axis=0
+                    )
 
                 if self.cfg.increment_iks:
                     max_index = np.random.choice(
@@ -435,13 +435,14 @@ class Planner(object):
 
         # target_obj.pose is in bot frame
         z_upsample = False
-        target_obj.reach_grasps, target_obj.grasps, _, _ = self.solve_goal_set_ik(
+        target_obj.reach_grasps, target_obj.grasps, _, grasp_set = self.solve_goal_set_ik(
             target_obj, env, pose_grasp, z_upsample=z_upsample, y_upsample=self.cfg.y_upsample,
             in_global_coords=True
         )
 
         # TODO grasp_potentials (collision)
         target_obj.grasp_potentials = [0 for _ in range(len(target_obj.grasps))]
+        return grasp_set
 
     def load_grasp_set(self, env):
         """
@@ -771,8 +772,7 @@ class Planner(object):
         self.selected_goals = []
         start_time_ = time.time()
         alg_switch = self.cfg.ol_alg != "Baseline" \
-            and 'GF_learned' not in self.cfg.method \
-            and 'CG' not in self.cfg.method
+            and 'GF_learned' not in self.cfg.method
 
         best_traj = None # Save lowest cost trajectory
         best_cost = 1000
@@ -807,25 +807,27 @@ class Planner(object):
                         self.dbg_ids.append(dbg_id)
             elif 'CG' in self.cfg.method and pc_dict is not None:
                 start_time_ = time.time()
-                pred_grasps_cam, scores, contact_pts = self.grasp_predictor.inference(pc_dict['points_cam2'])
+                pred_grasps_cam, scores, _ = self.grasp_predictor.inference(pc_dict['points_cam2'])
                 T_world_cam2 = pc_dict['T_world_cam2']
 
+                grasp_set = self.load_grasp_set_cg(self.env, pred_grasps_cam, scores, T_world_cam2)
+                self.grasp_init(self.env)
+                self.learner = Learner(self.env, self.traj, self.cost)
+                self.setup_time = time.time() - start_time_
+
                 # Visualize predicted grasps
-                if False: # visualize pc in world frame
+                if True: # visualize pc in world frame
                     if self.dbg_ids is None:
                         self.dbg_ids = []
                     while len(self.dbg_ids) > 0:
                         dbg_id = self.dbg_ids.pop(0)
                         p.removeUserDebugItem(dbg_id)
 
-                    for pred_grasp in pred_grasps_cam[:100]:
-                        dbg_ids = draw_pose(T_world_cam2 @ pred_grasp)
-                        self.dbg_ids += dbg_ids
-
-                self.load_grasp_set_cg(self.env, pred_grasps_cam, scores, T_world_cam2)
-                self.grasp_init(self.env)
-                self.setup_time = time.time() - start_time_
-                # self.learner = Learner(self.env, self.traj, self.cost)
+                    T_w2b = get_world2bot_transform()
+                    # pred_grasp = self.env.objects[self.env.target_idx].grasps_poses[self.traj.goal_idx]
+                    pred_grasp = unpack_pose(grasp_set[self.traj.goal_idx])
+                    dbg_ids = draw_pose(T_w2b @ pred_grasp)
+                    self.dbg_ids += dbg_ids
             
             self.optim.init(self.traj)
             ran_initial_ik = False
@@ -840,9 +842,10 @@ class Planner(object):
                 # offset_pose = np.array(rotZ(np.pi / 2)) # rotate about z axis
                 # T_h2t = wrist_to_tip(dtype=dtype, device=device) # TODO transform if use_tip
                 pose_h2t = th.SE3(tensor=torch.tensor(T_rotgrasp2grasp)[:3].unsqueeze(0))
+                # pose_h2t = th.SE3(tensor=torch.eye(4)[:3].unsqueeze(0))
 
             # Floating gripper evaluation
-            # from manifold_grasping.evaluate import 
+            # from manifold_grasping.evaluate import  
 
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
                 print(f"plan step {t}")
@@ -1030,9 +1033,6 @@ class Planner(object):
 
         else:
             if not self.cfg.silent: print("planning not run...")
-
-        if 'CG' in self.cfg.method:
-            self.grasp_predictor.delete()
 
         return self.info
 
