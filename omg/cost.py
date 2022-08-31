@@ -563,6 +563,7 @@ class Cost(object):
         else:
             terminate = False
             execute = False
+            goal_dist = 0
 
         standoff_idx = (
             len(traj.data) - self.cfg.reach_tail_length

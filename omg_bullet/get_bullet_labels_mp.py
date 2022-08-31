@@ -136,6 +136,7 @@ def collect_grasps(margs):
             obj2grasp_T = obj2rotgrasp_T @ rotgrasp2grasp_T
 
             # Move object frame to centroid
+            # TODO Double check transforms now that meshes_bullet is scaled but not centered
             mesh = objinfo['mesh']
             obj2ctr_T = np.eye(4)
             obj2ctr_T[:3, 3] = -mesh.centroid
@@ -236,9 +237,7 @@ if __name__ == "__main__":
             grasp_id = grasp_h5.replace('.h5', '')
             scale = float(grasp_id.split('_')[-1])
             try:
-                # obj_mesh, T_ctr2obj = load_mesh(f'{args.mesh_root}/grasps/{grasp_h5}', scale=scale, mesh_root_dir=args.mesh_root, load_for_bullet=True)
-                # mesh is not mean-centered
-                obj_mesh = load_mesh(f'{args.mesh_root}/grasps/{grasp_h5}', mesh_root_dir=args.mesh_root, load_for_bullet=True)
+                obj_mesh, T_ctr2obj = load_mesh(f'{args.mesh_root}/grasps/{grasp_h5}', mesh_root_dir=args.mesh_root, load_for_bullet=True)
             except Exception as e:
                 print(e)
                 continue
@@ -246,7 +245,7 @@ if __name__ == "__main__":
                 'name': grasp_h5,
                 'urdf_dir': f'{args.mesh_root}/meshes_bullet/{grasp_id}/model_normalized.urdf',
                 'scale': scale,
-                # 'T_ctr2obj': T_ctr2obj,
+                'T_ctr2obj': T_ctr2obj,
                 'mesh': obj_mesh
             }
             grasp_and_object = (grasp_h5, objinfo)

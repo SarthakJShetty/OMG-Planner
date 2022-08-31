@@ -461,8 +461,7 @@ class Planner(object):
                         if 'acronym' in target_obj.mesh_path:
                             mesh_root = pathlib.Path(target_obj.mesh_path).parents[2]
                             grasps_path = str(mesh_root / f"grasps/{target_obj.name}.h5")
-                            scale = grasps_path.split('_')[-1].replace('.h5', '')
-                            obj_mesh, T_ctr2obj = load_mesh(grasps_path, mesh_root_dir=mesh_root, scale=scale, load_for_bullet=True)
+                            obj_mesh, T_ctr2obj = load_mesh(grasps_path, mesh_root_dir=mesh_root, load_for_bullet=True)
                             Ts_obj2rotgrasp, _, success = load_grasps(grasps_path)
                             Ts_obj2rotgrasp = Ts_obj2rotgrasp[success == 1]
                             pose_grasp = T_ctr2obj @ Ts_obj2rotgrasp
@@ -817,6 +816,7 @@ class Planner(object):
                 grasp_set = self.load_grasp_set_cg(self.env, pred_grasps_cam, scores, T_world_cam2)
                 if len(grasp_set) == 0:
                     self.info.append(self.optim.optimize(self.traj, info_only=True))
+                    self.info[-1]["time"] = np.isnan
                     print("planning not run, no grasp set")
                     return self.info
 
@@ -833,9 +833,9 @@ class Planner(object):
                         p.removeUserDebugItem(dbg_id)
 
                     T_w2b = get_world2bot_transform()
-                    # pred_grasp = self.env.objects[self.env.target_idx].grasps_poses[self.traj.goal_idx]
                     pred_grasp = unpack_pose(grasp_set[self.traj.goal_idx])
                     dbg_ids = draw_pose(T_w2b @ pred_grasp)
+                    # dbg_ids = [draw_pose(T_w2b @ unpack_pose(g)) for g in grasp_set[:50]]
                     self.dbg_ids += dbg_ids
             
             self.optim.init(self.traj)

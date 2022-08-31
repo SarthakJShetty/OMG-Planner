@@ -101,7 +101,7 @@ def objinfo_from_obj(grasp_h5s, mesh_root, objname):
             scale = graspfile.split('_')[-1].replace('.h5', '')
             break
 
-    obj_mesh, T_ctr2obj = load_mesh(f'{mesh_root}/grasps/{graspfile}', scale=scale, mesh_root_dir=mesh_root, load_processed=True)
+    obj_mesh, T_ctr2obj = load_mesh(f'{mesh_root}/grasps/{graspfile}', mesh_root_dir=mesh_root, load_for_bullet=True)
 
     # Load env
     objinfo = {

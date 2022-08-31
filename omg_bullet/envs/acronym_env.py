@@ -260,8 +260,7 @@ class PandaAcronymEnv(PandaEnv):
             return []
 
         uid = self._add_mesh(
-            # objinfo['urdf_dir'], [0, 0, 0], [0, 0, 0, 1], scale=objinfo['scale']
-            objinfo['urdf_dir'], [0, 0, 0], [0, 0, 0, 1], scale=1 # object is pre-scaled in .obj
+            objinfo['urdf_dir'], [0, 0, 0], [0, 0, 0, 1], scale=1 # object is pre-scaled in .obj for meshes_bullet
         )  # xyzw
         p.setCollisionFilterPair(
             uid, self.plane_id, -1, -1, 0
@@ -567,7 +566,6 @@ class PandaAcronymEnv(PandaEnv):
         """Used in multiple_views_acronym_bullet.py"""
         grasp_h5 = Path(mesh_root) / 'grasps' / f'{objname}.h5'
         scale = objname.split('_')[-1]
-        # _, T_ctr2obj = load_mesh(str(grasp_h5), scale=scale, mesh_root_dir=mesh_root, load_for_bullet=True)
         _, T_ctr2obj = load_mesh(str(grasp_h5), mesh_root_dir=mesh_root, load_for_bullet=True)
         objinfo = {
             'name': objname,
