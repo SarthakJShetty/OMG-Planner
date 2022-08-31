@@ -533,32 +533,37 @@ class Cost(object):
             )
 
         print(f"wt obs cost {weighted_obs:.4f}, wt smth cost {weighted_smooth:.4f}, wt goal cost {weighted_goal_cost:.4f}, collision pts: {int(collide)}")
-   
-        # if ('Proj' in self.cfg.method or 'OMG' in self.cfg.method) and self.cfg.goal_set_proj:
-        if (self.cfg.goal_set_proj and 'GF_known' not in self.cfg.method) or 'CG' in self.cfg.method:
-            goal_dist = np.linalg.norm(traj.data[-1] - traj.goal_set[traj.goal_idx])
-            goal_dist_thresh = 0.01
-        elif 'GF' in self.cfg.method:
-        #  and traj.goal_cost is not None:
-            goal_dist = traj.goal_cost if self.cfg.use_goal_grad else np.linalg.norm(traj.data[-1, :] - traj.goal_joints)
-            goal_dist_thresh = self.cfg.goal_thresh
-        elif 'Fixed' in self.cfg.method:
-            goal_dist = 0
-            goal_dist_thresh = 0.01
+
+        if traj.goal_set != []:
+            # if ('Proj' in self.cfg.method or 'OMG' in self.cfg.method) and self.cfg.goal_set_proj:
+            if (self.cfg.goal_set_proj and 'GF_known' not in self.cfg.method) or 'CG' in self.cfg.method:
+                goal_dist = np.linalg.norm(traj.data[-1] - traj.goal_set[traj.goal_idx])
+                goal_dist_thresh = 0.01
+            elif 'GF' in self.cfg.method:
+            #  and traj.goal_cost is not None:
+                goal_dist = traj.goal_cost if self.cfg.use_goal_grad else np.linalg.norm(traj.data[-1, :] - traj.goal_joints)
+                goal_dist_thresh = self.cfg.goal_thresh
+            elif 'Fixed' in self.cfg.method:
+                goal_dist = 0
+                goal_dist_thresh = 0.01
+            else:
+                raise NotImplementedError
+         
+            # print(f"goal_dist {goal_dist}, goal_thresh {goal_dist_thresh}")
+            terminate = (
+                (collide <= self.cfg.allow_collision_point)
+                and self.cfg.pre_terminate
+                and (goal_dist < goal_dist_thresh)
+                and smoothness_loss_sum < self.cfg.terminate_smooth_loss
+            )
+
+            execute = (collide <= self.cfg.allow_collision_point) and (
+                smoothness_loss_sum < self.cfg.terminate_smooth_loss
+            )
         else:
-            raise NotImplementedError
-         
-        # print(f"goal_dist {goal_dist}, goal_thresh {goal_dist_thresh}")
-        terminate = (
-            (collide <= self.cfg.allow_collision_point)
-            and self.cfg.pre_terminate
-            and (goal_dist < goal_dist_thresh)
-            and smoothness_loss_sum < self.cfg.terminate_smooth_loss
-        )
-         
-        execute = (collide <= self.cfg.allow_collision_point) and (
-            smoothness_loss_sum < self.cfg.terminate_smooth_loss
-        )
+            terminate = False
+            execute = False
+
         standoff_idx = (
             len(traj.data) - self.cfg.reach_tail_length
             if self.cfg.use_standoff
