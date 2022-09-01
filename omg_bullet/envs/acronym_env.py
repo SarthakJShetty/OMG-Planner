@@ -89,9 +89,20 @@ class PandaEnv:
         cur_joint[-2:] = 0
 
         self.step(cur_joint.tolist())  # grasp
+
+        # wait after closing
         pos, orn = p.getLinkState(
             self._panda.pandaUid, self._panda.pandaEndEffectorIndex
         )[:2]
+        jointPoses = np.array(
+            p.calculateInverseKinematics(
+                self._panda.pandaUid, self._panda.pandaEndEffectorIndex, pos
+            )
+        )
+        jointPoses[-2:] = 0.0
+        for i in range(3):
+            self.step(jointPoses.tolist())
+
         observations = []
         for i in range(10):
             pos = (pos[0], pos[1], pos[2] + 0.03)
@@ -103,7 +114,7 @@ class PandaEnv:
             jointPoses[-2:] = 0.0
 
             self.step(jointPoses.tolist())
-            observation = self._get_observation(get_pc=pc, single_view=True)
+            observation = self._get_observation(get_pc=pc, single_view=0)
             if record:
                 observations.append(observation)
         # wait in case gripper closes
@@ -122,7 +133,7 @@ class PandaEnv:
         if not obs:
             observation = None
         else:
-            observation = self._get_observation(get_pc=pc, single_view=True)
+            observation = self._get_observation(get_pc=pc, single_view=0)
         done = self._termination()
         reward = self._reward()
 
@@ -365,7 +376,7 @@ class PandaAcronymEnv(PandaEnv):
         self._env_step = 0
         return self._get_observation()
 
-    def _get_observation(self, get_pc=False, single_view=False):
+    def _get_observation(self, get_pc=False, single_view=-1):
         rgbs = []
         depths = []
         masks = []
@@ -374,7 +385,7 @@ class PandaAcronymEnv(PandaEnv):
 
         for i, cam in enumerate(self._cams):
             # for single_view, only get camera 1
-            if single_view and i != 1:
+            if single_view != -1 and i != single_view:
                 continue
 
             _, _, rgba, zbuffer, mask = p.getCameraImage(
@@ -549,7 +560,7 @@ class PandaAcronymEnv(PandaEnv):
     #             continue
 
     
-    def init_scene(self, scene, planning_scene, hydra_cfg, single_view=False):
+    def init_scene(self, scene, planning_scene, hydra_cfg, single_view=-1):
         objinfos = []
         objinfo = self.get_object_info(scene['obj_name'], Path(hydra_cfg.data_root) / hydra_cfg.dataset)
         objinfos.append(objinfo)

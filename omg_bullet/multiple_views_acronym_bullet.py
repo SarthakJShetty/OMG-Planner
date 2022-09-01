@@ -104,7 +104,7 @@ def main(args):
                 env.reset(no_table=True, objinfos=[objinfo])
                 T_world_obj = env.place_object(env._objectUids[0], target_pos=[0.5, 0.0, 0.5], random=args.rotate, gravity=False)
                 # T_world_obj = env.place_object(env._objectUids[0], target_pos=[0.0, 0.0, 0.0], random=args.rotate, gravity=False)
-                obs = env._get_observation(get_pc=True, single_view=False)
+                obs = env._get_observation(get_pc=True, single_view=0)
                 pc_world = obs['points']
 
                 # Sample the data randomly and with farthest point sampling

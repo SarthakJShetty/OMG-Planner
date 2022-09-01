@@ -97,16 +97,16 @@ class Learner(object):
         self.q = np.ones(self.num_experts) / self.num_experts
 
         if (
-            (self.alg_name == "Baseline"  # Choose goal based on initial cost
-            or (self.cfg.goal_idx == -2 and (self.alg_name == "MD" or self.alg_name == 'FTC' or self.alg_name == 'Exp' or self.alg_name == 'FTL')))  # online learning algs
+            ((self.cfg.goal_idx == -2 and (self.alg_name == "Baseline" or self.alg_name == "MD" or self.alg_name == 'FTC' or self.alg_name == 'Exp' or self.alg_name == 'FTL')))  # online learning algs
             and (len(self.env.objects) > 0 and len(self.env.objects[self.env.target_idx].reach_grasps) > 0)
         ):
             costs = self.cost_vector()
             sorted_idx = np.argsort(costs)
             self.traj.goal_idx = np.argmin(costs)  
-            if self.alg_name is not None: # implicit grasps
-                self.traj.end = self.traj.goal_set[self.traj.goal_idx]  #
-                self.traj.interpolate_waypoints()
+    
+        if self.alg_name is not None: # implicit grasps
+            self.traj.end = self.traj.goal_set[self.traj.goal_idx]  #
+            self.traj.interpolate_waypoints()
 
         if 'GF_known' in self.env.cfg.method:
             urdf_path = DifferentiableFrankaPanda().urdf_path.replace('_no_gripper', '')

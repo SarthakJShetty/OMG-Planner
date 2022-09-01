@@ -855,7 +855,7 @@ class Planner(object):
                 # pose_h2t = th.SE3(tensor=torch.eye(4)[:3].unsqueeze(0))
 
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
-                print(f"plan step {t}")
+                sys.stdout.write(f"plan step {t} ")
                 start_time = time.time()
 
                 if (
@@ -898,7 +898,7 @@ class Planner(object):
                         return loss
                     
                     loss = fn(q)
-                    print(f"iter: {t} loss: {loss}")
+                    # print(f"iter: {t} loss: {loss}")
                     loss.backward()
                     # output = jacobian(fn, q.squeeze()) # note this function may change q.grad
 
