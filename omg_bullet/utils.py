@@ -79,11 +79,11 @@ def get_world2bot_transform():
 def bullet_execute_plan(env, plan, write_video, video_writer):
     print('executing...')
     for k in range(plan.shape[0]):
-        obs, rew, done, _ = env.step(plan[k].tolist())
+        obs, rew, done, _ = env.step(plan[k].tolist(), pc=False)
         if write_video:
             video_writer.write(obs['rgb'][0][:, :, [2, 1, 0]].astype(np.uint8))
             # video_writer.write(obs['rgb'][:, :, [2, 1, 0]].astype(np.uint8))
-    (rew, ret_obs) = env.retract(record=True)
+    (rew, ret_obs) = env.retract(record=True, pc=False)
     if write_video: 
         for robs in ret_obs:
             video_writer.write(robs['rgb'][0][:, :, [2, 1, 0]].astype(np.uint8))

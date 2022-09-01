@@ -122,11 +122,13 @@ def main(hydra_cfg):
             continue
         planning_scene = PlanningScene(cfg)
         obs, objname, scene_name = env.init_scene(scene, planning_scene, hydra_cfg)
+        # obs, objname, scene_name = env.init_scene(scene, planning_scene, hydra_cfg, single_view=True)
 
         if cfg.pc:
             pc_dict = {
                 'points_world': obs['points'],
                 'points_cam2': obs['points_cam2'],
+                # 'points_segments': obs['points_segments'],
                 'T_world_cam2': obs['T_world_cam2']
             }
         else:

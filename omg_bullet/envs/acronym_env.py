@@ -83,7 +83,7 @@ class PandaEnv:
         p.disconnect()
         self.connected = False
 
-    def retract(self, record=False):
+    def retract(self, record=False, pc=False):
         """Retract step."""
         cur_joint = np.array(self._panda.getJointStates()[0])
         cur_joint[-2:] = 0
@@ -103,7 +103,7 @@ class PandaEnv:
             jointPoses[-2:] = 0.0
 
             self.step(jointPoses.tolist())
-            observation = self._get_observation()
+            observation = self._get_observation(get_pc=pc, single_view=True)
             if record:
                 observations.append(observation)
         # wait in case gripper closes
@@ -111,7 +111,7 @@ class PandaEnv:
             self.step(jointPoses.tolist())
         return (self._reward(), observations) if record else self._reward()
 
-    def step(self, action, obs=True):
+    def step(self, action, obs=True, pc=False):
         """Environment step."""
         self._env_step += 1
         self._panda.setTargetPositions(action)
@@ -122,7 +122,7 @@ class PandaEnv:
         if not obs:
             observation = None
         else:
-            observation = self._get_observation()
+            observation = self._get_observation(get_pc=pc, single_view=True)
         done = self._termination()
         reward = self._reward()
 
@@ -356,7 +356,6 @@ class PandaAcronymEnv(PandaEnv):
             0.707,
         )
 
-        # TODO turn off for mustard bottle
         self.objinfos = objinfos
         self._objectUids = []
         for objinfo in objinfos:
@@ -366,13 +365,18 @@ class PandaAcronymEnv(PandaEnv):
         self._env_step = 0
         return self._get_observation()
 
-    def _get_observation(self, get_pc=False, single_view=True):
+    def _get_observation(self, get_pc=False, single_view=False):
         rgbs = []
         depths = []
         masks = []
-        pcs = []
+        pcs = {}
+        # pc_segments = []
 
         for i, cam in enumerate(self._cams):
+            # for single_view, only get camera 1
+            if single_view and i != 1:
+                continue
+
             _, _, rgba, zbuffer, mask = p.getCameraImage(
                 width=self._window_width,
                 height=self._window_height,
@@ -392,6 +396,9 @@ class PandaAcronymEnv(PandaEnv):
             rgb = rgba[..., :3]
             depth_masked = deepcopy(depth)
             depth_masked[~(mask == self._objectUids[self.target_idx])] = 0
+            # depth_masked[~np.logical_or(mask == self._objectUids[self.target_idx], mask == 2)] = 0
+            # depth_masked_tgt = deepcopy(depth)
+            # depth_masked_tgt[~(mask == self._objectUids[self.target_idx])] = 0
 
             rgbs.append(rgb)
             depths.append(depth)  # width x height
@@ -399,10 +406,9 @@ class PandaAcronymEnv(PandaEnv):
 
             if get_pc:
                 pc = depth2pc(depth_masked, self._intr_matrix)[0] # N x 7 (XYZ, RGB, Mask ID)
-                pcs.append(pc)
-
-            if single_view:
-                break
+                pcs[i] = pc
+                # pc_segment = depth2pc(depth_masked_tgt, self._intr_matrix)[0]
+                # pc_segments.append(pc_segment)
 
         joint_pos, joint_vel = self._panda.getJointStates()
 
@@ -414,9 +420,12 @@ class PandaAcronymEnv(PandaEnv):
             T_cams = []
             pcs_world = []
             pcs_cam2 = []
+            # pcs_segment = {}
+            # pcs_segment[0] = []
             T_world_cam2_rot = self._extrinsics[1] @ T_rotx
             T_cam2_rot_world = np.linalg.inv(T_world_cam2_rot)
-            for i, pc_cam in enumerate(pcs):
+            for i in pcs.keys():
+                pc_cam = pcs[i]
                 T_world_cam = self._extrinsics[i]
                 T_world_cam_rot = T_world_cam @ T_rotx
                 draw_pose(T_world_cam_rot)
@@ -425,9 +434,12 @@ class PandaAcronymEnv(PandaEnv):
                 pcs_world.append(pc_world)
                 pc_cam2 = (T_cam2_rot_world @ T_world_cam_rot @ pc_cam.T).T
                 pcs_cam2.append(pc_cam2)
+                # pc_segment = (T_cam2_rot_world @ T_world_cam_rot @ pc_segments[i].T).T
+                # pcs_segment[0].append(pc_segment)
                 
             pc_world = np.concatenate(pcs_world, axis=0)
             pc_cam2 = np.concatenate(pcs_cam2, axis=0)
+            # pcs_segment[0] = np.concatenate(pcs_segment[0], axis=0)
 
             if False:  # Debug visualization
                 # TODO make point cloud utility func
@@ -442,12 +454,14 @@ class PandaAcronymEnv(PandaEnv):
             pc_world = None
             pc_cam2 = None
             T_world_cam2_rot = None
+            pcs_segment = None
 
         obs = {
             'rgb': rgbs,
             'depth': depths,
             'mask': masks,
             'points_cam2': pc_cam2,
+            # 'points_segments': pcs_segment,
             'T_world_cam2': T_world_cam2_rot,
             'points': pc_world,
             'joint_pos': joint_pos,
@@ -535,7 +549,7 @@ class PandaAcronymEnv(PandaEnv):
     #             continue
 
     
-    def init_scene(self, scene, planning_scene, hydra_cfg):
+    def init_scene(self, scene, planning_scene, hydra_cfg, single_view=False):
         objinfos = []
         objinfo = self.get_object_info(scene['obj_name'], Path(hydra_cfg.data_root) / hydra_cfg.dataset)
         objinfos.append(objinfo)
@@ -558,7 +572,7 @@ class PandaAcronymEnv(PandaEnv):
             self.place_object(uid, obs_pos, q=[1, 0, 0, 0], random=False, gravity=cfg.gravity)
             uids.append(uid)
 
-        obs = self._get_observation(get_pc=cfg.pc, single_view=False)
+        obs = self._get_observation(get_pc=cfg.pc, single_view=single_view)
         self.set_scene_env(planning_scene, uids, objinfos, scene['joints'], hydra_cfg)
         return obs, scene['obj_name'], scene['idx']
 

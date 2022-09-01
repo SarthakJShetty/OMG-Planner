@@ -811,6 +811,7 @@ class Planner(object):
             elif 'CG' in self.cfg.method and pc_dict is not None:
                 start_time_ = time.time()
                 pred_grasps_cam, scores, _ = self.grasp_predictor.inference(pc_dict['points_cam2'])
+                # pred_grasps_cam, scores, _ = self.grasp_predictor.inference(pc_dict['points_cam2'], pc_dict['points_segments'])
                 T_world_cam2 = pc_dict['T_world_cam2']
 
                 grasp_set = self.load_grasp_set_cg(self.env, pred_grasps_cam, scores, T_world_cam2)
