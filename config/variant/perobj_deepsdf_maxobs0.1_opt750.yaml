@@ -1,5 +1,5 @@
 # Evaluation configs
-method: GF_learned-perobj_deepsdf_maxobs0.1
+method: GF_learned-perobj_deepsdf_maxobs0.1_opt750
 no_endpoint_smoothing: True # False
 use_standoff: False
 use_goal_grad: True
@@ -32,7 +32,7 @@ min_grasp_weight: 100.0
 grasp_schedule_rate: 0.999
 
 base_step_size: 0.03
-optim_steps: 500
+optim_steps: 750
 extra_smooth_steps: 0  # extra steps for postprocessing fixed goal
 pre_terminate: True
 dist_func: control_points

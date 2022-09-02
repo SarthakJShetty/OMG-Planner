@@ -1,5 +1,5 @@
 # Evaluation configs
-method: GF_learned-perobj_deepsdf_maxobs0.1
+method: GF_learned-perobj_deepsdf_maxobs0.1_v1 # new models
 no_endpoint_smoothing: True # False
 use_standoff: False
 use_goal_grad: True
@@ -12,8 +12,8 @@ chomp_adam: True
 per_class_models: True
 grasp_weights: 
   - Bottle:/media/thomasweng/manifolds/clust_multirun/softplus_v2/objBottle-actsoftplus-clampNone/default_default_train-graspfields/14_14_3cvjezlf/checkpoints/epoch=12-step=351574.ckpt
-  - Bowl:/media/thomasweng/manifolds/clust_multirun/softplus_v2/objBowl-actsoftplus-clampNone/default_default_train-graspfields/15_15_nlwopzfi/checkpoints/epoch=13-step=407967.ckpt
-  - Mug:/media/thomasweng/manifolds/clust_multirun/softplus_v2/objMug-actsoftplus-clampNone/default_default_train-graspfields/11_11_32eagewk/checkpoints/epoch=11-step=301216.ckpt
+  - Bowl:/media/thomasweng/manifolds/clust_multirun/softplus_v2/objBowl-actsoftplus-clampNone/default_default_train-graspfields/20_20_nlwopzfi/checkpoints/epoch=18-step=512015.ckpt
+  - Mug:/media/thomasweng/manifolds/clust_multirun/softplus_v2/objMug-actsoftplus-clampNone/default_default_train-graspfields/19_19_32eagewk/checkpoints/epoch=16-step=395527.ckpt
 pc: True
 goal_thresh: 0.0001
 
