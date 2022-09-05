@@ -1,13 +1,14 @@
 # Evaluation configs
-method: GF_learned-perobj_deepsdf_maxobs0.1_v1 # new models
+method: GF_learned-perobj_deepsdf_obs0.1_eps0.03_ik_v1 # new models
 no_endpoint_smoothing: True # False
+# collision_point_num: 30  # collision point sample number for each link
 use_standoff: False
 use_goal_grad: True
 ol_alg: null 
 use_min_cost_traj: False
 filter_collision: False
 start_end_equal: True #
-initial_ik: False
+initial_ik: True
 chomp_adam: True
 per_class_models: True
 grasp_weights: 
@@ -22,10 +23,12 @@ goal_set_proj: False
 remove_flip_grasp: False
 
 smoothness_base_weight: 0.01
+max_smooth_weight: 0.01
 
 base_obstacle_weight: 0.001
 max_obstacle_weight: 0.1
 obs_schedule_rate: 1.01
+epsilon: 0.03
 
 base_grasp_weight: 1000.0
 min_grasp_weight: 100.0

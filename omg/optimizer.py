@@ -69,7 +69,7 @@ class Optimizer(object):
             min(self.cfg.base_obstacle_weight * self.cfg.obs_schedule_rate ** self.step, self.cfg.max_obstacle_weight)
         )
         self.cfg.smoothness_weight = (
-            self.cfg.smoothness_base_weight * self.cfg.cost_schedule_boost ** self.step
+            min(self.cfg.smoothness_base_weight * self.cfg.smooth_schedule_rate ** self.step, self.cfg.max_smooth_weight)
         )
         self.cfg.grasp_weight = (
             max(self.cfg.base_grasp_weight * self.cfg.grasp_schedule_rate ** self.step, self.cfg.min_grasp_weight) 

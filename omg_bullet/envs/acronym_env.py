@@ -565,7 +565,7 @@ class PandaAcronymEnv(PandaEnv):
         objinfo = self.get_object_info(scene['obj_name'], Path(hydra_cfg.data_root) / hydra_cfg.dataset)
         objinfos.append(objinfo)
 
-        if planning_scene.cfg.float_obstacle:
+        if planning_scene.cfg.float_obstacle: # place obstacle in front of target
             objinfo = self.get_object_info('Bottle_244894af3ba967ccd957eaf7f4edb205_0.012953570261294404', 
                 Path(hydra_cfg.data_root) / hydra_cfg.dataset)
             objinfos.append(objinfo)
@@ -585,6 +585,21 @@ class PandaAcronymEnv(PandaEnv):
 
         obs = self._get_observation(get_pc=cfg.pc, single_view=single_view)
         self.set_scene_env(planning_scene, uids, objinfos, scene['joints'], hydra_cfg)
+
+        if False:
+            coords = planning_scene.env.objects[self.target_idx].sdf.visualize()
+
+            T_w2b = get_world2bot_transform()
+            T_b2o = unpack_pose(planning_scene.env.objects[self.target_idx].pose)
+            draw_pose(T_w2b @ T_b2o)
+            
+            for i in range(coords.shape[0]):
+                coord = coords[i]
+                coord = np.concatenate([coord, [1]])
+                T_c = np.eye(4)
+                T_c[:, 3] = coord
+                draw_pose(T_w2b @ T_b2o @ T_c)
+
         return obs, scene['obj_name'], scene['idx']
 
     def get_object_info(self, objname, mesh_root):
@@ -619,11 +634,13 @@ class PandaAcronymEnv(PandaEnv):
     
         T_rand = get_random_transform(target_pos, q=q, random=random)
 
-        # Apply object to centroid transform
+        # Apply centroid to object transform since pybullet and sdf use the object frame
         T_ctr2obj = self.objinfos[0]['T_ctr2obj']
         # T_ctr2obj = env.objinfos[0]['T_ctr2obj_com']
 
-        T_w2o = T_w2b @ T_rand @ T_ctr2obj
+        # T_w2o = T_w2b @ T_rand @ T_ctr2obj
+        T_w2o = T_w2b @ T_rand
+        # draw_pose(T_w2o)
         pq_w2o = pt.pq_from_transform(T_w2o)  # wxyz
 
         p.resetBasePositionAndOrientation(
@@ -648,16 +665,20 @@ class PandaAcronymEnv(PandaEnv):
             # Add object to planning scene env
             trans_w2o, orn_w2o = p.getBasePositionAndOrientation(uids[i])  # xyzw
 
-            # change to world to object centroid so planning scene env only sees objects in centroid frame
+            # # change to bot to object centroid so planning scene env only sees objects in centroid frame
+            # change to bot to obj frame so planning scene env only sees objects bot frame
+            # wanted to also make everything relative to the centroid frame, but the sdfs are relative to obj frame
             T_w2o = np.eye(4)
             T_w2o[:3, :3] = pr.matrix_from_quaternion(tf_quat(orn_w2o))
             T_w2o[:3, 3] = trans_w2o
-            T_o2c = np.linalg.inv(objinfo['T_ctr2obj']) # TODO
-            # T_o2c = np.linalg.inv(objinfo['T_ctr2obj_com'])
-            T_b2c = T_b2w @ T_w2o @ T_o2c
+            # T_o2c = np.linalg.inv(objinfo['T_ctr2obj']) 
+            ## T_o2c = np.linalg.inv(objinfo['T_ctr2obj_com'])
+            # T_b2c = T_b2w @ T_w2o @ T_o2c
+            T_b2c = T_b2w @ T_w2o
             trans = T_b2c[:3, 3]
             orn = pr.quaternion_from_matrix(T_b2c[:3, :3])  # wxyz
-            draw_pose(T_w2o @ T_o2c)
+            # draw_pose(T_w2o @ T_o2c)
+            draw_pose(T_w2o)
 
             planning_scene.env.add_object(objinfo['name'], trans, orn, obj_prefix=obj_prefix, abs_path=True)
             

@@ -28,6 +28,8 @@ cfg = edict()
 
 """ hyperparameter """
 cfg.smoothness_base_weight = 0.1  # 0.1 weight for smoothness cost in total cost
+cfg.max_smooth_weight = 0.1
+cfg.smooth_schedule_rate = 1.00
 
 cfg.base_obstacle_weight = 0.1 # 1.0  # 1.0 weight for obstacle cost in total cost
 cfg.max_obstacle_weight = 0.1 # 1.0  # 1.0 weight for obstacle cost in total cost

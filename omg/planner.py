@@ -786,12 +786,49 @@ class Planner(object):
             urdf_path = DifferentiableFrankaPanda().urdf_path.replace('_no_gripper', '')
             robot_model = th.eb.UrdfRobotModel(urdf_path, device='cuda')
 
-            # Get shape code for point cloud
             if 'GF' in self.cfg.method and self.grasp_predictor.arch == 'deepsdf' and pc_dict is not {}: # deepsdf
+                # Get shape code for point cloud
                 shape_code, mean_pc = self.grasp_predictor.get_shape_code(pc_dict['points_world'], category=category)
                 T_w2pc = np.eye(4)
                 T_w2pc[:3, 3] = mean_pc[:3]
                 draw_pose(T_w2pc)
+                T_b2pc_np = np.linalg.inv(self.T_w2b_np) @ T_w2pc
+                T_pc2b_np = np.linalg.inv(T_w2pc) @ self.T_w2b_np
+
+                dtype = torch.float32 if not self.use_double else torch.float64
+                device = self.grasp_predictor.device()
+                T_pc2b = torch.tensor(T_pc2b_np, dtype=dtype, device=device)
+                pose_pc2b = th.SE3(tensor=T_pc2b[:3].unsqueeze(0))
+
+                # Get transform from mesh obj frame (not centroid!) to bot frame 
+                # T_o2b = torch.tensor(T_o2b_np, dtype=dtype, device=device)
+                # pose_o2b = th.SE3(tensor=T_o2b[:3].unsqueeze(0))
+                
+                # correct wrist rotation
+                T_rotgrasp2grasp = pt.transform_from(pr.matrix_from_axis_angle([0, 0, 1, -np.pi/2]), [0, 0, 0])  
+                pose_h2t = th.SE3(tensor=torch.tensor(T_rotgrasp2grasp)[:3].unsqueeze(0))
+                # T_h2t = wrist_to_tip(dtype=dtype, device=device) # TODO transform if use_tip
+
+                if self.cfg.initial_ik:
+                    # set init end pose to current orientation but at offset to point cloud centroid frame
+                    pose_b2start = robot_model.forward_kinematics(torch.tensor(self.traj.start))['panda_hand']
+                    T_b2start = pose_b2start.to_matrix().squeeze().cpu().numpy()
+                    T_b2pc_np[:3, :3] = T_b2start[:3, :3]
+                    
+                    # offset
+                    T_offset = np.eye(4)
+                    T_offset[2, 3] = -0.28
+                    T_b2init = T_b2pc_np @ T_offset
+
+                    pq_b2pc = pt.pq_from_transform(T_b2init) # wxyz
+                    seed = self.traj.start[:7]
+                    goal_ik = config.cfg.ROBOT.inverse_kinematics(
+                        pq_b2pc[:3], ros_quat(pq_b2pc[3:]), seed=seed
+                    )
+                    if goal_ik is None:
+                        print(f"Warning: initial IK failed")
+                    else:
+                        traj.set_goal_and_interp(goal_ik)
 
                 if False: # visualize pc in world frame
                     self.dbg_ids = []
@@ -808,7 +845,8 @@ class Planner(object):
                                 lineWidth=5.0,
                                 lineColorRGB=(255., 0, 0))
                         self.dbg_ids.append(dbg_id)
-            elif 'CG' in self.cfg.method and pc_dict is not None:
+            elif 'CG' in self.cfg.method and pc_dict is not {}:
+                # get grasp set using contact graspnet
                 start_time_ = time.time()
                 pred_grasps_cam, scores, _ = self.grasp_predictor.inference(pc_dict['points_cam2'])
                 # pred_grasps_cam, scores, _ = self.grasp_predictor.inference(pc_dict['points_cam2'], pc_dict['points_segments'])
@@ -839,20 +877,35 @@ class Planner(object):
                     # dbg_ids = [draw_pose(T_w2b @ unpack_pose(g)) for g in grasp_set[:50]]
                     self.dbg_ids += dbg_ids
             
-            self.optim.init(self.traj)
-            ran_initial_ik = False
+            # if 'GF_learned' in self.cfg.method:
+            #     dtype = torch.float32 if not self.use_double else torch.float64
+            #     device = self.grasp_predictor.device()
+            #     T_o2b_np = self.get_T_obj2bot()
+            #     T_o2b = torch.tensor(T_o2b_np, dtype=dtype, device=device)
+            #     pose_o2b = th.SE3(tensor=T_o2b[:3].unsqueeze(0))
+            #     T_rotgrasp2grasp = pt.transform_from(pr.matrix_from_axis_angle([0, 0, 1, -np.pi/2]), [0, 0, 0])  # correct wrist rotation
+            #     # offset_pose = np.array(rotZ(np.pi / 2)) # rotate about z axis
+            #     # T_h2t = wrist_to_tip(dtype=dtype, device=device) # TODO transform if use_tip
+            #     pose_h2t = th.SE3(tensor=torch.tensor(T_rotgrasp2grasp)[:3].unsqueeze(0))
+            #     # pose_h2t = th.SE3(tensor=torch.eye(4)[:3].unsqueeze(0))
 
-            if 'GF_learned' in self.cfg.method:
-                dtype = torch.float32 if not self.use_double else torch.float64
-                device = self.grasp_predictor.device()
-                T_o2b_np = self.get_T_obj2bot()
-                T_o2b = torch.tensor(T_o2b_np, dtype=dtype, device=device)
-                pose_o2b = th.SE3(tensor=T_o2b[:3].unsqueeze(0))
-                T_rotgrasp2grasp = pt.transform_from(pr.matrix_from_axis_angle([0, 0, 1, -np.pi/2]), [0, 0, 0])  # correct wrist rotation
-                # offset_pose = np.array(rotZ(np.pi / 2)) # rotate about z axis
-                # T_h2t = wrist_to_tip(dtype=dtype, device=device) # TODO transform if use_tip
-                pose_h2t = th.SE3(tensor=torch.tensor(T_rotgrasp2grasp)[:3].unsqueeze(0))
-                # pose_h2t = th.SE3(tensor=torch.eye(4)[:3].unsqueeze(0))
+            # if 'GF' in self.cfg.method and self.cfg.initial_ik:
+            #     pq_b2g = pt.pq_from_transform(T_b2g_np) # wxyz
+            #     seed = self.traj.start[:7]
+            #     goal_ik = config.cfg.ROBOT.inverse_kinematics(
+            #         pq_b2g[:3], ros_quat(pq_b2g[3:]), seed=seed
+            #     )
+            #     if goal_ik is None:
+            #         print(f"Warning: initial IK failed")
+            #         # self.CHOMP_update(self.traj, pose_b2g, robot_model) 
+            #     else:
+            #         traj.set_goal_and_interp(goal_ik)
+            #         # traj.goal_cost = 0
+            #         # traj.goal_grad = np.zeros((1, 7))
+            #         # ran_initial_ik = True
+
+            self.optim.init(self.traj)
+            # ran_initial_ik = False
 
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
                 sys.stdout.write(f"plan step {t} ")
@@ -873,26 +926,29 @@ class Planner(object):
                         pose_b2h = robot_model.forward_kinematics(q)['panda_hand'] # SE(3) 3x4
                         if self.use_double:
                             pose_b2h = th.SE3(tensor=pose_b2h.tensor.double())
-                        pose_o2t = pose_o2b.compose(pose_b2h).compose(pose_h2t)
+                        # input end effector needs to be in point cloud centroid frame
+                        pose_pc2t = pose_pc2b.compose(pose_b2h).compose(pose_h2t)
+                        # pose_o2t = pose_o2b.compose(pose_b2h).compose(pose_h2t)
                         # pose_o2t = pose_o2b.compose(pose_b2h)
                         x_dict = {
-                            'pq': pose_to_pq(pose_o2t),
+                            # 'pq': pose_to_pq(pose_o2t),
+                            'pq': pose_to_pq(pose_pc2t),
                             'shape_code': shape_code,
                             'category': category
                         }
                         dist = self.grasp_predictor.forward(x_dict)
                         loss = torch.abs(dist.mean(dim=1, keepdim=True))
 
-                        if False: # visualize pc in world frame
+                        if False: # visualize pc centroid and final gripper pose in world frame
                             if self.dbg_ids is None:
                                 self.dbg_ids = []
                             while len(self.dbg_ids) > 0:
                                 dbg_id = self.dbg_ids.pop(0)
                                 p.removeUserDebugItem(dbg_id)
 
-                            T_w2b = get_world2bot_transform()
-                            T_o2b_np = self.get_T_obj2bot()
-                            dbg_ids = draw_pose(T_w2b @ np.linalg.inv(T_o2b_np) @ pose_o2t.to_matrix().detach().cpu().squeeze().numpy())
+                            dbg_ids = draw_pose(self.T_w2b_np @ T_b2pc_np)
+                            self.dbg_ids += dbg_ids
+                            dbg_ids = draw_pose(self.T_w2b_np @ T_b2pc_np @ pose_pc2t.to_matrix().detach().cpu().squeeze().numpy())
                             self.dbg_ids += dbg_ids
 
                         return loss
@@ -904,32 +960,34 @@ class Planner(object):
 
                     traj.goal_cost = loss.item()
                     traj.goal_grad = q.grad.float().squeeze()[:7].cpu().numpy() 
-                elif 'GF_learned' in self.cfg.method and self.grasp_predictor.arch == 'pointnet2_seg':
-                    raise NotImplementedError
+                # elif 'GF_learned' in self.cfg.method and self.grasp_predictor.arch == 'pointnet2_seg':
+                    # raise NotImplementedError
                 elif 'GF_known' in self.cfg.method:
                     q_goal = torch.tensor(self.traj.goal_set[self.traj.goal_idx], device='cpu', dtype=torch.float32)
                     pose_b2g = robot_model.forward_kinematics(q_goal)['panda_hand']
                     T_b2g_np = pose_b2g.to_matrix().squeeze(0).cpu().numpy()
                     draw_pose(self.T_w2b_np @ T_b2g_np, alt_color=True) # goal in world frame
+                    self.CHOMP_update(self.traj, pose_b2g, robot_model)
 
                 # Update trajectory goal cost and gradient with either IK or differentiable robot model
-                if 'GF_known' in self.cfg.method and self.cfg.initial_ik and not ran_initial_ik: # GF
-                    pq_b2g = pt.pq_from_transform(T_b2g_np) # wxyz
-                    seed = self.traj.start[:7]
-                    goal_ik = config.cfg.ROBOT.inverse_kinematics(
-                        pq_b2g[:3], ros_quat(pq_b2g[3:]), seed=seed
-                    )
-                    # if IK fails, just run CHOMP update and try again next iter
-                    if goal_ik is None:
-                        print(f"Initial IK failed in iter {t}")
-                        self.CHOMP_update(self.traj, pose_b2g, robot_model) 
-                    else:
-                        traj.set_goal_and_interp(goal_ik)
-                        traj.goal_cost = 0
-                        traj.goal_grad = np.zeros((1, 7))
-                        ran_initial_ik = True
-                elif 'GF_known' in self.cfg.method: # GF
-                    self.CHOMP_update(self.traj, pose_b2g, robot_model)
+                # if 'GF_known' in self.cfg.method and self.cfg.initial_ik and not ran_initial_ik: # GF
+                #     pq_b2g = pt.pq_from_transform(T_b2g_np) # wxyz
+                #     seed = self.traj.start[:7]
+                #     goal_ik = config.cfg.ROBOT.inverse_kinematics(
+                #         pq_b2g[:3], ros_quat(pq_b2g[3:]), seed=seed
+                #     )
+                #     # if IK fails, just run CHOMP update and try again next iter
+                #     if goal_ik is None:
+                #         print(f"Initial IK failed in iter {t}")
+                #         self.CHOMP_update(self.traj, pose_b2g, robot_model) 
+                #     else:
+                #         traj.set_goal_and_interp(goal_ik)
+                #         traj.goal_cost = 0
+                #         traj.goal_grad = np.zeros((1, 7))
+                #         ran_initial_ik = True
+                # elif 'GF_known' in self.cfg.method: # GF
+                # if 'GF_known' in self.cfg.method: # GF
+                    # self.CHOMP_update(self.traj, pose_b2g, robot_model)
 
                 info_t = self.optim.optimize(self.traj, force_update=True, tstep=t+1)
 
@@ -945,10 +1003,10 @@ class Planner(object):
                 if self.cfg.report_time:
                     print("plan optimize:", time.time() - start_time)
 
-
                 if viz_env:
                     viz_env.update_panda_viz(self.traj, k=1)
 
+                # Visualize points in collision with robot
                 if viz_env and info_t['collide'] > 0 and False:
                     while len(self.dbg_ids) > 0:
                         dbg_id = self.dbg_ids.pop(0)
@@ -968,40 +1026,53 @@ class Planner(object):
                                 lineColorRGB=col_pt[3:6])
                         self.dbg_ids.append(dbg_id)
 
+                    # # draw sdf points
+                    # coords = self.env.objects[self.env.target_idx].sdf.visualize()
+                    # T_b2o = unpack_pose(self.env.objects[self.env.target_idx].pose)
+                    # draw_pose(self.T_w2b_np @ T_b2o)
+                    
+                    # for i in range(coords.shape[0]):
+                    #     coord = coords[i]
+                    #     coord = np.concatenate([coord, [1]])
+                    #     T_c = np.eye(4)
+                    #     T_c[:, 3] = coord
+                    #     draw_pose(self.T_w2b_np @ T_b2o @ T_c)
 
+                # visualize robot's collision points
                 # if viz_env and \
-                    # (self.info[-1]["terminate"] or t == self.cfg.optim_steps + self.cfg.extra_smooth_steps - 1):
-                    # viz_env.update_panda_viz(self.traj)
-                    # robot = self.cost.env.robot
-                    # robot_pts = robot.collision_points.transpose([0, 2, 1])
-                    # (
-                    #     robot_poses,
-                    #     joint_origins,
-                    #     joint_axis,
-                    # ) = self.cost.env.robot.robot_kinematics.forward_kinematics_parallel(
-                    #     wrap_values(self.traj.data), return_joint_info=True)
-                    # ws_positions = self.cost.forward_points(
-                    #     robot_poses, robot_pts
-                    # )  # p x (m + 1) x n x 3
-                    # ws_pos = ws_positions.copy()
-                    # ws_pos = ws_pos.transpose([2, 1, 0, 3])
-                    # last_col_pts = ws_pos[-1]
-                    # fngr_col_pts = last_col_pts[-2:]
+                #     (self.info[-1]["terminate"] or t == self.cfg.optim_steps + self.cfg.extra_smooth_steps - 1):
+                if False:
+                    viz_env.update_panda_viz(self.traj)
+                    robot = self.cost.env.robot
+                    robot_pts = robot.collision_points.transpose([0, 2, 1])
+                    (
+                        robot_poses,
+                        joint_origins,
+                        joint_axis,
+                    ) = self.cost.env.robot.robot_kinematics.forward_kinematics_parallel(
+                        wrap_values(self.traj.data), return_joint_info=True)
+                    ws_positions = self.cost.forward_points(
+                        robot_poses, robot_pts
+                    )  # p x (m + 1) x n x 3
+                    ws_pos = ws_positions.copy()
+                    ws_pos = ws_pos.transpose([2, 1, 0, 3])
+                    last_col_pts = ws_pos[-1]
+                    fngr_col_pts = last_col_pts[-2:]
 
-                    # p.removeAllUserDebugItems()
+                    p.removeAllUserDebugItems()
 
-                    # for fngr_idx in range(fngr_col_pts.shape[0]):
-                    #     for col_pt in fngr_col_pts[fngr_idx]:
-                    #         col_pt = np.concatenate([col_pt, [1]])
-                    #         # T_col_pt = np.eye(4)
-                    #         # T_col_pt[:, 3] = col_pt
-                    #         # draw_pose(self.T_w2b_np @ col_pt)
-                    #         w2col_pt = self.T_w2b_np @ col_pt
-                    #         p.addUserDebugLine(
-                    #             w2col_pt[:3], 
-                    #             w2col_pt[:3]+np.array([0.001, 0.001, 0.001]),
-                    #             lineWidth=2.0,
-                    #             lineColorRGB=(1.0, 0, 0))
+                    for fngr_idx in range(fngr_col_pts.shape[0]):
+                        for col_pt in fngr_col_pts[fngr_idx]:
+                            col_pt = np.concatenate([col_pt, [1]])
+                            # T_col_pt = np.eye(4)
+                            # T_col_pt[:, 3] = col_pt
+                            # draw_pose(self.T_w2b_np @ col_pt)
+                            w2col_pt = self.T_w2b_np @ col_pt
+                            p.addUserDebugLine(
+                                w2col_pt[:3], 
+                                w2col_pt[:3]+np.array([0.001, 0.001, 0.001]),
+                                lineWidth=2.0,
+                                lineColorRGB=(1.0, 0, 0))
 
 
                 if self.info[-1]["terminate"] and t > 0:

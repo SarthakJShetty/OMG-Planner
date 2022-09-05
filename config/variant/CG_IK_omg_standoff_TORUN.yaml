@@ -1,16 +1,16 @@
 # Evaluation configs
-method: CG_IK_fixed_nostandoff
-ol_alg: Baseline
+method: CG_IK_omg_nostandoff
+ol_alg: MD
 goal_idx: -1  # >0: goal index in goal set, -1: closest, -2: minimum cost, -3: random
 no_endpoint_smoothing: True 
 chomp_adam: False
 use_standoff: True
 goal_set_proj: True
-start_end_equal: True
 
 use_goal_grad: True
 use_min_cost_traj: False
 # filter_collision: False
+start_end_equal: False # 
 # initial_ik: False
 pc: True
 goal_thresh: 0.0001

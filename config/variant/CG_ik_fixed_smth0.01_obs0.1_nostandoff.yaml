@@ -1,5 +1,5 @@
 # Evaluation configs
-method: CG_IK_fixed_nostandoff
+method: CG_ik_fixed_smth0.01_obs0.1_nostandoff
 ol_alg: Baseline
 goal_idx: -1  # >0: goal index in goal set, -1: closest, -2: minimum cost, -3: random
 no_endpoint_smoothing: True 
@@ -18,8 +18,8 @@ allow_collision_point: 0
 goal_set_proj: False
 remove_flip_grasp: False
 
-smoothness_base_weight: 0.001
-base_obstacle_weight: 0.01
+smoothness_base_weight: 0.01
+base_obstacle_weight: 0.1
 # base_grasp_weight: 10.0
 
 cost_schedule_boost: 1.0
