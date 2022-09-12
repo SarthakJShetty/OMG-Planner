@@ -428,7 +428,6 @@ class Cost(object):
             top_potentials = potentials[top_n, top_m, top_p]
             # vis_pts[top_n, top_m, top_p, 3:6] = [235, 52, 195] 
 
-            # Even if fingers don't move in optimization, the cost of colliding with the fingers should still be considered
             if not self.cfg.consider_finger:
                 m = m - 2
 
@@ -532,7 +531,7 @@ class Cost(object):
                 + self.cfg.smoothness_weight * smoothness_loss[:-1]
             )
 
-        print(f"wt obs cost {weighted_obs:.4f}, wt smth cost {weighted_smooth:.4f}, wt goal cost {weighted_goal_cost:.4f}, collision pts: {int(collide)}")
+        print(f"wt obs cost {weighted_obs:.10f}, wt smth cost {weighted_smooth:.7f}, wt goal cost {weighted_goal_cost:.7f}, collision pts: {int(collide)}")
 
         if traj.goal_set != []:
             # if ('Proj' in self.cfg.method or 'OMG' in self.cfg.method) and self.cfg.goal_set_proj:

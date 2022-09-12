@@ -33,6 +33,7 @@ cfg.smooth_schedule_rate = 1.00
 
 cfg.base_obstacle_weight = 0.1 # 1.0  # 1.0 weight for obstacle cost in total cost
 cfg.max_obstacle_weight = 0.1 # 1.0  # 1.0 weight for obstacle cost in total cost
+cfg.min_obstacle_weight = 0.1 # 1.0  # 1.0 weight for obstacle cost in total cost
 cfg.obs_schedule_rate = 1.00 # 1.02 # 1.05  # cost schedule boost for grasp cost weight  
 
 cfg.base_grasp_weight = 10.0  # weight for grasp cost in total cost

@@ -464,13 +464,14 @@ class Planner(object):
                             obj_mesh, T_ctr2obj = load_mesh(grasps_path, mesh_root_dir=mesh_root, load_for_bullet=True)
                             Ts_obj2rotgrasp, _, success = load_grasps(grasps_path)
                             Ts_obj2rotgrasp = Ts_obj2rotgrasp[success == 1]
-                            pose_grasp = T_ctr2obj @ Ts_obj2rotgrasp
+                            # pose_grasp = T_ctr2obj @ Ts_obj2rotgrasp
+                            pose_grasp = Ts_obj2rotgrasp # load grasps in original mesh frame, not mesh centroid frame
 
                             if False:  # debug visualization
                                 import trimesh
                                 from acronym_tools import create_gripper_marker
                                 # grasps_v = [create_gripper_marker(color=[0, 0, 255]).apply_transform(T) for T in (T_ctr2obj @ Ts_obj2rotgrasp)[:50]]
-                                grasps_v = [create_gripper_marker(color=[0, 0, 255]).apply_transform(T) for T in (pose_grasp)[:50]]
+                                grasps_v = [create_gripper_marker(color=[0, 0, 255]).apply_transform(T_ctr2obj @ T) for T in (pose_grasp)[:50]]
                                 # m = obj_mesh.apply_transform(np.linalg.inv(T_ctr2obj))
                                 m = obj_mesh
                                 trimesh.Scene([m] + grasps_v).show()
@@ -804,7 +805,7 @@ class Planner(object):
                 # T_o2b = torch.tensor(T_o2b_np, dtype=dtype, device=device)
                 # pose_o2b = th.SE3(tensor=T_o2b[:3].unsqueeze(0))
                 
-                # correct wrist rotation
+                # correct wrist rotation - TODO make sure transform is correct for what we need, acronym is rotgrasp convention
                 T_rotgrasp2grasp = pt.transform_from(pr.matrix_from_axis_angle([0, 0, 1, -np.pi/2]), [0, 0, 0])  
                 pose_h2t = th.SE3(tensor=torch.tensor(T_rotgrasp2grasp)[:3].unsqueeze(0))
                 # T_h2t = wrist_to_tip(dtype=dtype, device=device) # TODO transform if use_tip
@@ -927,7 +928,8 @@ class Planner(object):
                         if self.use_double:
                             pose_b2h = th.SE3(tensor=pose_b2h.tensor.double())
                         # input end effector needs to be in point cloud centroid frame
-                        pose_pc2t = pose_pc2b.compose(pose_b2h).compose(pose_h2t)
+                        # pose_pc2t = pose_pc2b.compose(pose_b2h).compose(pose_h2t)
+                        pose_pc2t = pose_pc2b.compose(pose_b2h)
                         # pose_o2t = pose_o2b.compose(pose_b2h).compose(pose_h2t)
                         # pose_o2t = pose_o2b.compose(pose_b2h)
                         x_dict = {
@@ -936,6 +938,7 @@ class Planner(object):
                             'shape_code': shape_code,
                             'category': category
                         }
+                        # draw_pose(self.T_w2b_np @ pose_b2h.to_matrix().detach().squeeze().cpu().numpy())
                         dist = self.grasp_predictor.forward(x_dict)
                         loss = torch.abs(dist.mean(dim=1, keepdim=True))
 

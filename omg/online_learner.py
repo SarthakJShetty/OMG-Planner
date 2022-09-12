@@ -104,7 +104,7 @@ class Learner(object):
             sorted_idx = np.argsort(costs)
             self.traj.goal_idx = np.argmin(costs)  
     
-        if self.alg_name is not None: # implicit grasps
+        if self.alg_name is not None:
             self.traj.end = self.traj.goal_set[self.traj.goal_idx]  #
             self.traj.interpolate_waypoints()
 

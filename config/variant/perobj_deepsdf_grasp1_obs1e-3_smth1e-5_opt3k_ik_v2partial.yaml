@@ -1,0 +1,45 @@
+# Evaluation configs
+method: GF_learned-perobj_deepsdf_grasp1_obs1e-3_smth1e-5_opt3k_ik_v2partial # new models
+no_endpoint_smoothing: True # False
+# collision_point_num: 30  # collision point sample number for each link
+use_standoff: False
+use_goal_grad: True
+ol_alg: null 
+use_min_cost_traj: False
+filter_collision: False
+start_end_equal: True #
+initial_ik: True
+chomp_adam: True
+per_class_models: True
+grasp_weights: 
+  - Bottle:/media/thomasweng/manifolds/clust_multirun/partial_pcs/objBottle-archdeepsdf_partial100/default_default_train-graspfields/5_5_3tbhr0ee/checkpoints/epoch=11-step=510732.ckpt
+  - Bowl:/media/thomasweng/manifolds/clust_multirun/partial_pcs/objBowl-archdeepsdf_partial100/default_default_train-graspfields/7_7_3n5713s0/checkpoints/epoch=12-step=550822.ckpt
+  - Mug:/media/thomasweng/manifolds/clust_multirun/partial_pcs/objMug-archdeepsdf_partial100/default_default_train-graspfields/2_2_1rvf96ap/checkpoints/epoch=5-step=253729.ckpt
+pc: True
+goal_thresh: 0.0000001
+
+allow_collision_point: 0
+goal_set_proj: False
+remove_flip_grasp: False
+
+smoothness_base_weight: 0.00001
+max_smooth_weight: 0.00001
+
+base_obstacle_weight: 0.001
+max_obstacle_weight: 0.001
+obs_schedule_rate: 1.0
+# top_k_collision: 0 # 
+# clip_grad_scale: 100
+epsilon: 0.2
+clearance: 0.01
+
+base_grasp_weight: 1.0
+min_grasp_weight: 1.0
+grasp_schedule_rate: 1.0 # 0.999
+
+base_step_size: 0.01
+optim_steps: 3000
+extra_smooth_steps: 0  # extra steps for postprocessing fixed goal
+pre_terminate: True
+dist_func: control_points
+consider_finger: False

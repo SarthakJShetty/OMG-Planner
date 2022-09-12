@@ -1,5 +1,5 @@
 # Evaluation configs
-method: GF_learned-perobj_deepsdf_obs0.1_v1 # new models
+method: GF_learned-perobj_deepsdf_obs0.1eps0.1_ik_v2partial # new models
 no_endpoint_smoothing: True # False
 # collision_point_num: 30  # collision point sample number for each link
 use_standoff: False
@@ -8,15 +8,15 @@ ol_alg: null
 use_min_cost_traj: False
 filter_collision: False
 start_end_equal: True #
-initial_ik: False
+initial_ik: True
 chomp_adam: True
 per_class_models: True
 grasp_weights: 
-  - Bottle:/media/thomasweng/manifolds/clust_multirun/softplus_v2/objBottle-actsoftplus-clampNone/default_default_train-graspfields/14_14_3cvjezlf/checkpoints/epoch=12-step=351574.ckpt
-  - Bowl:/media/thomasweng/manifolds/clust_multirun/softplus_v2/objBowl-actsoftplus-clampNone/default_default_train-graspfields/20_20_nlwopzfi/checkpoints/epoch=18-step=512015.ckpt
-  - Mug:/media/thomasweng/manifolds/clust_multirun/softplus_v2/objMug-actsoftplus-clampNone/default_default_train-graspfields/19_19_32eagewk/checkpoints/epoch=16-step=395527.ckpt
+  - Bottle:/media/thomasweng/manifolds/clust_multirun/partial_pcs/objBottle-archdeepsdf_partial100/default_default_train-graspfields/5_5_3tbhr0ee/checkpoints/epoch=11-step=510732.ckpt
+  - Bowl:/media/thomasweng/manifolds/clust_multirun/partial_pcs/objBowl-archdeepsdf_partial100/default_default_train-graspfields/7_7_3n5713s0/checkpoints/epoch=12-step=550822.ckpt
+  - Mug:/media/thomasweng/manifolds/clust_multirun/partial_pcs/objMug-archdeepsdf_partial100/default_default_train-graspfields/2_2_1rvf96ap/checkpoints/epoch=5-step=253729.ckpt
 pc: True
-goal_thresh: 0.0001
+goal_thresh: 0.0000001
 
 allow_collision_point: 0
 goal_set_proj: False
@@ -24,10 +24,12 @@ remove_flip_grasp: False
 
 smoothness_base_weight: 0.01
 max_smooth_weight: 0.01
+smooth_schedule_rate: 1.0
 
 base_obstacle_weight: 0.001
 max_obstacle_weight: 0.1
 obs_schedule_rate: 1.01
+epsilon: 0.1
 
 base_grasp_weight: 1000.0
 min_grasp_weight: 100.0
@@ -38,4 +40,4 @@ optim_steps: 500
 extra_smooth_steps: 0  # extra steps for postprocessing fixed goal
 pre_terminate: True
 dist_func: control_points
-consider_finger: True
+consider_finger: False

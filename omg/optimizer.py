@@ -66,7 +66,8 @@ class Optimizer(object):
         # cost schedule
         self.cfg.obstacle_weight = (
             # self.cfg.base_obstacle_weight * self.cfg.cost_schedule_decay ** self.step
-            min(self.cfg.base_obstacle_weight * self.cfg.obs_schedule_rate ** self.step, self.cfg.max_obstacle_weight)
+            # min(self.cfg.base_obstacle_weight * self.cfg.obs_schedule_rate ** self.step, self.cfg.max_obstacle_weight)
+            max(self.cfg.base_obstacle_weight * self.cfg.obs_schedule_rate ** self.step, self.cfg.min_obstacle_weight)
         )
         self.cfg.smoothness_weight = (
             min(self.cfg.smoothness_base_weight * self.cfg.smooth_schedule_rate ** self.step, self.cfg.max_smooth_weight)

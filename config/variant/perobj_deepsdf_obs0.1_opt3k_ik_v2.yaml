@@ -1,5 +1,5 @@
 # Evaluation configs
-method: GF_learned-perobj_deepsdf_obs0.1_chomp_ik_v1 # new models
+method: GF_learned-perobj_deepsdf_obs0.1_opt3k_ik_v2 # new models
 no_endpoint_smoothing: True # False
 # collision_point_num: 30  # collision point sample number for each link
 use_standoff: False
@@ -9,14 +9,14 @@ use_min_cost_traj: False
 filter_collision: False
 start_end_equal: True #
 initial_ik: True
-chomp_adam: False
+chomp_adam: True
 per_class_models: True
 grasp_weights: 
-  - Bottle:/media/thomasweng/manifolds/clust_multirun/softplus_v2/objBottle-actsoftplus-clampNone/default_default_train-graspfields/14_14_3cvjezlf/checkpoints/epoch=12-step=351574.ckpt
-  - Bowl:/media/thomasweng/manifolds/clust_multirun/softplus_v2/objBowl-actsoftplus-clampNone/default_default_train-graspfields/20_20_nlwopzfi/checkpoints/epoch=18-step=512015.ckpt
-  - Mug:/media/thomasweng/manifolds/clust_multirun/softplus_v2/objMug-actsoftplus-clampNone/default_default_train-graspfields/19_19_32eagewk/checkpoints/epoch=16-step=395527.ckpt
+  - Bottle:/media/thomasweng/manifolds/clust_multirun/filt_vs_unfilt_v3/objBottle_filt/default_default_train-graspfields/1_1_1l4n000q/checkpoints/epoch=8-step=409584.ckpt
+  - Bowl:/media/thomasweng/manifolds/clust_multirun/filt_vs_unfilt_v3/objBowl_filt/default_default_train-graspfields/2_2_h2wl9a8s/checkpoints/epoch=12-step=576405.ckpt
+  - Mug:/media/thomasweng/manifolds/clust_multirun/filt_vs_unfilt_v3/objMug_filt/default_default_train-graspfields/1_1_1fam9ko7/checkpoints/epoch=10-step=511027.ckpt
 pc: True
-goal_thresh: 0.0001
+goal_thresh: 0.0000001
 
 allow_collision_point: 0
 goal_set_proj: False
@@ -34,7 +34,7 @@ min_grasp_weight: 100.0
 grasp_schedule_rate: 0.999
 
 base_step_size: 0.03
-optim_steps: 500
+optim_steps: 3000
 extra_smooth_steps: 0  # extra steps for postprocessing fixed goal
 pre_terminate: True
 dist_func: control_points
