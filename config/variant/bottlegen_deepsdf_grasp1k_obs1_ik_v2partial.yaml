@@ -1,5 +1,5 @@
 # Evaluation configs
-method: GF_learned-perobj_deepsdf_grasp1k_obs0.1_ik_v2partial # new models
+method: GF_learned-bottlegen_deepsdf_grasp1k_obs1_ik_v2partial # new models
 no_endpoint_smoothing: True # False
 # collision_point_num: 30  # collision point sample number for each link
 use_standoff: False
@@ -12,9 +12,9 @@ initial_ik: True
 chomp_adam: True
 per_class_models: True
 grasp_weights: 
-  - Bottle:/media/thomasweng/manifolds/clust_multirun/partial_pcs/objBottle-archdeepsdf_partial100/default_default_train-graspfields/5_5_3tbhr0ee/checkpoints/epoch=11-step=510732.ckpt
-  - Bowl:/media/thomasweng/manifolds/clust_multirun/partial_pcs/objBowl-archdeepsdf_partial100/default_default_train-graspfields/7_7_3n5713s0/checkpoints/epoch=12-step=550822.ckpt
-  - Mug:/media/thomasweng/manifolds/clust_multirun/partial_pcs/objMug-archdeepsdf_partial100/default_default_train-graspfields/2_2_1rvf96ap/checkpoints/epoch=5-step=253729.ckpt
+  - Bottle:/media/thomasweng/manifolds/clust_multirun/intracategory_partial/Bottle_intracategory_partial/default_default_train-graspfields/1_1_248dyj7f/checkpoints/epoch=1-step=513254.ckpt  
+  # - Bowl:/media/thomasweng/manifolds/clust_multirun/partial_pcs/objBowl-archdeepsdf_partial100/default_default_train-graspfields/7_7_3n5713s0/checkpoints/epoch=12-step=550822.ckpt
+  # - Mug:/media/thomasweng/manifolds/clust_multirun/partial_pcs/objMug-archdeepsdf_partial100/default_default_train-graspfields/2_2_1rvf96ap/checkpoints/epoch=5-step=253729.ckpt
 pc: True
 goal_thresh: 0.0000001
 
@@ -27,11 +27,11 @@ max_smooth_weight: 0.01
 smooth_schedule_rate: 1.0
 
 base_obstacle_weight: 0.001
-max_obstacle_weight: 0.1
-obs_schedule_rate: 1.01
+max_obstacle_weight: 1.0
+obs_schedule_rate: 1.02
 
-base_grasp_weight: 10000.0
-min_grasp_weight: 10000.0
+base_grasp_weight: 1000.0
+min_grasp_weight: 1000.0
 grasp_schedule_rate: 1.0
 
 base_step_size: 0.03

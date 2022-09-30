@@ -1,14 +1,14 @@
 lxml==4.3.0
 numpy==1.19.3
-pyassimp==4.1.3
+pyassimp #==4.1.3
 scipy
 pyopengl==3.1.0
-opencv-python==3.4.3.18
+opencv-python #==3.4.3.18
 transforms3d
 # torchvision
 # torch==1.4.0
 pillow==8.3.2
-six==1.16.0
+six==1.15.0
 IPython
 matplotlib
 easydict
@@ -20,3 +20,6 @@ gym
 omegaconf
 moviepy
 hydra-core==1.2.0
+pytransform3d
+plotly
+ffmpeg==1.4.0
