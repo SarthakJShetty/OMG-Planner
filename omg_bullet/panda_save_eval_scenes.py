@@ -70,11 +70,11 @@ if __name__ == '__main__':
 
             T_bot_tgt = np.eye(4)
             T_bot_tgt[:3, 3] = target_pos
-            draw_pose(T_world_bot @ T_bot_tgt)
+            #draw_pose(T_world_bot @ T_bot_tgt)
 
             T_tgt_rand = random_transform(max_radius=0.5)
             T_world_rand = T_world_bot @ T_bot_tgt @ T_tgt_rand
-            draw_pose(T_world_rand)
+            #draw_pose(T_world_rand)
 
             pos = T_world_rand[:3, 3]
             orn_wxyz = pr.quaternion_from_matrix(T_world_rand[:3, :3])  # wxyz

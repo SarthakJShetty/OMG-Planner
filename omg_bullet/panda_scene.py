@@ -117,12 +117,43 @@ def main(hydra_cfg):
     init_dir(hydra_cfg)
     env = init_env(hydra_cfg)
     scenes = env.get_scenes(hydra_cfg)
+    # eval_objects = [x.split(':')[0] for x in cfg.grasp_weights] for ours
     for scene in scenes:
+        # if scene['obj_name'].split('_')[0] not in eval_objects:
+            # continue
         if 'Book' in scene['obj_name']:
             continue
+        # if 'Bottle' not in scene['obj_name']:
+        #     continue
+        # if scene['idx'] < 7:
+            # continue
         planning_scene = PlanningScene(cfg)
         obs, objname, scene_name = env.init_scene(scene, planning_scene, hydra_cfg)
         # obs, objname, scene_name = env.init_scene(scene, planning_scene, hydra_cfg, single_view=True)
+
+        # im = obs['rgb'][0][80:340, 180:480, :]
+        # cv2.imwrite(f'/home/thomasweng/Downloads/{objname.split("_")[0]}_{scene["idx"]}.png', cv2.cvtColor(im, cv2.COLOR_BGR2RGB))
+        # continue
+
+        # import plotly.graph_objects as go
+        # import plotly.offline as py
+        # pc = obs['points'][::2]
+        # fig = go.Figure()
+        # data = go.Scatter3d(x=pc[:, 0], y=pc[:, 1], z=pc[:, 2], mode='markers', 
+        #     marker=dict(
+        #         size=3,
+        #         opacity=0.8
+        #     ))
+        # fig.add_traces(data)
+        # fig.update_layout(
+        #     coloraxis_showscale=False,
+        #     scene=dict(
+        #         xaxis=dict(visible=False, showticklabels=False),
+        #         yaxis=dict(visible=False, showticklabels=False),
+        #         zaxis=dict(visible=False, showticklabels=False),
+        #         aspectmode='data'
+        #     ))
+        # py.iplot(fig)
 
         if cfg.pc:
             pc_dict = {

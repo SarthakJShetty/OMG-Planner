@@ -27,7 +27,10 @@ class LearnedGrasp:
     def load_model(self, ckpt_path):
         # load separate models for each object
         self.ckpt_path = ckpt_path
-        cfg_path = Path(self.ckpt_path).parents[3] / ".hydra" / "config.yaml"
+        if 'hpc' in self.ckpt_path:
+            cfg_path = Path(self.ckpt_path).parent / ".hydra" / "config.yaml"
+        else:
+            cfg_path = Path(self.ckpt_path).parents[3] / ".hydra" / "config.yaml"
         self.cfg = OmegaConf.load(cfg_path)
 
         # update project_root

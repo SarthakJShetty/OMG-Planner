@@ -66,7 +66,8 @@ class PandaEnv:
             self.cid = p.connect(p.SHARED_MEMORY)
             if self.cid < 0:
                 self.cid = p.connect(p.GUI)
-                p.resetDebugVisualizerCamera(1.3, 180, 0, [-0.35, -0.58, -0.88])
+                p.resetDebugVisualizerCamera(0.9, 45, -34, [-0.05, -0.5, -0.6852])
+                # p.resetDebugVisualizerCamera(1.3, 180, 0, [-0.35, -0.58, -0.88])
             if not self._gui_debug:
                 p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
 
@@ -114,8 +115,8 @@ class PandaEnv:
             jointPoses[-2:] = 0.0
 
             self.step(jointPoses.tolist())
-            observation = self._get_observation(get_pc=pc, single_view=0)
             if record:
+                observation = self._get_observation(get_pc=pc, single_view=0)
                 observations.append(observation)
         # wait in case gripper closes
         for i in range(10):
@@ -293,7 +294,7 @@ class PandaAcronymEnv(PandaEnv):
         # Draw target axes
         T = np.eye(4)
         T[:3, 3] = self._cam_look
-        draw_pose(T)
+        #draw_pose(T)
 
         self._view_matrices = []
         self._extrinsics = []
@@ -305,7 +306,7 @@ class PandaAcronymEnv(PandaEnv):
             self._view_matrices.append(view_matrix)
             view_matrix = np.reshape(np.array(view_matrix), (4, 4)).T
             extrinsic_matrix = np.linalg.inv(view_matrix)
-            draw_pose(extrinsic_matrix)
+            #draw_pose(extrinsic_matrix)
             self._extrinsics.append(extrinsic_matrix)
 
         self._aspect = float(self._window_width) / self._window_height
@@ -328,7 +329,7 @@ class PandaAcronymEnv(PandaEnv):
         self._intr_matrix[0, 0] = focal_length
         self._intr_matrix[1, 1] = focal_length
 
-    def reset(self, init_joints=None, no_table=False, objinfos=[]):
+    def reset(self, init_joints=None, no_table=False, objinfos=[], viz_only=False):
         """Environment reset"""
         self.reset_perception()
 
@@ -341,19 +342,20 @@ class PandaAcronymEnv(PandaEnv):
 
         # Intialize robot
         if init_joints is None:
-            self._panda = Panda(stepsize=self._timeStep, base_shift=self._shift)
+            self._panda = Panda(stepsize=self._timeStep, base_shift=self._shift, viz=viz_only)
         else:
             self._panda = Panda(
-                stepsize=self._timeStep, init_joints=init_joints, base_shift=self._shift
+                stepsize=self._timeStep, init_joints=init_joints, base_shift=self._shift, viz=viz_only
             )
-        self._panda_vizs = []
+        self._panda_vizs = {}
 
         # Initialize objects
         plane_file = "data/objects/floor"
         table_file = "data/objects/table/models"
         self.plane_id = p.loadURDF(
             str(Path(self._root_dir) / plane_file / 'model_normalized.urdf'),
-            [0 - self._shift[0], 0 - self._shift[1], -0.82 - self._shift[2]]
+            [0, 0, -0.82-0.5+0.17]
+            # [0 - self._shift[0], 0 - self._shift[1], -0.82 - self._shift[2]]
         )
         table_z = -5 if no_table else -0.82 - self._shift[2]
         self.table_id = p.loadURDF(
@@ -394,6 +396,7 @@ class PandaAcronymEnv(PandaEnv):
                 viewMatrix=self._view_matrices[i],
                 projectionMatrix=self._proj_matrix,
                 physicsClientId=self.cid,
+                renderer=p.ER_BULLET_HARDWARE_OPENGL
             )
 
             # The depth provided by getCameraImage() is in normalized device coordinates from 0 to 1.
@@ -439,7 +442,7 @@ class PandaAcronymEnv(PandaEnv):
                 pc_cam = pcs[i]
                 T_world_cam = self._extrinsics[i]
                 T_world_cam_rot = T_world_cam @ T_rotx
-                draw_pose(T_world_cam_rot)
+                #draw_pose(T_world_cam_rot)
                 T_cams.append(T_world_cam_rot)
                 pc_world = (T_world_cam_rot @ pc_cam.T).T
                 pcs_world.append(pc_world)
@@ -495,15 +498,18 @@ class PandaAcronymEnv(PandaEnv):
         # return obj_dir, poses
         return [uid], poses
 
-    def update_panda_viz(self, traj, k=1):
-        # Visualize last k steps
+    def update_panda_viz(self, traj, k=1, skip=0):
+        # Visualize last k steps, with skip
         traj_len = traj.data.shape[0]
-        count = 0
-        for tstep in range(traj_len - k, traj_len): 
+        incr = skip if skip != 0 else 1
+        # for i, tstep in enumerate(range(traj_len-1, -1, -incr)):
+        for i, tstep in enumerate(range(4, traj_len, incr)):
+            # if i >= k:
+                # break
+
             if len(self._panda_vizs) < k:
-                self._panda_vizs.append(Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True))
-            self._panda_vizs[count].reset(traj.data[tstep])
-            count += 1
+                self._panda_vizs[tstep] = Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True, final_viz=(tstep==traj_len-1))
+            self._panda_vizs[tstep].reset(traj.data[tstep])
             # self._panda_vizs.append(Panda(stepsize=self._timeStep, base_shift=self._shift, viz=True))
 
         #     self._panda_vizs[tstep].reset(traj.data[tstep])
@@ -511,10 +517,10 @@ class PandaAcronymEnv(PandaEnv):
         # self._panda_viz.reset(joints)
     
     def remove_panda_viz(self):
-        for i in range(len(self._panda_vizs)):
-            self._panda_vizs[i]._base_position = [0, 0, -50]
-            self._panda_vizs[i].reset()
-            del self._panda_vizs[i]
+        for key in self._panda_vizs.keys():
+            self._panda_vizs[key]._base_position = [0, 0, -50]
+            self._panda_vizs[key].reset()
+            del self._panda_vizs[key]
     
     @staticmethod
     def get_scenes(hydra_cfg):
@@ -560,7 +566,7 @@ class PandaAcronymEnv(PandaEnv):
     #             continue
 
     
-    def init_scene(self, scene, planning_scene, hydra_cfg, single_view=-1):
+    def init_scene(self, scene, planning_scene, hydra_cfg, single_view=-1, viz_only=False):
         objinfos = []
         objinfo = self.get_object_info(scene['obj_name'], Path(hydra_cfg.data_root) / hydra_cfg.dataset)
         objinfos.append(objinfo)
@@ -570,7 +576,7 @@ class PandaAcronymEnv(PandaEnv):
                 Path(hydra_cfg.data_root) / hydra_cfg.dataset)
             objinfos.append(objinfo)
     
-        self.reset(init_joints=scene['joints'], no_table=not cfg.table, objinfos=objinfos)
+        self.reset(init_joints=scene['joints'], no_table=not cfg.table, objinfos=objinfos, viz_only=viz_only)
         uids = []
         uid = self._objectUids[0]
         self.place_object(uid, cfg.tgt_pos, q=scene['obj_rot'], random=False, gravity=cfg.gravity)
@@ -678,7 +684,7 @@ class PandaAcronymEnv(PandaEnv):
             trans = T_b2c[:3, 3]
             orn = pr.quaternion_from_matrix(T_b2c[:3, :3])  # wxyz
             # draw_pose(T_w2o @ T_o2c)
-            draw_pose(T_w2o)
+            #draw_pose(T_w2o)
 
             planning_scene.env.add_object(objinfo['name'], trans, orn, obj_prefix=obj_prefix, abs_path=True)
             

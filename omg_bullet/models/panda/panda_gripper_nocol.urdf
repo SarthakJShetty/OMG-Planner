@@ -7,8 +7,8 @@
       <geometry>
         <mesh filename="package://meshes/collision/link0.obj"/>
       </geometry>
-      <material name="panda_white">
-        <color rgba="1. 1. 1. 0.5"/>
+      <material name="panda_white_transp">
+        <color rgba="1. 1. 1. 0.1"/>
       </material>
     </visual>
     <!-- <collision> -->
@@ -25,7 +25,7 @@
       <geometry>
         <mesh filename="package://meshes/visual/link1.obj"/>
       </geometry>
-      <material name="panda_white"/>
+      <material name="panda_white_transp"/>
     </visual>
     <!-- <collision> -->
     <!-- </collision> -->
@@ -51,7 +51,9 @@
       <geometry>
         <mesh filename="package://meshes/visual/link2.obj"/>
       </geometry>
-      <material name="panda_white"/>
+      <material name="panda_white">
+        <color rgba="1. 1. 1. 0.5"/>
+      </material>
     </visual>
     <!-- <collision> -->
     <!-- </collision> -->
@@ -77,9 +79,10 @@
       <geometry>
         <mesh filename="package://meshes/visual/link3.obj"/>
       </geometry>
-      <material name="panda_red">
+      <material name="panda_white"/>
+      <!-- <material name="panda_red">
         <color rgba="1. 1. 1. 0.5"/>
-      </material>
+      </material> -->
     </visual>
     <!-- <collision> -->
     <!-- </collision> -->

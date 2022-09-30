@@ -51,6 +51,7 @@ sys.path.append(os.path.dirname(__file__))
 from omg_bullet.envs.acronym_env import PandaAcronymEnv
 from utils import *
 from acronym_tools import load_grasps, create_gripper_marker, load_mesh
+from omg_bullet.utils import draw_pose
 # from manifold_grasping.utils import load_mesh
 
 def linear_shake(env, timeSteps, delta_z, record=False, second_shake=False):
@@ -88,6 +89,101 @@ def rot_shake(env, timeSteps, delta_a, record=False):
             observation = env._get_observation()
             observations.append(observation)
     return observations
+
+def run_grasp(env, mesh, mctr_obj_T, mesh_root, obj, mctr_grasp_T, lin=0.15, rot=180):
+    # end_T is in pybullet wrist convention
+    # object is loaded in obj frame
+    # grasp is centroid frame
+
+    # gripper faces down
+    init_joints = [-0.331397102886776,
+                -0.4084196878153061,
+                0.27958348738965677,
+                -2.100158152658163,
+                0.10297468164759681,
+                1.7272912586478788,
+                0.6990357829811057,
+                0.0399,
+                0.0399,]
+
+    # scale = obj.split('_')[-1]
+    objinfo = {
+        'name': obj,
+        'urdf_dir': f'{mesh_root}/meshes_bullet/{obj}/model_normalized.urdf',
+        # 'scale': scale,
+        # 'T_ctr2obj': T_ctr2obj,
+        # 'mesh': obj_mesh
+    }
+
+    env.reset(init_joints=init_joints, no_table=True, objinfos=[objinfo])
+    
+    obj_grasp_T = np.linalg.inv(mctr_obj_T) @ mctr_grasp_T    
+
+    # Get end effector pose frame
+    pos, orn = p.getLinkState(env._panda.pandaUid, env._panda.pandaEndEffectorIndex)[:2]
+    world2ee_T = pt.transform_from_pq(np.concatenate([pos, pr.quaternion_wxyz_from_xyzw(orn)]))
+
+    world2ctr_T = world2ee_T @ np.linalg.inv(obj_grasp_T)
+    # draw_pose(world2ctr_T)
+
+    # Place single object
+    pq = pt.pq_from_transform(world2ctr_T) # mesh still object centered
+    p.resetBasePositionAndOrientation(
+        env._objectUids[0],
+        pq[:3],
+        pr.quaternion_xyzw_from_wxyz(pq[3:])
+    )  # xyzw
+    p.resetBaseVelocity(env._objectUids[0], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+
+    # Close gripper on object
+    joints = env._panda.getJointStates()[0]
+    joints[-2:] = [0.0, 0.0]
+    obs, rew, done, _ = env.step(joints)
+    if rew == 0:
+        err_info = 'grasp'
+    else:
+        err_info = ''
+
+    # wait after grasping
+    for i in range(3):
+        env.step(joints)
+
+    observations = [obs]
+
+    # Linear shaking
+    if err_info == '':
+        dur = 150
+        obs = linear_shake(env, dur, -lin/dur)
+        observations += obs
+        obs = linear_shake(env, dur, lin/dur)
+        observations += obs
+        rew = env._reward()
+        if rew == 0:
+            err_info = 'linear'
+
+    # Angular shaking
+    if err_info == '':
+        dur = 150
+        obs = rot_shake(env, dur, np.deg2rad(rot))
+        observations += obs
+        obs = rot_shake(env, dur, -np.deg2rad(rot))
+        observations += obs
+        rew = env._reward()
+        if rew == 0:
+            err_info = 'shake'
+    
+    # Linear shake again
+    if err_info == '':
+        dur = 150
+        obs = linear_shake(env, dur, -lin/dur, second_shake=True)
+        observations += obs
+        obs = linear_shake(env, dur, lin/dur, second_shake=True)
+        observations += obs
+        rew = env._reward()
+        if rew == 0:
+            err_info = 'linear2'
+
+    return rew, err_info
 
 def collect_grasps(margs): 
     args, graspfile, objinfo = margs

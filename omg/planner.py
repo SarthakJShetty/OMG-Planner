@@ -160,6 +160,7 @@ class Planner(object):
         if len(env.objects) > 0:
             self.traj.goal_set = env.objects[env.target_idx].grasps
             self.traj.goal_potentials = env.objects[env.target_idx].grasp_potentials
+            self.traj.goal_scores = env.objects[env.target_idx].grasp_scores
             if bool(env.objects[env.target_idx].grasps_scores): # not None or empty
                 self.traj.goal_quality = env.objects[env.target_idx].grasps_scores
                 grasp_ees = env.objects[env.target_idx].grasp_ees
@@ -185,6 +186,10 @@ class Planner(object):
                     self.traj.goal_potentials + self.cfg.dist_eps * proj_dist
                 )
                 self.traj.goal_idx = np.argmin(costs)
+            
+            elif self.cfg.goal_idx == -4: # max score
+                costs = self.traj.goal_scores
+                self.traj.goal_idx = np.argmax(costs)
 
             else:
                 self.traj.goal_idx = 0
@@ -431,16 +436,17 @@ class Planner(object):
         T_b2w = np.linalg.inv(get_world2bot_transform())
         pose_grasp = T_b2w @ T_world_cam2 @ pred_grasps_cam # pose_grasp is in bot frame
         target_obj.grasps_poses = pose_grasp
-        target_obj.grasp_scores = scores
+        # target_obj.grasp_scores = scores
 
         # target_obj.pose is in bot frame
         z_upsample = False
-        target_obj.reach_grasps, target_obj.grasps, _, grasp_set = self.solve_goal_set_ik(
-            target_obj, env, pose_grasp, z_upsample=z_upsample, y_upsample=self.cfg.y_upsample,
+        target_obj.reach_grasps, target_obj.grasps, target_obj.grasp_scores, grasp_set = self.solve_goal_set_ik(
+            target_obj, env, pose_grasp, grasp_scores=scores, z_upsample=z_upsample, y_upsample=self.cfg.y_upsample,
             in_global_coords=True
         )
         target_obj.reach_grasps = np.array(target_obj.reach_grasps)
         target_obj.grasps = np.array(target_obj.grasps)
+        target_obj.grasp_scores = np.array(target_obj.grasp_scores)
 
         # TODO grasp_potentials (collision)
         target_obj.grasp_potentials = [0 for _ in range(len(target_obj.grasps))]
@@ -1006,8 +1012,8 @@ class Planner(object):
                 if self.cfg.report_time:
                     print("plan optimize:", time.time() - start_time)
 
-                if viz_env:
-                    viz_env.update_panda_viz(self.traj, k=1)
+                # if viz_env:
+                    # viz_env.update_panda_viz(self.traj, k=1)
 
                 # Visualize points in collision with robot
                 if viz_env and info_t['collide'] > 0 and False:

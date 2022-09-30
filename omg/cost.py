@@ -345,9 +345,10 @@ class Cost(object):
         potential_grads = potential_grads.reshape([n, m, p, 3])
         collides = collides.reshape([n, m, p])
 
+        # Commenting out for fair comparison
         # if self.cfg.use_standoff and self.cfg.goal_set_proj:
         if self.cfg.use_standoff:
-            potentials[-self.cfg.reach_tail_length :] = 0
+        #     potentials[-self.cfg.reach_tail_length :] = 0
             potential_grads[-self.cfg.reach_tail_length :] = 0
             collides[-self.cfg.reach_tail_length :] = 0
         else:
