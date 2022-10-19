@@ -5,3 +5,7 @@
 [submodule "Sophus"]
 	path = Sophus
 	url = https://github.com/yuxng/Sophus.git
+	branch = "ceb6380a1584b300e687feeeea8799353d48859f"
+[submodule "SDFGen"]
+	path = SDFGen
+	url = https://github.com/christopherbatty/SDFGen.git
