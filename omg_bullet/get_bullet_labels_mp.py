@@ -52,7 +52,6 @@ from omg_bullet.envs.acronym_env import PandaAcronymEnv
 from utils import *
 from acronym_tools import load_grasps, create_gripper_marker, load_mesh
 from omg_bullet.utils import draw_pose
-# from manifold_grasping.utils import load_mesh
 
 def linear_shake(env, timeSteps, delta_z, record=False, second_shake=False):
     pos, orn = p.getLinkState(

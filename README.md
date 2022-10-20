@@ -10,11 +10,14 @@ Ubuntu 18.04, CUDA 11.1
 * `sudo ln -sh /usr/include/eigen3/Eigen Eigen`
 * `ln -s /usr/local/cuda/include/crt/math_functions.hpp /usr/local/cuda/include/math_functions.hpp`
 
+* First set up ngdf according to the instructiosn in the README
+
 * `git clone https://github.com/liruiw/OMG-Planner.git --recursive`
 * Install miniconda3 and create the virtual env python 3.7.9
-    * `conda create --name gm_ndf python=3.7.9`
-    * `conda activate gm_ndf`
+    <!-- * `conda create --name gm_ndf python=3.7.9` -->
+    <!-- * `conda activate gm_ndf` -->
     * `pip install -r requirements.txt`
+
 * Install [ycb_render](ycb_render)  
 
     ```Shell
@@ -72,19 +75,11 @@ Ubuntu 18.04, CUDA 11.1
     make -j8;  cp PyKDL.so $CONDA_PREFIX/lib/python3.7/site-packages/
     ```
 
-<!-- * Install theseus
+* pip install base OMG-Planner module
     ```
-    conda install -c conda-forge scikit-learn scikit-sparse
-    git clone https://github.com/facebookresearch/theseus.git && cd theseus
+    cd OMG-Planner
     pip install -e .
-    ``` -->
-
-<!-- * Install acronym
     ```
-    git clone https://github.com/thomasweng15/acronym
-    pip install -r requirements.txt
-    pip install -e .
-    ``` -->
 
 * Now you can run the pybullet scene
     ```

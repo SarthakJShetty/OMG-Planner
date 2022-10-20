@@ -1,6 +1,6 @@
 import torch
-from manifold_grasping.networks import Decoder
-from manifold_grasping.pointset.pointnet2_segmentation import PointNet2_Seg
+from ngdf.networks import Decoder
+# from manifold_grasping.pointset.pointnet2_segmentation import PointNet2_Seg
 
 from pathlib import Path
 from omegaconf import OmegaConf
@@ -19,10 +19,10 @@ class LearnedGrasp:
             self.models[category] = self.load_model(ckpt_path)
 
     def init_model(self):
-        if self.arch == 'deepsdf':
-            return Decoder(**self.cfg.net).cuda()
-        elif self.arch == 'pointnet2_seg':
-            return PointNet2_Seg(**self.cfg.net).cuda()
+        # if self.arch == 'deepsdf':
+        return Decoder(**self.cfg.net).cuda()
+        # elif self.arch == 'pointnet2_seg':
+        #     return PointNet2_Seg(**self.cfg.net).cuda()
 
     def load_model(self, ckpt_path):
         # load separate models for each object

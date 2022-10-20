@@ -30,7 +30,7 @@ from pathlib import Path
 import hydra
 from hydra.utils import get_original_cwd
 import csv
-from manifold_grasping.utils import load_mesh
+from ngdf.utils import load_mesh
 
 
 def get_random_transform(pos, q=None, random=False):
@@ -539,18 +539,18 @@ class PandaAcronymEnv(PandaEnv):
                                 'obj_rot': pr.quaternion_wxyz_from_xyzw([float(x) for x in row[3:]])
                             }
                             scenes.append(scene)
-            elif hydra_cfg.eval.joints_csv is not None:
-                with open(Path(get_original_cwd()) / ".." / hydra_cfg.eval.joints_csv, 'r') as f:
-                    reader = csv.reader(f)
-                    for i, row in enumerate(reader):
-                        for objname in objnames:
-                            scene = {
-                                'idx': i, 
-                                'obj_name': objname,
-                                'joints': [float(x) for x in row],
-                                'obj_rot': [0, 0, 0, 1]
-                            }
-                            scenes.append(scene)
+            # elif hydra_cfg.eval.joints_csv is not None:
+            #     with open(Path(get_original_cwd()) / ".." / hydra_cfg.eval.joints_csv, 'r') as f:
+            #         reader = csv.reader(f)
+            #         for i, row in enumerate(reader):
+            #             for objname in objnames:
+            #                 scene = {
+            #                     'idx': i, 
+            #                     'obj_name': objname,
+            #                     'joints': [float(x) for x in row],
+            #                     'obj_rot': [0, 0, 0, 1]
+            #                 }
+            #                 scenes.append(scene)
         else:
             for objname in objnames:
                 scenes.append({

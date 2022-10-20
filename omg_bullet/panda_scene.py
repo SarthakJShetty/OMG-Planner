@@ -122,6 +122,8 @@ def main(hydra_cfg):
         # if scene['obj_name'].split('_')[0] not in eval_objects:
             # continue
         if 'Book' in scene['obj_name']:
+            print("book")
+            import IPython; IPython.embed()
             continue
         # if 'Bottle' not in scene['obj_name']:
         #     continue

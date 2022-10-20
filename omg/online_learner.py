@@ -14,7 +14,7 @@ import theseus as th
 from differentiable_robot_model.robot_model import (
     DifferentiableFrankaPanda,
 )
-from manifold_grasping.control_pts import *
+from ngdf.control_pts import *
 
 np.set_printoptions(4)
 

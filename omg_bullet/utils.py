@@ -3,7 +3,7 @@ import numpy as np
 import pybullet as p
 import pytransform3d.rotations as pr
 from collections import namedtuple
-from manifold_grasping.utils import load_mesh
+from ngdf.utils import load_mesh
 RGBA = namedtuple('RGBA', ['red', 'green', 'blue', 'alpha'])
 BLACK = RGBA(0, 0, 0, 1)
 CLIENT = 0
