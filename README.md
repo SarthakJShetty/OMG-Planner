@@ -10,11 +10,14 @@ Ubuntu 18.04, CUDA 11.1
 * `sudo ln -sh /usr/include/eigen3/Eigen Eigen`
 * `ln -s /usr/local/cuda/include/crt/math_functions.hpp /usr/local/cuda/include/math_functions.hpp`
 
+* First set up ngdf according to the instructiosn in the README
+
 * `git clone https://github.com/liruiw/OMG-Planner.git --recursive`
 * Install miniconda3 and create the virtual env python 3.7.9
-    * `conda create --name gm_ndf python=3.7.9`
-    * `conda activate gm_ndf`
+    <!-- * `conda create --name gm_ndf python=3.7.9` -->
+    <!-- * `conda activate gm_ndf` -->
     * `pip install -r requirements.txt`
+
 * Install [ycb_render](ycb_render)  
 
     ```Shell
@@ -22,9 +25,9 @@ Ubuntu 18.04, CUDA 11.1
     python setup.py develop
     ```
 
-* Install Eigen from the Github source code [here](https://gitlab.com/libeigen/eigen)
+* Install Eigen from the Github source code [here](https://github.com/eigenteam/eigen-git-mirror)
     ```
-    git clone https://gitlab.com/libeigen/eigen
+    git clone https://github.com/eigenteam/eigen-git-mirror
     cd eigen
     mkdir build
     cd build
@@ -43,13 +46,9 @@ Ubuntu 18.04, CUDA 11.1
     sudo make install
     ```
 
-* Install torch
+* Install PyTorch (if not already installed from the ngdf instructions)
     ```
     pip install torch==1.8.1+cu111 torchvision==0.9.1+cu111 torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
-    ```
-    or
-    ```
-    conda install pytorch==1.8.0 cudatoolkit=11.1 -c pytorch -c conda-forge
     ```
 
 * Compile the new layers under layers we introduce.
@@ -61,7 +60,7 @@ Ubuntu 18.04, CUDA 11.1
 * Install the submodule PyKDL. Check this tutorial [here](https://git.ias.informatik.tu-darmstadt.de/lutter/ias_pykdl/blob/8b864ccf81763439ba5d45a359e1993208c2247c/pykdl.md) if there is any issue with installing PyKDL.
 
     ```bash
-    conda install sip==4.19.9
+    conda install sip==4.19.8
     cd orocos_kinematics_dynamics
      
     export ROS_PYTHON_VERSION=3
@@ -72,21 +71,13 @@ Ubuntu 18.04, CUDA 11.1
       
     cd ../../python_orocos_kdl
     mkdir build; cd build;
-    cmake ..  -DPYTHON_VERSION=3.7.9 -DPYTHON_EXECUTABLE=~/miniconda3/envs/gm_ndf/bin/python3.7
-    make -j8;  cp PyKDL.so ~/miniconda3/envs/gm_ndf/lib/python3.7/site-packages/
+    cmake ..  -DPYTHON_VERSION=3.7.9 -DPYTHON_EXECUTABLE=$CONDA_PREFIX/bin/python3.7
+    make -j8;  cp PyKDL.so $CONDA_PREFIX/lib/python3.7/site-packages/
     ```
 
-* Install theseus
+* pip install base OMG-Planner module
     ```
-    conda install -c conda-forge scikit-learn scikit-sparse
-    git clone https://github.com/facebookresearch/theseus.git && cd theseus
-    pip install -e .
-    ```
-
-* Install acronym
-    ```
-    git clone https://github.com/thomasweng15/acronym
-    pip install -r requirements.txt
+    cd OMG-Planner
     pip install -e .
     ```
 

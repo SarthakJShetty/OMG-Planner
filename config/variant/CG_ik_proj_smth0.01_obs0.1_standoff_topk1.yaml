@@ -1,6 +1,6 @@
 # Evaluation configs
-method: CG_ik_fixed_smth0.01_obs0.1_standoff_topk1
-ol_alg: Baseline
+method: CG_ik_proj_smth0.01_obs0.1_standoff_topk1
+ol_alg: Proj
 goal_idx: -1  # >0: goal index in goal set, -1: closest, -2: minimum cost, -3: random
 no_endpoint_smoothing: True 
 chomp_adam: False

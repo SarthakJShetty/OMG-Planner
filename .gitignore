@@ -1,3 +1,4 @@
+eigen-git-mirror/
 *.pyc
 .idea/*
 *.so

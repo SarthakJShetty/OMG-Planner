@@ -182,15 +182,8 @@ def main(hydra_cfg):
             return ymax
 
         plt.rcParams["axes.titlesize"] = 'x-large'          # controls default text sizes
-        # plt.rcParams["axes.labelsize"] = 'x-large'          # controls default text sizes
         plt.rcParams["xtick.labelsize"] = 'large'          # controls default text sizes
         plt.rcParams["ytick.labelsize"] = 'x-large'          # controls default text sizes
-        # plt.rc('axes', titlesize='large')     # fontsize of the axes title
-        # plt.rc('axes', labelsize='large')    # fontsize of the x and y labels
-        # plt.rc('xtick', labelsize='large')    # fontsize of the tick labels
-        # plt.rc('ytick', labelsize='large')    # fontsize of the tick labels
-        # # plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
-        # plt.rc('figure', titlesize='large')  # fontsize of the figure title
 
         history_trajs = npz['trajs']
         info = npz['info']
@@ -211,29 +204,16 @@ def main(hydra_cfg):
             fig = plt.figure(figsize=(640/dpi, 180/dpi), dpi=dpi)
             canvas = FigureCanvas(fig)
 
-            # plt.plot(range(len(costs)), costs_np[:, 2], color='orange', label='Weighted Grasp')           
-            # plt.plot(range(len(costs)), costs_np[:, 0], color='blue', linestyle='dashed', label='Weighted Obs')           
-            # plt.plot(range(len(costs)), costs_np[:, 1], color='purple', linestyle='dotted', label='Weighted Smooth')           
-            # plt.ylim(bottom=0, top=max(
-            #     get_ymax(costs_np[:, 2]), 
-            #     get_ymax(costs_np[:, 0]), 
-            #     get_ymax(costs_np[:, 1])
-            # ))
-            # plt.legend(loc='upper right')
-
             ax1 = fig.add_subplot(131)
             ax1.plot(range(len(costs)), costs_np[:, 2], color='orange', label='Weighted Grasp')           
             ax1.set_title("Grasp")
             ax1.set_ylim(top=get_ymax(costs_np[:, 2]))
-            # ax1.set_ylabel('Grasp')
             ax2 = fig.add_subplot(132)
             ax2.plot(range(len(costs)), costs_np[:, 0], color='blue', linestyle='dashed', label='Weighted Obs')           
             ax2.set_ylim(top=max(get_ymax(costs_np[:, 0]), 0.01))
-            # ax2.set_ylabel('Obstacle')
             ax2.set_title("Obstacle")
             ax3 = fig.add_subplot(133)
             ax3.plot(range(len(costs)), costs_np[:, 1], color='purple', linestyle='dotted', label='Weighted Smooth')           
-            # ax3.set_ylabel("Smoothness")
             ax3.set_title('Smoothness')
             ax3.set_ylim(top=get_ymax(costs_np[:, 1]))
 

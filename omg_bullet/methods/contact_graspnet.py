@@ -56,7 +56,7 @@ class ContactGraspNetInference:
                 from acronym_tools import create_gripper_marker
                 import plotly.graph_objects as go
                 import plotly.offline as py
-                from manifold_grasping.utils import get_plotly_fig
+                from ngdf.utils import get_plotly_fig
 
                 # Draw trimesh figure
                 grasps = [create_gripper_marker(color=[0, 255, 0], tube_radius=0.001).apply_transform(T) for T in pred_grasps_cam[-1]]

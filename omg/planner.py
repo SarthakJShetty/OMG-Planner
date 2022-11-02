@@ -21,9 +21,9 @@ import numpy as np
 # from .viz_trimesh import visualize_predicted_grasp, trajT_to_grasppredT, grasppredT_to_trajT
 # import pytorch3d.transforms as ptf
 import pybullet as p
-from manifold_grasping.control_pts import *
+from ngdf.control_pts import *
 
-from manifold_grasping.utils import load_grasps, load_mesh, wrist_to_tip
+from ngdf.utils import load_grasps, load_mesh, wrist_to_tip
 
 import pathlib
 
@@ -32,13 +32,11 @@ from differentiable_robot_model.robot_model import (
     DifferentiableFrankaPanda,
 )
 
-import pytorch3d.transforms as p3t
-
 def pose_to_pq(pose):
     pq = torch.zeros(7, dtype=pose.tensor.dtype, device=pose.device)
     mat = pose.to_matrix()
     pq[:3] = mat[:, :3, 3]
-    pq[3:] = p3t.matrix_to_quaternion(mat[:, :3, :3])
+    pq[3:] = pr.quaternion_from_matrix(mat[0, :3, :3])
     return pq
 
 def solve_one_pose_ik(input):

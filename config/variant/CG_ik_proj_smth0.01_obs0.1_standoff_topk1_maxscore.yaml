@@ -1,5 +1,5 @@
 # Evaluation configs
-method: CG_ik_proj_smth0.01_obs0.1_standoff_topk1
+method: CG_ik_proj_smth0.01_obs0.1_standoff_topk1_maxscore
 ol_alg: Proj
 goal_idx: -4  # >0: goal index in goal set, -1: closest, -2: minimum cost, -3: random
 no_endpoint_smoothing: True 

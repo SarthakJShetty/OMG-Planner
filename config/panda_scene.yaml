@@ -1,11 +1,14 @@
-data_root: /media/thomasweng/manifolds
-project_root: /home/thomasweng/projects/manifolds
+###
+# Overwrite these configs here or in the command
+###
+data_root: /path/to/ngdf/data
+project_root: /path/to/ngdf/projects
 experiment: dbg
-dataset: acronym_mini_relabel
+dataset: dataset_name
 
 defaults:
   - eval: 1obj_float_rotpos_nograv
-  - variant: origOMG_known_col
+  - variant: default
 
 hydra:
   job:
@@ -19,7 +22,7 @@ hydra:
 # Evaluation configs
 render: True
 write_video: True
-run_scenes: True # run full evaluation
+run_scenes: True 
 
 # Other configs
 vis: False

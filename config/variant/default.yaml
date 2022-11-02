@@ -1,5 +1,5 @@
 # Evaluation configs
-method: origOMG_known_col
+method: default
 use_standoff: True
 disable_target_collision: False
 filter_collision: False
