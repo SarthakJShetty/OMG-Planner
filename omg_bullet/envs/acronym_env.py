@@ -528,7 +528,7 @@ class PandaAcronymEnv(PandaEnv):
         scenes = []
         if hydra_cfg.run_scenes:
             if hydra_cfg.eval.obj_csv is not None:
-                with open(Path(get_original_cwd()) / ".." / hydra_cfg.eval.obj_csv, 'r') as f:
+                with open(Path(hydra_cfg.data_root) / '..' / hydra_cfg.eval.obj_csv, 'r') as f:
                     reader = csv.reader(f)
                     for i, row in enumerate(reader):
                         for objname in objnames:   
@@ -695,4 +695,4 @@ class PandaAcronymEnv(PandaEnv):
 
         # Set grasp selection method for planner
         planning_scene.env.set_target(objinfos[0]['name'])
-        planning_scene.reset(lazy=True)
+        planning_scene.reset(lazy=True, hydra_cfg=hydra_cfg)

@@ -48,8 +48,6 @@ from datetime import datetime
 import pytorch3d
 import pytorch3d.ops
 
-# from omg_bullet.utils import place_object
-
 
 def main(args):
     np.random.seed(0)

@@ -6,7 +6,6 @@ from omg.config import cfg
 from omg.core import PlanningScene
 
 from omg_bullet.envs.acronym_env import PandaAcronymEnv
-from omg_bullet.envs.ycb_env import PandaYCBEnv
 
 from omg_bullet.utils import bullet_execute_plan
 
@@ -21,7 +20,6 @@ import yaml
 import hydra
 from omegaconf import OmegaConf
 from omegaconf.listconfig import ListConfig
-# from moviepy.editor import ImageClip, TextClip, CompositeVideoClip, concatenate_videoclips
 
 
 def set_seeds():
@@ -68,7 +66,6 @@ def init_dir(hydra_cfg):
     (cwd / 'info').mkdir() 
     (cwd / 'videos').mkdir() 
     (cwd / 'gifs').mkdir() 
-    # (cwd / 'trajs').mkdir() 
     with open(cwd / 'hydra_config.yaml', 'w') as yaml_file:
         OmegaConf.save(config=hydra_cfg, f=yaml_file.name)
     with open(cwd / 'config.yaml', 'w') as yaml_file:
@@ -76,7 +73,7 @@ def init_dir(hydra_cfg):
         save_cfg['ROBOT'] = None
         yaml.dump(save_cfg, yaml_file) 
     with open(cwd / 'metrics.csv', 'w', newline='') as csvfile:
-        fieldnames = ['object_name', 'scene_idx', 'execution', 'planning', 'smoothness', 'collision', 'time']
+        fieldnames = ['object_name', 'scene_idx', 'execution']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
@@ -86,26 +83,17 @@ def save_metrics(objname, scene_idx, grasp_success, info):
     metrics = {
         'object_name': objname,
         'scene_idx': scene_idx,
-        'execution': grasp_success,
-        'planning': info[-1]['execute'] if has_plan else np.nan,
-        'smoothness': info[-1]['smooth'] if has_plan else np.nan,
-        'collision': info[-1]['obs'] if has_plan else np.nan,
-        'time': info[-1]['time'] if has_plan else np.nan,
+        'execution': grasp_success
     }
     cwd = Path(os.getcwd())
     with open(cwd / 'metrics.csv', 'a', newline='') as csvfile:
-        fieldnames = ['object_name', 'scene_idx', 'execution', 'planning', 'smoothness', 'collision', 'time']
+        fieldnames = ['object_name', 'scene_idx', 'execution']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writerow(metrics) 
 
 
 def init_env(hydra_cfg):
-    if 'acronym' in cfg.eval_env:
-        env = PandaAcronymEnv(renders=hydra_cfg.render, gravity=cfg.gravity, cam_look=cfg.cam_look)
-    elif 'ycb' in cfg.eval_env:
-        env = PandaYCBEnv(renders=hydra_cfg.render, gravity=cfg.gravity)
-    else:
-        raise NotImplementedError
+    env = PandaAcronymEnv(renders=hydra_cfg.render, gravity=cfg.gravity, cam_look=cfg.cam_look)
     return env
 
 
@@ -117,51 +105,14 @@ def main(hydra_cfg):
     init_dir(hydra_cfg)
     env = init_env(hydra_cfg)
     scenes = env.get_scenes(hydra_cfg)
-    # eval_objects = [x.split(':')[0] for x in cfg.grasp_weights] for ours
     for scene in scenes:
-        # if scene['obj_name'].split('_')[0] not in eval_objects:
-            # continue
-        if 'Book' in scene['obj_name']:
-            print("book")
-            import IPython; IPython.embed()
-            continue
-        # if 'Bottle' not in scene['obj_name']:
-        #     continue
-        # if scene['idx'] < 7:
-            # continue
         planning_scene = PlanningScene(cfg)
         obs, objname, scene_name = env.init_scene(scene, planning_scene, hydra_cfg)
-        # obs, objname, scene_name = env.init_scene(scene, planning_scene, hydra_cfg, single_view=True)
-
-        # im = obs['rgb'][0][80:340, 180:480, :]
-        # cv2.imwrite(f'/home/thomasweng/Downloads/{objname.split("_")[0]}_{scene["idx"]}.png', cv2.cvtColor(im, cv2.COLOR_BGR2RGB))
-        # continue
-
-        # import plotly.graph_objects as go
-        # import plotly.offline as py
-        # pc = obs['points'][::2]
-        # fig = go.Figure()
-        # data = go.Scatter3d(x=pc[:, 0], y=pc[:, 1], z=pc[:, 2], mode='markers', 
-        #     marker=dict(
-        #         size=3,
-        #         opacity=0.8
-        #     ))
-        # fig.add_traces(data)
-        # fig.update_layout(
-        #     coloraxis_showscale=False,
-        #     scene=dict(
-        #         xaxis=dict(visible=False, showticklabels=False),
-        #         yaxis=dict(visible=False, showticklabels=False),
-        #         zaxis=dict(visible=False, showticklabels=False),
-        #         aspectmode='data'
-        #     ))
-        # py.iplot(fig)
 
         if cfg.pc:
             pc_dict = {
                 'points_world': obs['points'],
                 'points_cam2': obs['points_cam2'],
-                # 'points_segments': obs['points_segments'],
                 'T_world_cam2': obs['T_world_cam2']
             }
         else:
@@ -180,43 +131,6 @@ def main(hydra_cfg):
         # Convert avi to high quality gif 
         if hydra_cfg.write_video and info != []:
             subprocess.Popen(['ffmpeg', '-y', '-i', cwd / 'videos' / f'{objname}_{scene_name}.avi', '-vf', "fps=10,scale=320:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse", '-loop', '0', cwd / 'gifs' / f'{objname}_{scene_name}.gif'])
-
-        # if not cfg.render:
-        #     cfg.window_height = 200
-        #     cfg.window_width = 200
-        #     planning_scene.setup_renderer()
-        #     # planning_scene.cfg.output_video_name = f'{cwd}/trajs/{objname}_{scene_name}.avi'
-
-        #     import time
-        #     fps = 24
-        #     duration = 0.2
-        #     comps = []
-        #     for i, traj in enumerate(planning_scene.planner.history_trajectories):
-        #         start = time.time()
-        #         traj_im = planning_scene.fast_debug_vis(traj=traj, interact=0, write_video=False,
-        #                                         nonstop=False, collision_pt=False, goal_set=False, traj_idx=i)
-        #         print(f"fast debug vis: {time.time() - start}")
-        #         traj_im = cv2.cvtColor(traj_im, cv2.COLOR_RGB2BGR)
-        #         start = time.time()
-        #         clip = ImageClip(traj_im).set_duration(duration).set_fps(fps)
-        #         # https://github.com/Zulko/moviepy/issues/401
-        #         txt_clip = (TextClip(f"iter {i}", fontsize=50, color='black')
-        #             .set_position('bottom')
-        #             .set_duration(duration))
-        #         comp = CompositeVideoClip([clip, txt_clip]).set_fps(fps).set_duration(duration)
-        #         print(f"video clip: {time.time() - start}")
-        #         comps.append(comp)
-        #         # cv2.imwrite(f"{args.output_dir}/{exp_name}/{scene_file}/traj_{i+1}.png", traj_im)
-        #     for _ in range(3): # add more frames to the end
-        #         txt_clip = (TextClip(f"iter {i}*", fontsize=50, color='black')
-        #             .set_position('bottom')
-        #             .set_duration(duration))
-        #         comp = CompositeVideoClip([clip, txt_clip]).set_fps(fps).set_duration(duration)
-        #         comps.append(comp)
-        #     result = concatenate_videoclips(comps)
-        #     result.write_gif(f"{cwd}/trajs/{objname}_{scene_name}.gif")
-        #     # result.write_gif(f"{args.output_dir}/{exp_name}/{scene_file}/traj.gif")
-        #     result.close()
 
     env.disconnect()
 

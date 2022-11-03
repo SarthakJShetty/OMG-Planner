@@ -28,7 +28,7 @@ Ubuntu 18.04, CUDA 11.1
 * Install Eigen from the Github source code [here](https://github.com/eigenteam/eigen-git-mirror)
     ```
     git clone https://github.com/eigenteam/eigen-git-mirror
-    cd eigen
+    cd eigen-git-mirror
     mkdir build
     cd build
     cmake ..
@@ -80,6 +80,8 @@ Ubuntu 18.04, CUDA 11.1
     cd OMG-Planner
     pip install -e .
     ```
+
+* Run ```./download_data.sh``` for data (Around 600 MB).
 
 * Now you can run the pybullet scene
     ```

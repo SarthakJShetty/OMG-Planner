@@ -327,11 +327,11 @@ class PlanningScene(object):
                                    start_end_equal=self.cfg.start_end_equal)
         self.env = Env(self.cfg)
 
-    def reset(self, lazy=False):
+    def reset(self, lazy=False, hydra_cfg=None):
         """
         Reset the scene for next run
         """
-        self.planner = Planner(self.env, self.traj, lazy)
+        self.planner = Planner(self.env, self.traj, lazy, hydra_cfg=hydra_cfg)
         if self.cfg.vis and not hasattr(self, "renderer"):
             self.setup_renderer()
 

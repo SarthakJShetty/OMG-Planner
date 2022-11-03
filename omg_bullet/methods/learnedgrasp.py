@@ -10,8 +10,9 @@ import pytorch3d.ops
 
 
 class LearnedGrasp:
-    def __init__(self, ckpt_paths=[], use_double=False):
+    def __init__(self, ckpt_paths=[], use_double=False, hydra_cfg=None):
         self.use_double = use_double
+        self.hydra_cfg = hydra_cfg if hydra_cfg is not None else OmegaConf.load(Path(__file__).parents[4] / "config" / "panda_scene.yaml")
         # data structure of ckpt_paths: list of "category:path" strings
         self.models = {}
         for item in ckpt_paths:
@@ -19,10 +20,7 @@ class LearnedGrasp:
             self.models[category] = self.load_model(ckpt_path)
 
     def init_model(self):
-        # if self.arch == 'deepsdf':
         return Decoder(**self.cfg.net).cuda()
-        # elif self.arch == 'pointnet2_seg':
-        #     return PointNet2_Seg(**self.cfg.net).cuda()
 
     def load_model(self, ckpt_path):
         # load separate models for each object
@@ -34,9 +32,8 @@ class LearnedGrasp:
         self.cfg = OmegaConf.load(cfg_path)
 
         # update project_root
-        hydra_cfg = OmegaConf.load(Path(__file__).parents[4] / "config" / "panda_scene.yaml")
-        self.cfg.project_root = hydra_cfg.project_root
-        self.cfg.data_root = hydra_cfg.data_root
+        self.cfg.project_root = self.hydra_cfg.project_root
+        self.cfg.data_root = self.hydra_cfg.data_root
         self.arch = self.cfg.net.arch
 
         model = self.init_model()
@@ -48,12 +45,9 @@ class LearnedGrasp:
         return model
     
     def get_input(self, x_dict={}):
-        if self.arch == 'deepsdf':
-            pq = x_dict['pq']
-            latent = x_dict['shape_code']
-            input_x = torch.cat([pq.unsqueeze(0), latent], axis=1)
-        elif self.arch == 'pointnet2_seg':
-            raise NotImplementedError
+        pq = x_dict['pq']
+        latent = x_dict['shape_code']
+        input_x = torch.cat([pq.unsqueeze(0), latent], axis=1)
         return input_x
 
     def forward(self, x_dict={}):
