@@ -5,18 +5,11 @@
 ![image](assets/top.PNG)
 
 ### GraspProject OMG installation
-Ubuntu 18.04, CUDA 11.1
-* `sudo apt install libx11-dev libeigen3-dev cmake mesa-common-dev cmake build-essential libgl1-mesa-dev freeglut3-dev libglfw3-dev libgles2-mesa-dev libassimp-dev assimp-utils ffmpeg`
-* `sudo ln -sh /usr/include/eigen3/Eigen Eigen`
-* `ln -s /usr/local/cuda/include/crt/math_functions.hpp /usr/local/cuda/include/math_functions.hpp`
 
-* First set up ngdf according to the instructiosn in the README
+* First set up ngdf according to the instructions in the README
 
 * `git clone https://github.com/liruiw/OMG-Planner.git --recursive`
-* Install miniconda3 and create the virtual env python 3.7.9
-    <!-- * `conda create --name gm_ndf python=3.7.9` -->
-    <!-- * `conda activate gm_ndf` -->
-    * `pip install -r requirements.txt`
+* `pip install -r requirements.txt`
 
 * Install [ycb_render](ycb_render)  
 
@@ -103,8 +96,6 @@ Ubuntu 18.04, CUDA 11.1
 ```bash
 git clone https://github.com/liruiw/OMG-Planner.git --recursive
 ```
-__GraspManifolds__: also install contactgraspnet repo
-
 0. Setup: Ubuntu 16.04 or above, CUDA 10.0 or above
 
 1. Install [anaconda](https://docs.anaconda.com/anaconda/install/) and create the virtual env for python 2 / 3
@@ -114,9 +105,6 @@ __GraspManifolds__: also install contactgraspnet repo
     conda activate omg
     pip install -r requirements.txt
     ```  
-    __GraspManifolds__: also install conda env with tensorflow 2.5 (for GTC 30 series). used the name `gm_pipeline`. We are using 3.7.9 due to contact_graspnet. Also had to run `sudo apt install libx11-dev mesa-common-dev`
-    Use the name `gmanifolds` 
-
 
 2. Install [ycb_render](ycb_render)  
 
@@ -135,7 +123,6 @@ __GraspManifolds__: also install contactgraspnet repo
     make -j8
     sudo make install
     ```
-    __GraspManifolds__: had to install eigen first from the step below. 
 
 4. Install Eigen from the Github source code [here](https://github.com/eigenteam/eigen-git-mirror)
 
@@ -145,8 +132,6 @@ __GraspManifolds__: also install contactgraspnet repo
     python setup.py install
     ```
 
-    __GraspManifolds__: had to install torch first: `conda install pytorch==1.8.0 cudatoolkit=11.1 -c pytorch -c conda-forge`
-    or `pip install torch==1.8.1+cu111 torchvision==0.9.1+cu111 torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html`
 6. Install the submodule PyKDL. Check this tutorial [here](https://git.ias.informatik.tu-darmstadt.de/lutter/ias_pykdl/blob/8b864ccf81763439ba5d45a359e1993208c2247c/pykdl.md) if there is any issue with installing PyKDL.
 
     ```bash
@@ -166,11 +151,6 @@ __GraspManifolds__: also install contactgraspnet repo
     cmake ..  -DPYTHON_VERSION=3.6.9 -DPYTHON_EXECUTABLE=~/anaconda2/envs/omg/bin/python3.6
     make -j8;  cp PyKDL.so ~/anaconda2/envs/omg/lib/python3.6/site-packages/
     ```
-
-    __GraspManifolds__: we use miniconda3 and a different env name 
-    `cmake ..  -DPYTHON_VERSION=3.7.9 -DPYTHON_EXECUTABLE=~/miniconda3/envs/gm_pipeline/bin/python3.7`
-    `make -j8;  cp PyKDL.so ~/miniconda3/envs/gm_pipeline/lib/python3.7/site-packages/`
-     
 
 ### Common Usage
 0. run ```./download_data.sh``` for data (Around 600 MB).
