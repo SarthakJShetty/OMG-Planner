@@ -27,18 +27,18 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 cfg = edict()
 
 """ hyperparameter """
-cfg.smoothness_base_weight = 0.1  # 0.1 weight for smoothness cost in total cost
+cfg.smoothness_base_weight = 0.1  # weight for smoothness cost in total cost
 cfg.max_smooth_weight = 0.1
 cfg.smooth_schedule_rate = 1.00
 
-cfg.base_obstacle_weight = 0.1 # 1.0  # 1.0 weight for obstacle cost in total cost
-cfg.max_obstacle_weight = 0.1 # 1.0  # 1.0 weight for obstacle cost in total cost
-cfg.min_obstacle_weight = 0.1 # 1.0  # 1.0 weight for obstacle cost in total cost
-cfg.obs_schedule_rate = 1.00 # 1.02 # 1.05  # cost schedule boost for grasp cost weight  
+cfg.base_obstacle_weight = 0.1 # weight for obstacle cost in total cost
+cfg.max_obstacle_weight = 0.1 # weight for obstacle cost in total cost
+cfg.min_obstacle_weight = 0.1 # weight for obstacle cost in total cost
+cfg.obs_schedule_rate = 1.00 # cost schedule boost for grasp cost weight  
 
 cfg.base_grasp_weight = 10.0  # weight for grasp cost in total cost
 cfg.min_grasp_weight = 10.0
-cfg.grasp_schedule_rate = 1.00 # 1.02 # 1.05  # cost schedule boost for grasp cost weight  
+cfg.grasp_schedule_rate = 1.00 # cost schedule boost for grasp cost weight  
 
 cfg.cost_schedule_decay = 1  # cost schedule decay for obstacle cost weight wrt base
 cfg.cost_schedule_boost = 1.0  # cost schedule boost for smoothness cost weight  
