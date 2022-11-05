@@ -1,13 +1,12 @@
 # Evaluation configs
-method: GF_learned-perobj_deepsdf_grasp1k_obs0.1_ik_v2partial # new models
-no_endpoint_smoothing: True # False
-# collision_point_num: 30  # collision point sample number for each link
+method: NGDF_grasp1k_smth0.01_obs0.1
+no_endpoint_smoothing: True
 use_standoff: False
 use_goal_grad: True
 ol_alg: null 
 use_min_cost_traj: False
 filter_collision: False
-start_end_equal: True #
+start_end_equal: True
 initial_ik: True
 chomp_adam: True
 per_class_models: True
@@ -36,7 +35,6 @@ grasp_schedule_rate: 1.0
 
 base_step_size: 0.03
 optim_steps: 500
-extra_smooth_steps: 0  # extra steps for postprocessing fixed goal
+extra_smooth_steps: 0
 pre_terminate: True
 dist_func: control_points
-consider_finger: False

@@ -57,34 +57,31 @@ class LearnedGrasp:
         return output
 
     def get_shape_code(self, pc, category="All"):
-        if self.arch == "deepsdf":
-            """input is not mean_centered, point cloud is in world frame"""
-            # Farthest point sampling
-            pc_t = torch.tensor(pc[:, :3]).unsqueeze(0)  # 1 x N x 3
-            try:
-                pc_fps, pc_fps_idxs = pytorch3d.ops.sample_farthest_points(
-                    pc_t, K=1500, random_start_point=True
-                )
-            except Exception as e:
-                print(e)
-                import IPython
+        """input is not mean_centered, point cloud is in world frame"""
+        # Farthest point sampling
+        pc_t = torch.tensor(pc[:, :3]).unsqueeze(0)  # 1 x N x 3
+        try:
+            pc_fps, pc_fps_idxs = pytorch3d.ops.sample_farthest_points(
+                pc_t, K=1500, random_start_point=True
+            )
+        except Exception as e:
+            print(e)
+            import IPython
 
-                IPython.embed()
+            IPython.embed()
 
-            # mean center the point cloud
-            mean_pc = pc_fps.mean(axis=1)
-            pc_fps -= mean_pc
+        # mean center the point cloud
+        mean_pc = pc_fps.mean(axis=1)
+        pc_fps -= mean_pc
 
-            # Run VN-OccNets
-            if self.use_double:
-                pc_fps = pc_fps.double()
-            shape_mi = {"point_cloud": pc_fps.cuda()}
-            with torch.no_grad():
-                latent = self.models[category].shape_model.extract_latent(shape_mi)
-                latent = torch.reshape(latent, (latent.shape[0], -1))
-            return latent, mean_pc.squeeze().cpu().numpy()
-        elif self.arch == "pointnet2_seg":
-            raise NotImplementedError
+        # Run VN-OccNets
+        if self.use_double:
+            pc_fps = pc_fps.double()
+        shape_mi = {"point_cloud": pc_fps.cuda()}
+        with torch.no_grad():
+            latent = self.models[category].shape_model.extract_latent(shape_mi)
+            latent = torch.reshape(latent, (latent.shape[0], -1))
+        return latent, mean_pc.squeeze().cpu().numpy()
 
     def device(self):
         return self.models[

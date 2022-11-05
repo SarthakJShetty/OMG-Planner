@@ -541,13 +541,6 @@ class PandaAcronymEnv(PandaEnv):
         )
         objinfos.append(objinfo)
 
-        if planning_scene.cfg.float_obstacle:  # place obstacle in front of target
-            objinfo = self.get_object_info(
-                "Bottle_244894af3ba967ccd957eaf7f4edb205_0.012953570261294404",
-                Path(hydra_cfg.data_root) / hydra_cfg.dataset,
-            )
-            objinfos.append(objinfo)
-
         self.reset(
             init_joints=scene["joints"],
             no_table=not cfg.table,
@@ -560,15 +553,6 @@ class PandaAcronymEnv(PandaEnv):
             uid, cfg.tgt_pos, q=scene["obj_rot"], random=False, gravity=cfg.gravity
         )
         uids.append(uid)
-
-        if planning_scene.cfg.float_obstacle:
-            obs_pos = deepcopy(cfg.tgt_pos)
-            obs_pos[0] -= 0.1
-            uid = self._objectUids[1]
-            self.place_object(
-                uid, obs_pos, q=[1, 0, 0, 0], random=False, gravity=cfg.gravity
-            )
-            uids.append(uid)
 
         obs = self._get_observation(get_pc=cfg.pc, single_view=single_view)
         self.set_scene_env(planning_scene, uids, objinfos, scene["joints"], hydra_cfg)

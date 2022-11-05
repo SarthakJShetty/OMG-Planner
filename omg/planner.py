@@ -795,15 +795,7 @@ class Planner(object):
             if vis:  # visualize
                 T_b2e_np = pose_ee.to_matrix().detach().squeeze().numpy()
                 draw_pose(self.T_w2b_np @ T_b2e_np)  # ee in world frame
-            if "logmap" in self.cfg.dist_func:
-                if "tip" in self.cfg.dist_func:
-                    pose_tip = th.SE3(data=wrist_to_tip_T()[np.newaxis, :3])
-                    pose_goal_ = pose_goal_.compose(pose_tip)
-                    pose_ee = pose_ee.compose(pose_tip)
-                residual_unscaled = pose_goal_.local(pose_ee)  # SE(3) 1 x 6
-                residual = scale_logmap(residual_unscaled, self.env.cfg.lm_trans_wt)
-                loss = torch.linalg.norm(residual, ord="fro")  # mse
-            elif self.cfg.dist_func == "control_points":
+            if self.cfg.dist_func == "control_points":
                 T_ee = pose_ee.to_matrix()
                 T_goal = pose_goal_.to_matrix()
                 ee_control_pts = transform_control_points(
