@@ -166,9 +166,11 @@ class Cost(object):
             robot_poses_end = self.forward_poses(wrap_value(end))[0]
 
             ws_positions_start = self.forward_points(
-                robot_poses_start[None, ...], robot_pts)[:, :, 0]
+                robot_poses_start[None, ...], robot_pts
+            )[:, :, 0]
             ws_positions_end = self.forward_points(
-                robot_poses_end[None, ...],   robot_pts)[:, :, 0]
+                robot_poses_end[None, ...], robot_pts
+            )[:, :, 0]
 
             """ get derivative """
             ws_velocity = self.cfg.get_derivative(
@@ -316,7 +318,7 @@ class Cost(object):
         for idx, obs in enumerate(self.env.objects):
             if obs.name == "floor" or obs.name in self.cfg.disable_collision_set:
                 disables[idx] = 1
- 
+
             padding_scale = 1
             eps = self.cfg.epsilon
             clearances[idx] = self.cfg.clearance
@@ -348,7 +350,7 @@ class Cost(object):
         # Commenting out for fair comparison
         # if self.cfg.use_standoff and self.cfg.goal_set_proj:
         if self.cfg.use_standoff:
-        #     potentials[-self.cfg.reach_tail_length :] = 0
+            #     potentials[-self.cfg.reach_tail_length :] = 0
             potential_grads[-self.cfg.reach_tail_length :] = 0
             collides[-self.cfg.reach_tail_length :] = 0
         else:
@@ -358,25 +360,33 @@ class Cost(object):
 
         if False:
             import pybullet as pb
-            T_w2b = np.array([[ 1.  ,  0.  ,  0.  , -0.55],
-                        [ 0.  ,  1.  ,  0.  , -0.5 ],
-                        [ 0.  ,  0.  ,  1.  , -1.15],
-                        [ 0.  ,  0.  ,  0.  ,  1.  ]])
-            
+
+            T_w2b = np.array(
+                [
+                    [1.0, 0.0, 0.0, -0.55],
+                    [0.0, 1.0, 0.0, -0.5],
+                    [0.0, 0.0, 1.0, -1.15],
+                    [0.0, 0.0, 0.0, 1.0],
+                ]
+            )
+
             points_np = points.reshape([n, m, p, 3]).detach().cpu().numpy()
             zeropoints_np = points_np[-self.cfg.reach_tail_length :]
             zeropts = zeropoints_np.reshape((-1, 3))
-            zeropts_hm = np.concatenate([zeropts, np.ones((zeropts.shape[0], 1))], axis=1)
+            zeropts_hm = np.concatenate(
+                [zeropts, np.ones((zeropts.shape[0], 1))], axis=1
+            )
 
             pb.removeAllUserDebugItems()
             w2pts = (T_w2b @ zeropts_hm.T).T
             for i in range(len(w2pts)):
                 w2pt = w2pts[i]
                 pb.addUserDebugLine(
-                    w2pt[:3], 
-                    w2pt[:3]+np.array([0.01, 0.01, 0.01]),
+                    w2pt[:3],
+                    w2pt[:3] + np.array([0.01, 0.01, 0.01]),
                     lineWidth=5.0,
-                    lineColorRGB=(0.0, 0, 1.0))
+                    lineColorRGB=(0.0, 0, 1.0),
+                )
 
         if uncheck_finger_collision == -1:
             potentials[:, -2:] *= 0.1  # soft
@@ -427,7 +437,7 @@ class Cost(object):
                 topk[2][-self.cfg.top_k_collision :],
             )
             top_potentials = potentials[top_n, top_m, top_p]
-            # vis_pts[top_n, top_m, top_p, 3:6] = [235, 52, 195] 
+            # vis_pts[top_n, top_m, top_p, 3:6] = [235, 52, 195]
 
             if not self.cfg.consider_finger:
                 m = m - 2
@@ -458,7 +468,7 @@ class Cost(object):
         Computes smoothness loss
         """
         link_smooth_weight = np.array(self.cfg.link_smooth_weight)[None]
-        ed = np.zeros([xi.shape[0] + 1, xi.shape[1]]) # e
+        ed = np.zeros([xi.shape[0] + 1, xi.shape[1]])  # e
         ed[0] = (
             self.cfg.diff_rule[0][self.cfg.diff_rule_length // 2 - 1]
             * start
@@ -473,7 +483,7 @@ class Cost(object):
 
         velocity = self.cfg.diff_matrices[0].dot(xi)  #
         velocity_norm = np.linalg.norm((velocity + ed) * link_smooth_weight, axis=1)
-        smoothness_loss = 0.5 * velocity_norm ** 2  #
+        smoothness_loss = 0.5 * velocity_norm**2  #
 
         smoothness_grad = self.cfg.A.dot(xi) + self.cfg.diff_matrices[0].T.dot(ed)
         smoothness_grad *= link_smooth_weight
@@ -503,22 +513,19 @@ class Cost(object):
         )
         weighted_smooth_grad = self.cfg.smoothness_weight * smoothness_grad
 
-        # if traj.goal_cost is not None and traj.goal_grad is not None:
-        if 'GF' in self.cfg.method and self.cfg.use_goal_grad:
+        if "NGDF" in self.cfg.method and self.cfg.use_goal_grad:
             assert traj.goal_cost is not None
             assert traj.goal_grad is not None
             weighted_goal_cost = self.cfg.grasp_weight * traj.goal_cost
-            # print(f"grasp weight: {self.cfg.grasp_weight}")
             weighted_goal_grad = np.zeros_like(weighted_obs_grad)
             weighted_goal_grad[-1, :7] = self.cfg.grasp_weight * traj.goal_grad
-            # print(f"obs wt: {self.cfg.obstacle_weight}, smooth wt: {self.cfg.smoothness_weight}, goal wt: {self.cfg.grasp_weight}")
             cost = weighted_obs + weighted_smooth + weighted_goal_cost
             grad = weighted_obs_grad + weighted_smooth_grad + weighted_goal_grad
 
             cost_traj = (
                 self.cfg.obstacle_weight * obstacle_loss.sum(-1)
                 + self.cfg.smoothness_weight * smoothness_loss[:-1]
-                + weighted_goal_grad.sum(-1) 
+                + weighted_goal_grad.sum(-1)
             )
         else:
             weighted_goal_cost = 0
@@ -532,24 +539,27 @@ class Cost(object):
                 + self.cfg.smoothness_weight * smoothness_loss[:-1]
             )
 
-        print(f"wt obs cost {weighted_obs:.10f}, wt smth cost {weighted_smooth:.7f}, wt goal cost {weighted_goal_cost:.7f}, collision pts: {int(collide)}")
+        print(
+            f"wt obs cost {weighted_obs:.10f}, wt smth cost {weighted_smooth:.7f}, wt goal cost {weighted_goal_cost:.7f}, collision pts: {int(collide)}"
+        )
 
         if traj.goal_set != []:
-            # if ('Proj' in self.cfg.method or 'OMG' in self.cfg.method) and self.cfg.goal_set_proj:
-            if (self.cfg.goal_set_proj and 'GF_known' not in self.cfg.method) or 'CG' in self.cfg.method:
-                goal_dist = np.linalg.norm(traj.data[-1] - traj.goal_set[traj.goal_idx])
-                goal_dist_thresh = 0.01
-            elif 'GF' in self.cfg.method:
-            #  and traj.goal_cost is not None:
-                goal_dist = traj.goal_cost if self.cfg.use_goal_grad else np.linalg.norm(traj.data[-1, :] - traj.goal_joints)
-                goal_dist_thresh = self.cfg.goal_thresh
-            elif 'Fixed' in self.cfg.method:
+            if "fixed" in self.cfg.method:
                 goal_dist = 0
                 goal_dist_thresh = 0.01
+            elif self.cfg.goal_set_proj or "CG" in self.cfg.method:
+                goal_dist = np.linalg.norm(traj.data[-1] - traj.goal_set[traj.goal_idx])
+                goal_dist_thresh = 0.01
+            elif "NGDF" in self.cfg.method:
+                goal_dist = (
+                    traj.goal_cost
+                    if self.cfg.use_goal_grad
+                    else np.linalg.norm(traj.data[-1, :] - traj.goal_joints)
+                )
+                goal_dist_thresh = self.cfg.goal_thresh
             else:
                 raise NotImplementedError
-         
-            # print(f"goal_dist {goal_dist}, goal_thresh {goal_dist_thresh}")
+
             terminate = (
                 (collide <= self.cfg.allow_collision_point)
                 and self.cfg.pre_terminate
@@ -579,8 +589,8 @@ class Cost(object):
             "weighted_smooth": weighted_smooth,
             "weighted_smooth_grad": np.linalg.norm(weighted_smooth_grad),
             "weighted_obs_grad": np.linalg.norm(weighted_obs_grad),
-            "weighted_grasp_grad": np.linalg.norm(weighted_goal_grad),  
-            "weighted_grasp": weighted_goal_cost, 
+            "weighted_grasp_grad": np.linalg.norm(weighted_goal_grad),
+            "weighted_grasp": weighted_goal_cost,
             "gradient": grad,
             "cost": cost,
             "grad": np.linalg.norm(grad),
@@ -591,7 +601,7 @@ class Cost(object):
             "execute": execute,
             "cost_traj": cost_traj,
             "transforms": [],
-            "pred_grasp": None
+            "pred_grasp": None,
         }
 
         return cost, grad, info

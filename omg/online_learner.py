@@ -86,7 +86,7 @@ class Learner(object):
         self.last_leader = 0
         self.eta = np.sqrt(np.log(self.N + 1) / (self.T))
 
-        self.etas = [self.eta * (2 ** x) for x in [-2, -1, 0, 2, 4]]
+        self.etas = [self.eta * (2**x) for x in [-2, -1, 0, 2, 4]]
         self.delta = np.ones(self.N) / (4 * self.N + 1)
         self.num_experts = len(self.etas)
 
@@ -97,20 +97,27 @@ class Learner(object):
         self.q = np.ones(self.num_experts) / self.num_experts
 
         if (
-            ((self.cfg.goal_idx == -2 and (self.alg_name == "Baseline" or self.alg_name == "MD" or self.alg_name == 'FTC' or self.alg_name == 'Exp' or self.alg_name == 'FTL')))  # online learning algs
-            and (len(self.env.objects) > 0 and len(self.env.objects[self.env.target_idx].reach_grasps) > 0)
+            (
+                self.cfg.goal_idx == -2
+                and (
+                    self.alg_name == "Baseline"
+                    or self.alg_name == "MD"
+                    or self.alg_name == "FTC"
+                    or self.alg_name == "Exp"
+                    or self.alg_name == "FTL"
+                )
+            )
+        ) and (  # online learning algs
+            len(self.env.objects) > 0
+            and len(self.env.objects[self.env.target_idx].reach_grasps) > 0
         ):
             costs = self.cost_vector()
             sorted_idx = np.argsort(costs)
-            self.traj.goal_idx = np.argmin(costs)  
-    
+            self.traj.goal_idx = np.argmin(costs)
+
         if self.alg_name is not None:
             self.traj.end = self.traj.goal_set[self.traj.goal_idx]  #
             self.traj.interpolate_waypoints()
-
-        if 'GF_known' in self.env.cfg.method:
-            urdf_path = DifferentiableFrankaPanda().urdf_path.replace('_no_gripper', '')
-            self.robot_model = th.eb.UrdfRobotModel(urdf_path)
 
     def cost_vector(self):
         """
@@ -188,8 +195,6 @@ class Learner(object):
         """
         if self.alg_name == "Proj":
             self.Proj()
-        elif self.alg_name is None: # for implicit grasps
-            self.Proj()
         else:
             cv = self.cost_vector()
             if self.alg_name == "FTL":
@@ -220,30 +225,18 @@ class Learner(object):
 
     def Proj(self):
         """
-        Goal set projection 
+        Goal set projection
         """
-        if 'GF_known' in self.env.cfg.method:
-            q_curr = torch.tensor(self.traj.data[-1], device='cpu', dtype=torch.float32).unsqueeze(0)
-            pose_ee = self.robot_model.forward_kinematics(q_curr)['panda_hand']
+        cur_end_point = self.traj.data[-1]
+        try:
+            diff = cur_end_point - np.array(self.traj.goal_set)
+        except Exception as e:  # no grasps in the goal set
+            print(e)
+            import IPython
 
-            q_goals = torch.tensor(self.traj.goal_set, device='cpu', dtype=torch.float32)
-            pose_goals = self.robot_model.forward_kinematics(q_goals)['panda_hand']
-            if self.env.cfg.dist_func == 'control_points':
-                T_ee = pose_ee.to_matrix()
-                T_goals = pose_goals.to_matrix()
-                ee_control_pts = transform_control_points(T_ee, batch_size=T_ee.shape[0], mode='rt', device='cpu') # N x 6 x 4
-                goal_control_pts = transform_control_points(T_goals, batch_size=T_goals.shape[0], mode='rt', device='cpu') # N x 6 x 4
-                norms = control_point_l1_loss(ee_control_pts, goal_control_pts, mean_batch=False)
-            target_idx = torch.argmin(norms)
-        else:
-            cur_end_point = self.traj.data[-1]
-            try:
-                diff = cur_end_point - np.array(self.traj.goal_set)
-            except Exception as e: # no grasps in the goal set
-                print(e)
-                import IPython; IPython.embed()
-            dists = np.linalg.norm(diff, axis=-1)
-            target_idx = np.argmin(dists)
+            IPython.embed()
+        dists = np.linalg.norm(diff, axis=-1)
+        target_idx = np.argmin(dists)
 
         self.p = np.zeros(self.N)
         self.p[target_idx] = 1
@@ -285,8 +278,6 @@ class Learner(object):
 
         goal_idx_old = self.traj.goal_idx
         self.traj.goal_idx = np.argmax(self.p)
-        if 'GF_known' not in self.cfg.method: # Don't update endpoint of trajectory, let gradient do it
-            self.traj.end = self.traj.goal_set[self.traj.goal_idx]
         self.Ti[self.traj.goal_idx] += 1
         self.Tis.append(self.Ti)
         return self.traj.goal_idx != goal_idx_old

@@ -5,6 +5,7 @@
 import numpy as np
 from .util import *
 
+
 class Optimizer(object):
     """
     Optimizer class that runs optimization based on CHOMP
@@ -67,16 +68,22 @@ class Optimizer(object):
         self.cfg.obstacle_weight = (
             # self.cfg.base_obstacle_weight * self.cfg.cost_schedule_decay ** self.step
             # min(self.cfg.base_obstacle_weight * self.cfg.obs_schedule_rate ** self.step, self.cfg.max_obstacle_weight)
-            max(self.cfg.base_obstacle_weight * self.cfg.obs_schedule_rate ** self.step, self.cfg.min_obstacle_weight)
+            max(
+                self.cfg.base_obstacle_weight * self.cfg.obs_schedule_rate**self.step,
+                self.cfg.min_obstacle_weight,
+            )
         )
-        self.cfg.smoothness_weight = (
-            min(self.cfg.smoothness_base_weight * self.cfg.smooth_schedule_rate ** self.step, self.cfg.max_smooth_weight)
+        self.cfg.smoothness_weight = min(
+            self.cfg.smoothness_base_weight
+            * self.cfg.smooth_schedule_rate**self.step,
+            self.cfg.max_smooth_weight,
         )
-        self.cfg.grasp_weight = (
-            max(self.cfg.base_grasp_weight * self.cfg.grasp_schedule_rate ** self.step, self.cfg.min_grasp_weight) 
+        self.cfg.grasp_weight = max(
+            self.cfg.base_grasp_weight * self.cfg.grasp_schedule_rate**self.step,
+            self.cfg.min_grasp_weight,
         )
         self.cfg.step_size = (
-            self.cfg.step_decay_rate ** self.step * self.cfg.base_step_size
+            self.cfg.step_decay_rate**self.step * self.cfg.base_step_size
         )
 
     def reset(self):
@@ -93,11 +100,6 @@ class Optimizer(object):
         if self.cfg.use_standoff:
             chosen_goal = self.cost.target_obj.reach_grasps[int(traj.goal_idx)]
             constraint_num = chosen_goal.shape[0]
-        # elif 'GF' in self.cfg.method:  # goal pose output
-        #     chosen_goal = traj.goal_joints[np.newaxis, :] 
-        #     # 1 x 7 if use_ik is false
-        #     constraint_num = 1
-        #     # chosen_goal = np.concatenate([chosen_goal, traj.data[-constraint_num:, -2:]], axis=1) # 1 x 9
         else:
             chosen_goal = traj.goal_set[int(traj.goal_idx)]
             constraint_num = 1
@@ -123,8 +125,8 @@ class Optimizer(object):
             self.b1 = 0.9
             self.b2 = 0.999
             self.eps = 1e-8
-            self.m = 0 # first moment vector
-            self.v = 0 # second moment vector
+            self.m = 0  # first moment vector
+            self.v = 0  # second moment vector
 
     def optimize(self, traj, force_update=False, info_only=False, tstep=None):
         """
@@ -142,12 +144,17 @@ class Optimizer(object):
             update = self.goal_set_projection(traj, grad)
         else:
             if self.cfg.chomp_adam:  # Adam
-                Agrad = self.cfg.Ainv.dot(grad) # 30 x 9
-                self.m = self.b1*self.m + (1 - self.b1)*Agrad
-                self.v = self.b2*self.v + (1 - self.b2)*np.square(Agrad)
+                Agrad = self.cfg.Ainv.dot(grad)  # 30 x 9
+                self.m = self.b1 * self.m + (1 - self.b1) * Agrad
+                self.v = self.b2 * self.v + (1 - self.b2) * np.square(Agrad)
                 hat_m = self.m / (1 - np.power(self.b1, tstep))
                 hat_v = self.v / (1 - np.power(self.b2, tstep))
-                update = -self.cfg.step_size * (self.step_decay**tstep) * hat_m / (np.sqrt(hat_v) + self.eps)
+                update = (
+                    -self.cfg.step_size
+                    * (self.step_decay**tstep)
+                    * hat_m
+                    / (np.sqrt(hat_v) + self.eps)
+                )
             else:  # SGD
                 update = -self.cfg.step_size * self.cfg.Ainv.dot(grad)
 

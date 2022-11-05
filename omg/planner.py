@@ -128,7 +128,7 @@ class Planner(object):
             self.grasp_init(env)
             self.setup_time = time.time() - start_time_
             self.learner = Learner(env, self.traj, self.cost)
-        elif "learned" in self.cfg.method:
+        elif "NGDF" in self.cfg.method:
             self.use_double = True
             torch.set_default_tensor_type(torch.cuda.DoubleTensor)
             from omg_bullet.methods.learnedgrasp import LearnedGrasp
@@ -140,8 +140,7 @@ class Planner(object):
             )
             self.setup_time = 0
         elif "CG" in self.cfg.method:
-            from omg_bullet.methods.contact_graspnet import \
-                ContactGraspNetInference
+            from omg_bullet.methods.contact_graspnet import ContactGraspNetInference
 
             self.grasp_predictor = ContactGraspNetInference()
         else:
@@ -827,9 +826,7 @@ class Planner(object):
         self.info = []
         self.selected_goals = []
         start_time_ = time.time()
-        alg_switch = (
-            self.cfg.ol_alg != "Baseline" and "GF_learned" not in self.cfg.method
-        )
+        alg_switch = self.cfg.ol_alg != "Baseline" and "NGDF" not in self.cfg.method
 
         best_traj = None  # Save lowest cost trajectory
         best_cost = 1000
@@ -837,14 +834,14 @@ class Planner(object):
             (not self.cfg.goal_set_proj)
             or len(self.traj.goal_set) > 0
             or ("CG" in self.cfg.method)
-            or "GF" in self.cfg.method
+            or "NGDF" in self.cfg.method
         ):
             self.T_w2b_np = get_world2bot_transform()
 
             urdf_path = DifferentiableFrankaPanda().urdf_path.replace("_no_gripper", "")
             robot_model = th.eb.UrdfRobotModel(urdf_path, device="cuda")
 
-            if "GF" in self.cfg.method and pc_dict is not {}:  # deepsdf
+            if "NGDF" in self.cfg.method and pc_dict is not {}:
                 # Get shape code for point cloud
                 shape_code, mean_pc = self.grasp_predictor.get_shape_code(
                     pc_dict["points_world"], category=category
@@ -950,35 +947,7 @@ class Planner(object):
                     # dbg_ids = [draw_pose(T_w2b @ unpack_pose(g)) for g in grasp_set[:50]]
                     self.dbg_ids += dbg_ids
 
-            # if 'GF_learned' in self.cfg.method:
-            #     dtype = torch.float32 if not self.use_double else torch.float64
-            #     device = self.grasp_predictor.device()
-            #     T_o2b_np = self.get_T_obj2bot()
-            #     T_o2b = torch.tensor(T_o2b_np, dtype=dtype, device=device)
-            #     pose_o2b = th.SE3(tensor=T_o2b[:3].unsqueeze(0))
-            #     T_rotgrasp2grasp = pt.transform_from(pr.matrix_from_axis_angle([0, 0, 1, -np.pi/2]), [0, 0, 0])  # correct wrist rotation
-            #     # offset_pose = np.array(rotZ(np.pi / 2)) # rotate about z axis
-            #     # T_h2t = wrist_to_tip(dtype=dtype, device=device) # TODO transform if use_tip
-            #     pose_h2t = th.SE3(tensor=torch.tensor(T_rotgrasp2grasp)[:3].unsqueeze(0))
-            #     # pose_h2t = th.SE3(tensor=torch.eye(4)[:3].unsqueeze(0))
-
-            # if 'GF' in self.cfg.method and self.cfg.initial_ik:
-            #     pq_b2g = pt.pq_from_transform(T_b2g_np) # wxyz
-            #     seed = self.traj.start[:7]
-            #     goal_ik = config.cfg.ROBOT.inverse_kinematics(
-            #         pq_b2g[:3], ros_quat(pq_b2g[3:]), seed=seed
-            #     )
-            #     if goal_ik is None:
-            #         print(f"Warning: initial IK failed")
-            #         # self.CHOMP_update(self.traj, pose_b2g, robot_model)
-            #     else:
-            #         traj.set_goal_and_interp(goal_ik)
-            #         # traj.goal_cost = 0
-            #         # traj.goal_grad = np.zeros((1, 7))
-            #         # ran_initial_ik = True
-
             self.optim.init(self.traj)
-            # ran_initial_ik = False
 
             for t in range(self.cfg.optim_steps + self.cfg.extra_smooth_steps):
                 sys.stdout.write(f"plan step {t} ")
@@ -988,7 +957,7 @@ class Planner(object):
                     self.learner.update_goal()
                     self.selected_goals.append(self.traj.goal_idx)
 
-                if "GF_learned" in self.cfg.method:
+                if "NGDF" in self.cfg.method:
                     q = torch.tensor(
                         self.traj.data[-1], dtype=dtype, device=device
                     ).unsqueeze(0)
@@ -1035,58 +1004,11 @@ class Planner(object):
 
                     traj.goal_cost = loss.item()
                     traj.goal_grad = q.grad.float().squeeze()[:7].cpu().numpy()
-                elif "GF_known" in self.cfg.method:
-                    q_goal = torch.tensor(
-                        self.traj.goal_set[self.traj.goal_idx],
-                        device="cpu",
-                        dtype=torch.float32,
-                    )
-                    pose_b2g = robot_model.forward_kinematics(q_goal)["panda_hand"]
-                    T_b2g_np = pose_b2g.to_matrix().squeeze(0).cpu().numpy()
-                    draw_pose(
-                        self.T_w2b_np @ T_b2g_np, alt_color=True
-                    )  # goal in world frame
-                    self.CHOMP_update(self.traj, pose_b2g, robot_model)
-
-                # Update trajectory goal cost and gradient with either IK or differentiable robot model
-                # if 'GF_known' in self.cfg.method and self.cfg.initial_ik and not ran_initial_ik: # GF
-                #     pq_b2g = pt.pq_from_transform(T_b2g_np) # wxyz
-                #     seed = self.traj.start[:7]
-                #     goal_ik = config.cfg.ROBOT.inverse_kinematics(
-                #         pq_b2g[:3], ros_quat(pq_b2g[3:]), seed=seed
-                #     )
-                #     # if IK fails, just run CHOMP update and try again next iter
-                #     if goal_ik is None:
-                #         print(f"Initial IK failed in iter {t}")
-                #         self.CHOMP_update(self.traj, pose_b2g, robot_model)
-                #     else:
-                #         traj.set_goal_and_interp(goal_ik)
-                #         traj.goal_cost = 0
-                #         traj.goal_grad = np.zeros((1, 7))
-                #         ran_initial_ik = True
-                # elif 'GF_known' in self.cfg.method: # GF
-                # if 'GF_known' in self.cfg.method: # GF
-                # self.CHOMP_update(self.traj, pose_b2g, robot_model)
 
                 info_t = self.optim.optimize(self.traj, force_update=True, tstep=t + 1)
 
-                if "GF_known" in self.cfg.method:
-                    info_t["pred_grasp"] = pose_b2g.to_matrix().detach().cpu().numpy()
-                self.info.append(info_t)
-                self.history_trajectories.append(np.copy(traj.data))
-                if self.cfg.use_min_cost_traj:
-                    if (
-                        info_t["collide"] <= self.cfg.allow_collision_point
-                        and info_t["grasp"] < best_cost
-                    ):
-                        best_cost = info_t["grasp"]
-                        best_traj = np.copy(traj.data)
-
                 if self.cfg.report_time:
                     print("plan optimize:", time.time() - start_time)
-
-                # if viz_env:
-                # viz_env.update_panda_viz(self.traj, k=1)
 
                 # Visualize points in collision with robot
                 if viz_env and info_t["collide"] > 0 and False:
