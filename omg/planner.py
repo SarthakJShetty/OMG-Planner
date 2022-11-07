@@ -514,21 +514,6 @@ class Planner(object):
                             Ts_obj2rotgrasp, _, success = load_grasps(grasps_path)
                             Ts_obj2rotgrasp = Ts_obj2rotgrasp[success == 1]
                             pose_grasp = Ts_obj2rotgrasp  # load grasps in original mesh frame, not mesh centroid frame
-
-                            if False:  # debug visualization
-                                import trimesh
-                                from acronym_tools import create_gripper_marker
-
-                                # grasps_v = [create_gripper_marker(color=[0, 0, 255]).apply_transform(T) for T in (T_ctr2obj @ Ts_obj2rotgrasp)[:50]]
-                                grasps_v = [
-                                    create_gripper_marker(
-                                        color=[0, 0, 255]
-                                    ).apply_transform(T_ctr2obj @ T)
-                                    for T in (pose_grasp)[:50]
-                                ]
-                                # m = obj_mesh.apply_transform(np.linalg.inv(T_ctr2obj))
-                                m = obj_mesh
-                                trimesh.Scene([m] + grasps_v).show()
                         else:
                             simulator_path = (
                                 self.cfg.robot_model_path
@@ -774,15 +759,6 @@ class Planner(object):
                     target_obj.grasp_vis_points = []
             target_obj.compute_grasp = False
 
-            if False:  # visualization
-                T_w2b = get_world2bot_transform()
-                draw_pose(T_w2b)
-                T_b2o = unpack_pose(target_obj.pose)
-                draw_pose(T_w2b @ T_b2o)
-
-                for T_obj2grasp in target_obj.grasps_poses[:30]:
-                    draw_pose(T_w2b @ T_b2o @ T_obj2grasp)
-
     def CHOMP_update(self, traj, pose_goal, robot_model):
         q_curr = torch.tensor(
             traj.data[-1], device="cpu", dtype=torch.float32
@@ -857,18 +833,12 @@ class Planner(object):
                 T_pc2b = torch.tensor(T_pc2b_np, dtype=dtype, device=device)
                 pose_pc2b = th.SE3(tensor=T_pc2b[:3].unsqueeze(0))
 
-                # Get transform from mesh obj frame (not centroid!) to bot frame
-                # T_o2b = torch.tensor(T_o2b_np, dtype=dtype, device=device)
-                # pose_o2b = th.SE3(tensor=T_o2b[:3].unsqueeze(0))
-
-                # correct wrist rotation - TODO make sure transform is correct for what we need, acronym is rotgrasp convention
                 T_rotgrasp2grasp = pt.transform_from(
                     pr.matrix_from_axis_angle([0, 0, 1, -np.pi / 2]), [0, 0, 0]
                 )
                 pose_h2t = th.SE3(
                     tensor=torch.tensor(T_rotgrasp2grasp)[:3].unsqueeze(0)
                 )
-                # T_h2t = wrist_to_tip(dtype=dtype, device=device) # TODO transform if use_tip
 
                 if self.cfg.initial_ik:
                     # set init end pose to current orientation but at offset to point cloud centroid frame
@@ -893,31 +863,12 @@ class Planner(object):
                     else:
                         traj.set_goal_and_interp(goal_ik)
 
-                if False:  # visualize pc in world frame
-                    self.dbg_ids = []
-                    while len(self.dbg_ids) > 0:
-                        dbg_id = self.dbg_ids.pop(0)
-                        p.removeUserDebugItem(dbg_id)
-
-                    pc_idx_sample = np.random.choice(
-                        range(len(pc_dict["points_world"])), 100
-                    )
-                    for pc_idx in pc_idx_sample:
-                        w2pc = pc_dict["points_world"][pc_idx]
-                        dbg_id = p.addUserDebugLine(
-                            w2pc[:3],
-                            w2pc[:3] + np.array([0.001, 0.001, 0.001]),
-                            lineWidth=5.0,
-                            lineColorRGB=(255.0, 0, 0),
-                        )
-                        self.dbg_ids.append(dbg_id)
             elif "CG" in self.cfg.method and pc_dict is not {}:
                 # get grasp set using contact graspnet
                 start_time_ = time.time()
                 pred_grasps_cam, scores, _ = self.grasp_predictor.inference(
                     pc_dict["points_cam2"]
                 )
-                # pred_grasps_cam, scores, _ = self.grasp_predictor.inference(pc_dict['points_cam2'], pc_dict['points_segments'])
                 T_world_cam2 = pc_dict["T_world_cam2"]
 
                 grasp_set = self.load_grasp_set_cg(
@@ -932,20 +883,6 @@ class Planner(object):
                 self.grasp_init(self.env)
                 self.learner = Learner(self.env, self.traj, self.cost)
                 self.setup_time = time.time() - start_time_
-
-                # Visualize predicted grasps
-                if True:
-                    if self.dbg_ids is None:
-                        self.dbg_ids = []
-                    while len(self.dbg_ids) > 0:
-                        dbg_id = self.dbg_ids.pop(0)
-                        p.removeUserDebugItem(dbg_id)
-
-                    T_w2b = get_world2bot_transform()
-                    pred_grasp = unpack_pose(grasp_set[self.traj.goal_idx])
-                    dbg_ids = draw_pose(T_w2b @ pred_grasp)
-                    # dbg_ids = [draw_pose(T_w2b @ unpack_pose(g)) for g in grasp_set[:50]]
-                    self.dbg_ids += dbg_ids
 
             self.optim.init(self.traj)
 
@@ -979,24 +916,6 @@ class Planner(object):
                         dist = self.grasp_predictor.forward(x_dict)
                         loss = torch.abs(dist.mean(dim=1, keepdim=True))
 
-                        if (
-                            False
-                        ):  # visualize pc centroid and final gripper pose in world frame
-                            if self.dbg_ids is None:
-                                self.dbg_ids = []
-                            while len(self.dbg_ids) > 0:
-                                dbg_id = self.dbg_ids.pop(0)
-                                p.removeUserDebugItem(dbg_id)
-
-                            dbg_ids = draw_pose(self.T_w2b_np @ T_b2pc_np)
-                            self.dbg_ids += dbg_ids
-                            dbg_ids = draw_pose(
-                                self.T_w2b_np
-                                @ T_b2pc_np
-                                @ pose_pc2t.to_matrix().detach().cpu().squeeze().numpy()
-                            )
-                            self.dbg_ids += dbg_ids
-
                         return loss
 
                     loss = fn(q)
@@ -1009,77 +928,6 @@ class Planner(object):
 
                 if self.cfg.report_time:
                     print("plan optimize:", time.time() - start_time)
-
-                # Visualize points in collision with robot
-                if viz_env and info_t["collide"] > 0 and False:
-                    while len(self.dbg_ids) > 0:
-                        dbg_id = self.dbg_ids.pop(0)
-                        p.removeUserDebugItem(dbg_id)
-                    # p.removeAllUserDebugItems()
-
-                    fngr_col_idxs = np.where(info_t["collision_pts"][:, :, :, 3] == 255)
-                    col_pts = info_t["collision_pts"][fngr_col_idxs][:, :6]
-                    for col_pt in col_pts:
-                        col_pt_h = np.concatenate((col_pt[:3], [1]))
-                        w2col_pt = self.T_w2b_np @ col_pt_h
-                        col_pt[3:6] /= 255.0
-                        dbg_id = p.addUserDebugLine(
-                            w2col_pt[:3],
-                            w2col_pt[:3] + np.array([0.001, 0.001, 0.001]),
-                            lineWidth=5.0,
-                            lineColorRGB=col_pt[3:6],
-                        )
-                        self.dbg_ids.append(dbg_id)
-
-                    # # draw sdf points
-                    # coords = self.env.objects[self.env.target_idx].sdf.visualize()
-                    # T_b2o = unpack_pose(self.env.objects[self.env.target_idx].pose)
-                    # draw_pose(self.T_w2b_np @ T_b2o)
-
-                    # for i in range(coords.shape[0]):
-                    #     coord = coords[i]
-                    #     coord = np.concatenate([coord, [1]])
-                    #     T_c = np.eye(4)
-                    #     T_c[:, 3] = coord
-                    #     draw_pose(self.T_w2b_np @ T_b2o @ T_c)
-
-                # visualize robot's collision points
-                # if viz_env and \
-                #     (self.info[-1]["terminate"] or t == self.cfg.optim_steps + self.cfg.extra_smooth_steps - 1):
-                if False:
-                    viz_env.update_panda_viz(self.traj)
-                    robot = self.cost.env.robot
-                    robot_pts = robot.collision_points.transpose([0, 2, 1])
-                    (
-                        robot_poses,
-                        joint_origins,
-                        joint_axis,
-                    ) = self.cost.env.robot.robot_kinematics.forward_kinematics_parallel(
-                        wrap_values(self.traj.data), return_joint_info=True
-                    )
-                    ws_positions = self.cost.forward_points(
-                        robot_poses, robot_pts
-                    )  # p x (m + 1) x n x 3
-                    ws_pos = ws_positions.copy()
-                    ws_pos = ws_pos.transpose([2, 1, 0, 3])
-                    last_col_pts = ws_pos[-1]
-                    fngr_col_pts = last_col_pts[-2:]
-
-                    p.removeAllUserDebugItems()
-
-                    for fngr_idx in range(fngr_col_pts.shape[0]):
-                        for col_pt in fngr_col_pts[fngr_idx]:
-                            col_pt = np.concatenate([col_pt, [1]])
-                            # T_col_pt = np.eye(4)
-                            # T_col_pt[:, 3] = col_pt
-                            # draw_pose(self.T_w2b_np @ col_pt)
-                            w2col_pt = self.T_w2b_np @ col_pt
-                            p.addUserDebugLine(
-                                w2col_pt[:3],
-                                w2col_pt[:3] + np.array([0.001, 0.001, 0.001]),
-                                lineWidth=2.0,
-                                lineColorRGB=(1.0, 0, 0),
-                            )
 
                 if self.info[-1]["terminate"] and t > 0:
                     break
