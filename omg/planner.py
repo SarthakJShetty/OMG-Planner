@@ -131,9 +131,9 @@ class Planner(object):
         elif "NGDF" in self.cfg.method:
             self.use_double = True
             torch.set_default_tensor_type(torch.cuda.DoubleTensor)
-            from omg_bullet.methods.learnedgrasp import LearnedGrasp
+            from omg_bullet.methods.ngdf_pred import NGDFPrediction
 
-            self.grasp_predictor = LearnedGrasp(
+            self.grasp_predictor = NGDFPrediction(
                 ckpt_paths=self.cfg.grasp_weights,
                 use_double=self.use_double,
                 hydra_cfg=hydra_cfg,

@@ -11,7 +11,7 @@ from ngdf.networks import Decoder
 from omegaconf import OmegaConf
 
 
-class LearnedGrasp:
+class NGDFPrediction:
     def __init__(self, ckpt_paths=[], use_double=False, hydra_cfg=None):
         self.use_double = use_double
         self.hydra_cfg = (
