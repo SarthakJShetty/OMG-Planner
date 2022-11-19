@@ -24,6 +24,7 @@ class Trajectory(object):
         self.data = np.zeros([self.timesteps, dof])
         self.goal_set = []
         self.goal_quality = []
+        self.goal_cost = None
 
         self.start = np.array(start)
         if start_end_equal:

@@ -925,6 +925,8 @@ class Planner(object):
                     traj.goal_grad = q.grad.float().squeeze()[:7].cpu().numpy()
 
                 info_t = self.optim.optimize(self.traj, force_update=True, tstep=t + 1)
+                self.info.append(info_t)
+                self.history_trajectories.append(np.copy(traj.data))
 
                 if self.cfg.report_time:
                     print("plan optimize:", time.time() - start_time)
