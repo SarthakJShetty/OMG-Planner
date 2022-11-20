@@ -39,7 +39,6 @@ class NGDFPrediction:
         # update project_root
         self.cfg.project_root = self.hydra_cfg.project_root
         self.cfg.data_root = self.hydra_cfg.data_root
-        self.arch = self.cfg.net.arch
 
         model = self.init_model()
         ckpt = torch.load(ckpt_path)

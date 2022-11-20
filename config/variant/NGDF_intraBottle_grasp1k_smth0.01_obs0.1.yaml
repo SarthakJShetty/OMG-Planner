@@ -11,7 +11,7 @@ initial_ik: True
 chomp_adam: True
 per_class_models: True
 grasp_weights: 
-  - Bottle:/media/thomasweng/manifolds/clust_multirun/intracategory_partial/Bottle_intracategory_partial/default_default_train-graspfields/0_0_248dyj7f/checkpoints/epoch=0-step=199999.ckpt
+  - Bottle:${data_root}/models/Bottle_intracategory_partial/default_default_train-graspfields/0_0_248dyj7f/checkpoints/epoch=0-step=199999.ckpt
 pc: True
 goal_thresh: 0.0000001
 

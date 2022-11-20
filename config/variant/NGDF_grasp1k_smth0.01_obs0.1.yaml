@@ -11,9 +11,9 @@ initial_ik: True
 chomp_adam: True
 per_class_models: True
 grasp_weights: 
-  - Bottle:/media/thomasweng/manifolds/clust_multirun/partial_pcs/objBottle-archdeepsdf_partial100/default_default_train-graspfields/5_5_3tbhr0ee/checkpoints/epoch=11-step=510732.ckpt
-  - Bowl:/media/thomasweng/manifolds/clust_multirun/partial_pcs/objBowl-archdeepsdf_partial100/default_default_train-graspfields/7_7_3n5713s0/checkpoints/epoch=12-step=550822.ckpt
-  - Mug:/media/thomasweng/manifolds/clust_multirun/partial_pcs/objMug-archdeepsdf_partial100/default_default_train-graspfields/2_2_1rvf96ap/checkpoints/epoch=5-step=253729.ckpt
+  - Bottle:${data_root}/models/objBottle-archdeepsdf_partial100/default_default_train-graspfields/5_5_3tbhr0ee/checkpoints/epoch=11-step=510732.ckpt
+  - Bowl:${data_root}/models/objBowl-archdeepsdf_partial100/default_default_train-graspfields/7_7_3n5713s0/checkpoints/epoch=12-step=550822.ckpt
+  - Mug:${data_root}/models/objMug-archdeepsdf_partial100/default_default_train-graspfields/2_2_1rvf96ap/checkpoints/epoch=5-step=253729.ckpt
 pc: True
 goal_thresh: 0.0000001
 
