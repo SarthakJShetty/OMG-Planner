@@ -317,6 +317,11 @@ class PandaKitchenEnv:
             p.stepSimulation()
         return objectUids
 
+    def get_joints(self):
+        arm = self._panda.getJointStates()[0][:7]
+        fingers = self._panda.getJointStates()[0][-2:]
+        return np.array(arm + fingers)
+
     def close_finger(self):
         cur_joint = np.array(self._panda.getJointStates()[0])
         cur_joint[-2:] = 0
