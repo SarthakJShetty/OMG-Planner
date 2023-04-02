@@ -371,6 +371,20 @@ class PandaKitchenEnv:
         )
         return (obs, joint_pos)
 
+    def get_reduced_observation(self, exists_ids):
+        """get observation with object and hand poses"""
+        poses = []    
+        hand_pos, hand_orn = p.getLinkState(
+            self._panda.pandaUid, self._panda.pandaEndEffectorIndex
+        )[:2]
+        poses.append(('hand', hand_pos, hand_orn))
+
+        for name in exists_ids:
+            obj_idx = self.obj_path.index("data/objects/" + name)
+            pos, orn = p.getBasePositionAndOrientation(self._objectUids[obj_idx])
+            poses.append((name, pos, orn))
+        return poses 
+
     def _get_target_obj_pose(self):
         return p.getBasePositionAndOrientation(self._objectUids[self.target_idx])[0]
 
