@@ -2,12 +2,12 @@
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
 
-import random
+# import random
 import os
-from gym import spaces
+# from gym import spaces
 import time
 import sys
-from . import _init_paths
+# from . import _init_paths
 
 from omg.core import *
 from omg.util import *
@@ -17,13 +17,13 @@ import pybullet as p
 import numpy as np
 import pybullet_data
 
-from PIL import Image
-import glob
-import gym
-import IPython
-from panda_gripper import Panda
+# from PIL import Image
+# import glob
+# import gym
+# import IPython
+from bullet.panda_gripper import Panda
 
-from transforms3d import quaternions
+# from transforms3d import quaternions
 import scipy.io as sio
 import pkgutil
 
