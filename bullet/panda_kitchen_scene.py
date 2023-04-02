@@ -327,6 +327,10 @@ class PandaKitchenEnv:
         cur_joint[-2:] = 0.04
         self.step(cur_joint.tolist())  # grasp
 
+    def get_fingers(self):
+        cur_joint = np.array(self._panda.getJointStates()[0])
+        return cur_joint[-2:]        
+
     def step(self, action, obs=True, close_finger=False):
         """Environment step."""
         self._env_step += 1
