@@ -513,7 +513,7 @@ class Cost(object):
         )
         weighted_smooth_grad = self.cfg.smoothness_weight * smoothness_grad
 
-        if "NGDF" in self.cfg.method and self.cfg.use_goal_grad:
+        if "NGDF" in self.cfg.method or "PN2" in self.cfg.method:
             assert traj.goal_cost is not None
             assert traj.goal_grad is not None
             weighted_goal_cost = self.cfg.grasp_weight * traj.goal_cost
@@ -550,7 +550,7 @@ class Cost(object):
             elif self.cfg.goal_set_proj or "CG" in self.cfg.method:
                 goal_dist = np.linalg.norm(traj.data[-1] - traj.goal_set[traj.goal_idx])
                 goal_dist_thresh = 0.01
-            elif "NGDF" in self.cfg.method:
+            elif "NGDF" in self.cfg.method or "PN2" in self.cfg.method:
                 goal_dist = (
                     traj.goal_cost
                     if self.cfg.use_goal_grad

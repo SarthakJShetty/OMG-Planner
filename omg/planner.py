@@ -128,7 +128,7 @@ class Planner(object):
             self.grasp_init(env)
             self.setup_time = time.time() - start_time_
             self.learner = Learner(env, self.traj, self.cost)
-        elif "NGDF" in self.cfg.method:
+        elif "NGDF" in self.cfg.method or "PN2" in self.cfg.method:
             self.use_double = True
             torch.set_default_tensor_type(torch.cuda.DoubleTensor)
             from omg_bullet.methods.ngdf_pred import NGDFPrediction
@@ -802,7 +802,7 @@ class Planner(object):
         self.info = []
         self.selected_goals = []
         start_time_ = time.time()
-        alg_switch = self.cfg.ol_alg != "Baseline" and "NGDF" not in self.cfg.method
+        alg_switch = self.cfg.ol_alg != "Baseline" and ("NGDF" not in self.cfg.method and "PN2" not in self.cfg.method)
 
         best_traj = None  # Save lowest cost trajectory
         best_cost = 1000
@@ -811,13 +811,14 @@ class Planner(object):
             or len(self.traj.goal_set) > 0
             or ("CG" in self.cfg.method)
             or "NGDF" in self.cfg.method
+            or "PN2" in self.cfg.method
         ):
             self.T_w2b_np = get_world2bot_transform()
 
             urdf_path = DifferentiableFrankaPanda().urdf_path.replace("_no_gripper", "")
             robot_model = th.eb.UrdfRobotModel(urdf_path, device="cuda")
 
-            if "NGDF" in self.cfg.method and pc_dict is not {}:
+            if ("NGDF" in self.cfg.method or "PN2" in self.cfg.method) and pc_dict is not {}:
                 # Get shape code for point cloud
                 shape_code, mean_pc = self.grasp_predictor.get_shape_code(
                     pc_dict["points_world"], category=category
@@ -894,7 +895,7 @@ class Planner(object):
                     self.learner.update_goal()
                     self.selected_goals.append(self.traj.goal_idx)
 
-                if "NGDF" in self.cfg.method:
+                if "NGDF" in self.cfg.method or "PN2" in self.cfg.method:
                     q = torch.tensor(
                         self.traj.data[-1], dtype=dtype, device=device
                     ).unsqueeze(0)
